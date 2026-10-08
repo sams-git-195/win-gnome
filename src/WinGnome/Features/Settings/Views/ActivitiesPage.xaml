@@ -1,0 +1,52 @@
+<UserControl x:Class="WinGnome.Features.Settings.Views.ActivitiesPage" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls">
+    <StackPanel>
+        <c:SettingsGroup Header="Hot corner">
+            <c:SettingsRow Title="Hot corner" Subtitle="Push the pointer into the top-left corner to open the overview.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding HotCorner.Value}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Hot corner delay" Subtitle="How long the pointer must rest in the corner."
+                           IsEnabled="{Binding HotCorner.Value}" Content="{Binding HotCornerDelay}" />
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Keyboard">
+            <c:SettingsRow Title="Super key opens the overview"
+                           Subtitle="Pressing the Windows key on its own opens Activities. The Start menu still opens with Ctrl+Esc.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding SuperKey.Value}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Super+1&#x2026;9 activate dock items"
+                           Subtitle="Win+1 focuses or launches the first dock item, Win+2 the second, and so on.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding SuperNumber.Value}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Overview hotkey" Subtitle="Always active, in addition to the Super key option.">
+                <StackPanel HorizontalAlignment="Right">
+                    <TextBox Width="180" HorizontalAlignment="Right" ToolTip="{Binding Hotkey.Error}"
+                             Text="{Binding Hotkey.Text, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                    <TextBlock Margin="0,6,0,0" TextAlignment="Right" Style="{DynamicResource RowSubtitleText}"
+                               Text="{Binding Hotkey.Normalized, StringFormat='Saved as {0}'}"
+                               Visibility="{Binding Hotkey.IsValid, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                    <TextBlock Margin="0,6,0,0" TextAlignment="Right" TextWrapping="Wrap" FontSize="13" MaxWidth="260"
+                               Foreground="{DynamicResource DestructiveBrush}" Text="{Binding Hotkey.Error}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Hotkey.IsValid}" Value="False">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Overview">
+            <c:SettingsRow Title="Backdrop opacity" Subtitle="How strongly the desktop is dimmed behind the overview."
+                           Content="{Binding BackdropOpacity}" />
+        </c:SettingsGroup>
+    </StackPanel>
+</UserControl>

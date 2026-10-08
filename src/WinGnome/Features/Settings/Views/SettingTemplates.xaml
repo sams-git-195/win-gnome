@@ -1,0 +1,43 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:items="clr-namespace:WinGnome.Features.Settings.ViewModels.Items"
+                    xmlns:vm="clr-namespace:WinGnome.Features.Settings.ViewModels"
+                    xmlns:views="clr-namespace:WinGnome.Features.Settings.Views">
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/WinGnome;component/Theme/SettingsControls.xaml" />
+    </ResourceDictionary.MergedDictionaries>
+
+    <!-- A slider setting: the slider plus its current value. -->
+    <DataTemplate DataType="{x:Type items:SliderSetting}">
+        <StackPanel Orientation="Horizontal">
+            <Slider Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" TickFrequency="{Binding Step}"
+                    SmallChange="{Binding Step}" LargeChange="{Binding Step}" IsSnapToTickEnabled="True"
+                    Value="{Binding Value}" Width="220" />
+            <TextBlock Text="{Binding Text}" Width="68" Margin="12,0,0,0" TextAlignment="Right" VerticalAlignment="Center"
+                       FontSize="13" Foreground="{DynamicResource SecondaryForegroundBrush}" />
+        </StackPanel>
+    </DataTemplate>
+
+    <!-- One view per page. -->
+    <DataTemplate DataType="{x:Type vm:GeneralPageViewModel}">
+        <views:GeneralPage />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vm:TopBarPageViewModel}">
+        <views:TopBarPage />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vm:DockPageViewModel}">
+        <views:DockPage />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vm:WindowButtonsPageViewModel}">
+        <views:WindowButtonsPage />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vm:ActivitiesPageViewModel}">
+        <views:ActivitiesPage />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vm:StreamlinePageViewModel}">
+        <views:StreamlinePage />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vm:AboutPageViewModel}">
+        <views:AboutPage />
+    </DataTemplate>
+</ResourceDictionary>

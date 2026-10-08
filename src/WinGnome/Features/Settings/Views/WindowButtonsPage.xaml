@@ -1,0 +1,168 @@
+<UserControl x:Class="WinGnome.Features.Settings.Views.WindowButtonsPage" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls"
+             xmlns:vm="clr-namespace:WinGnome.Features.Settings.ViewModels">
+    <StackPanel>
+        <!-- Live preview built with the same layout code as the real overlay. Hover the circles to see the symbols. -->
+        <Border Style="{DynamicResource CardBorder}" Margin="0,0,0,24" Padding="16,16,16,6">
+            <ItemsControl ItemsSource="{Binding Preview.Bars}" Focusable="False">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="0,0,0,10">
+                            <TextBlock Text="{Binding Label}" Style="{DynamicResource RowSubtitleText}" Margin="2,0,0,6" />
+                            <Border Width="{x:Static vm:TitleBarPreviewViewModel.BarWidth}" Height="{x:Static vm:TitleBarPreviewViewModel.BarHeight}" HorizontalAlignment="Left" CornerRadius="8"
+                                    Background="{DynamicResource HeaderBackgroundBrush}" AutomationProperties.Name="{Binding Label}">
+                                <Grid>
+                                    <TextBlock Text="Untitled document" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13"
+                                               Foreground="{DynamicResource SecondaryForegroundBrush}" />
+                                    <ItemsControl ItemsSource="{Binding Buttons}" Focusable="False">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemContainerStyle>
+                                            <Style TargetType="ContentPresenter">
+                                                <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                                                <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                            </Style>
+                                        </ItemsControl.ItemContainerStyle>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Width="{Binding Diameter}" Height="{Binding Diameter}">
+                                                    <Ellipse Fill="{Binding Fill}" Stroke="{Binding Outline}" StrokeThickness="1" />
+                                                    <TextBlock Text="{Binding Glyph}" FontSize="{Binding GlyphSize}" FontWeight="Bold"
+                                                               Foreground="{Binding GlyphBrush}" HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center" Margin="0,-2,0,0">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Opacity" Value="0" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding GlyphAlwaysVisible}" Value="True">
+                                                                        <Setter Property="Opacity" Value="1" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ItemsControl}}" Value="True">
+                                                                        <Setter Property="Opacity" Value="1" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Border>
+
+        <c:SettingsGroup>
+            <c:SettingsRow Title="Round window buttons" Subtitle="Draw circular minimise, maximise and close buttons over window title bars.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding Enabled.Value}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Colours">
+            <c:SettingsRow Title="Preset" IsStacked="True">
+                <ListBox Style="{DynamicResource PresetListBox}" ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}"
+                         AutomationProperties.Name="Colour preset">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Ellipse Width="16" Height="16" Margin="2,0" Fill="{Binding Close}" />
+                                    <Ellipse Width="16" Height="16" Margin="2,0" Fill="{Binding Minimize}" />
+                                    <Ellipse Width="16" Height="16" Margin="2,0" Fill="{Binding Maximize}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding Name}" FontSize="13" HorizontalAlignment="Center" Margin="0,8,0,0" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </c:SettingsRow>
+            <c:SettingsRow Title="Close button colour"
+                           Visibility="{Binding IsCustomPreset, Converter={x:Static c:Converters.BoolToVisibility}}">
+                <c:ColorPickerRow DataContext="{Binding CloseColor}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Minimise button colour"
+                           Visibility="{Binding IsCustomPreset, Converter={x:Static c:Converters.BoolToVisibility}}">
+                <c:ColorPickerRow DataContext="{Binding MinimizeColor}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Maximise button colour"
+                           Visibility="{Binding IsCustomPreset, Converter={x:Static c:Converters.BoolToVisibility}}">
+                <c:ColorPickerRow DataContext="{Binding MaximizeColor}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Layout">
+            <c:SettingsRow Title="Side" Subtitle="On the right the circles replace the native buttons in place.">
+                <ListBox Style="{DynamicResource SegmentedListBox}" ItemsSource="{Binding Side.Options}"
+                         SelectedItem="{Binding Side.Selected}" DisplayMemberPath="Label" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Order">
+                <ComboBox ItemsSource="{Binding Order.Options}" SelectedItem="{Binding Order.Selected}" DisplayMemberPath="Label" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Diameter" Content="{Binding Diameter}" />
+            <c:SettingsRow Title="Spacing" Content="{Binding Spacing}" />
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Behaviour">
+            <c:SettingsRow Title="Show symbols on hover" Subtitle="Reveal the x, minus and plus glyphs while the pointer is over the buttons.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding ShowSymbolsOnHover.Value}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Dim inactive windows" Subtitle="Grey out the buttons of windows that are not focused.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding DimInactiveWindows.Value}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Unify title bar colour" Subtitle="Paints every window's title bar in the Adwaita header colour. The original colours return when WinGnome exits.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding UnifyTitleBarColor.Value}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Excluded apps"
+                         Description="These programs keep their native window buttons. Apps that draw their own title bars are skipped automatically.">
+            <c:SettingsRow Title="Programs" IsStacked="True">
+                <StackPanel DataContext="{Binding Excluded}">
+                    <ItemsControl ItemsSource="{Binding Items}" Focusable="False">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding}" VerticalAlignment="Center" Style="{DynamicResource RowTitleText}" />
+                                    <Button Grid.Column="1" Content="&#xE74D;" Style="{DynamicResource SettingsIconButton}" ToolTip="Remove"
+                                            AutomationProperties.Name="Remove from the exclusion list"
+                                            Command="{Binding DataContext.RemoveCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="No excluded programs." Style="{DynamicResource RowSubtitleText}" Margin="0,2,0,8"
+                               Visibility="{Binding IsEmpty, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Program name">
+                            <TextBox.InputBindings>
+                                <KeyBinding Key="Return" Command="{Binding AddCommand}" />
+                            </TextBox.InputBindings>
+                        </TextBox>
+                        <Button Grid.Column="1" Content="Add" Style="{DynamicResource SettingsAccentButton}" Margin="8,0,0,0"
+                                Command="{Binding AddCommand}" />
+                    </Grid>
+                    <TextBlock Text="{Binding Error}" Margin="2,6,0,0" Foreground="{DynamicResource DestructiveBrush}" FontSize="13"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </c:SettingsRow>
+        </c:SettingsGroup>
+    </StackPanel>
+</UserControl>

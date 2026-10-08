@@ -1,0 +1,39 @@
+<UserControl x:Class="WinGnome.Features.Settings.Views.GeneralPage" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls">
+    <StackPanel>
+        <c:SettingsGroup Header="Startup">
+            <c:SettingsRow Title="Start with Windows" Subtitle="{Binding StartWithWindowsSubtitle}">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding StartWithWindows.Value}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Hide Windows taskbar" Subtitle="Restored automatically when WinGnome exits.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding HideWindowsTaskbar.Value}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Restore taskbar now"
+                           Subtitle="Brings the taskbar back immediately. While &quot;Hide Windows taskbar&quot; is on, WinGnome hides it again the next time it starts.">
+                <StackPanel HorizontalAlignment="Right">
+                    <Button Content="Restore taskbar" Style="{DynamicResource SettingsButton}" Command="{Binding RestoreTaskbarCommand}" />
+                    <TextBlock Text="{Binding RestoreStatus}" Style="{DynamicResource RowSubtitleText}" Margin="0,6,0,0"
+                               TextAlignment="Right" />
+                </StackPanel>
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Appearance">
+            <c:SettingsRow Title="Theme" Subtitle="Colours of the top bar menus, dock, overview and this window.">
+                <ListBox Style="{DynamicResource SegmentedListBox}" ItemsSource="{Binding Theme.Options}"
+                         SelectedItem="{Binding Theme.Selected}" DisplayMemberPath="Label" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Windows">
+            <c:SettingsRow Title="Center new windows" Subtitle="Newly opened windows appear in the middle of the screen, as in GNOME.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding CenterNewWindows.Value}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Focus follows mouse" Subtitle="The window under the pointer gets focus. Applies for this session only and is restored on exit.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding FocusFollowsMouse.Value}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+    </StackPanel>
+</UserControl>
