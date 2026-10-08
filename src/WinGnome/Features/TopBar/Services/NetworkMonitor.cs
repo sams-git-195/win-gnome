@@ -15,6 +15,7 @@ internal sealed class NetworkMonitor : IDisposable
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _debounce;
     private bool _disposed;
+    private int _probeCount;
 
     public NetworkMonitor(Dispatcher dispatcher)
     {
@@ -33,6 +34,11 @@ internal sealed class NetworkMonitor : IDisposable
     // NetworkChange raises its events on thread-pool threads.
     private void OnNetworkChanged(object? sender, EventArgs e) => _dispatcher.BeginInvoke(() =>
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         _debounce.Stop();
         _debounce.Start();
     });
@@ -46,8 +52,10 @@ internal sealed class NetworkMonitor : IDisposable
     private async Task RefreshAsync()
     {
         // Enumerating adapters and their IP properties can take tens of milliseconds; keep it off the UI thread.
+        // Probes may overlap; only the latest one may publish, or a slow stale probe could overwrite a newer state.
+        var probe = ++_probeCount;
         var connection = await Task.Run(Probe).ConfigureAwait(true);
-        if (_disposed || connection is not { } value || value == Connection)
+        if (_disposed || probe != _probeCount || connection is not { } value || value == Connection)
         {
             return;
         }

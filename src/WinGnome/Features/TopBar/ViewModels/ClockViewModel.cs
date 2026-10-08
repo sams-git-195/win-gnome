@@ -17,6 +17,7 @@ internal sealed class ClockViewModel : ObservableObject, IDisposable
     private readonly DispatcherTimer _timer;
     private TopBarSettings _settings;
     private string _text = "";
+    private bool _disposed;
 
     public ClockViewModel(Dispatcher dispatcher, TopBarSettings settings)
     {
@@ -43,6 +44,13 @@ internal sealed class ClockViewModel : ObservableObject, IDisposable
 
     private void Update()
     {
+        // A time-change or resume notification queued just before Dispose must not re-arm the timer: an enabled
+        // DispatcherTimer is rooted by the dispatcher and would tick (and keep this object alive) forever.
+        if (_disposed)
+        {
+            return;
+        }
+
         var now = DateTime.Now;
         Text = ClockFormatter.Format(now, _settings, CultureInfo.CurrentCulture);
         _timer.Stop();
@@ -68,6 +76,7 @@ internal sealed class ClockViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _disposed = true;
         SystemEvents.TimeChanged -= OnTimeChanged;
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         _timer.Stop();

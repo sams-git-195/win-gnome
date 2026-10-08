@@ -21,6 +21,7 @@ internal sealed class VirtualDesktopMonitor : IDisposable
     private readonly Dispatcher _dispatcher;
     private readonly string? _sessionKey;
     private readonly List<RegistryKeyWatcher> _watchers = [];
+    private readonly DesktopSwitchPlanner _planner = new();
     private bool _disposed;
 
     public VirtualDesktopMonitor(Dispatcher dispatcher)
@@ -56,11 +57,12 @@ internal sealed class VirtualDesktopMonitor : IDisposable
     public event EventHandler? Changed;
 
     /// <summary>Switches to the desktop at <paramref name="index"/> (clamped) by sending Ctrl+Win+Left/Right.</summary>
-    public void SwitchTo(int index)
-    {
-        var target = Math.Clamp(index, 0, State.Count - 1);
-        ShellShortcuts.SwitchDesktop(VirtualDesktopState.StepsTo(State.CurrentIndex, target));
-    }
+    public void SwitchTo(int index) =>
+        ShellShortcuts.SwitchDesktop(_planner.PlanSwitchTo(State, index, DateTime.UtcNow));
+
+    /// <summary>Moves <paramref name="delta"/> desktops left (negative) or right, stopping at the first and last.</summary>
+    public void SwitchBy(int delta) =>
+        ShellShortcuts.SwitchDesktop(_planner.PlanSwitchBy(State, delta, DateTime.UtcNow));
 
     /// <summary>Re-reads the registry and raises <see cref="Changed"/> when something moved.</summary>
     public void Refresh()
@@ -71,6 +73,7 @@ internal sealed class VirtualDesktopMonitor : IDisposable
         }
 
         var state = Read();
+        _planner.Observe(state);
         if (state != State)
         {
             State = state;

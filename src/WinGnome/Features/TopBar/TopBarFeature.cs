@@ -16,7 +16,7 @@ namespace WinGnome.Features.TopBar;
 /// AppBar reservation, timers, audio and registry callbacks); enabling it builds it again.
 /// </summary>
 [FeatureOrder(20)]
-internal sealed class TopBarFeature : IFeature
+internal sealed class TopBarFeature : IFeature, IEmergencyRestore
 {
     private readonly ShellContext _context;
 
@@ -117,6 +117,13 @@ internal sealed class TopBarFeature : IFeature
             {
                 _appBar?.Undock();
                 Dock();
+
+                // The new Explorer never reports the end of a full-screen app that the old one saw start, so a bar
+                // hidden for it would stay hidden for good; show it again unless that app still covers the monitor.
+                if (_fullScreen && !ForegroundCoversPrimaryMonitor())
+                {
+                    OnFullScreenChanged(this, false);
+                }
             }, DispatcherPriority.Background);
         }
 
@@ -155,6 +162,20 @@ internal sealed class TopBarFeature : IFeature
             NativeMethods.SetWindowPos(new WindowInteropHelper(_window).Handle, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
                 NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
         }
+    }
+
+    private static bool ForegroundCoversPrimaryMonitor()
+    {
+        var foreground = NativeMethods.GetForegroundWindow();
+        if (NativeMethods.GetClassName(foreground) is "Progman" or "WorkerW")
+        {
+            return false;
+        }
+
+        var (monitor, _) = NativeMethods.GetPrimaryMonitorRects();
+        var window = NativeMethods.GetWindowBounds(foreground);
+        return !monitor.IsEmpty && window.Left <= monitor.Left && window.Top <= monitor.Top
+            && window.Right >= monitor.Right && window.Bottom >= monitor.Bottom;
     }
 
     // SystemEvents may raise on its own thread; always hop to the dispatcher.
@@ -200,4 +221,7 @@ internal sealed class TopBarFeature : IFeature
     }
 
     public void Dispose() => TearDown();
+
+    /// <summary>Crash path: give the reserved strip back to the work area (ABM_REMOVE is a plain Win32 call).</summary>
+    public void EmergencyRestore() => _appBar?.Undock();
 }

@@ -119,13 +119,16 @@ internal sealed class AudioVolumeController : IDisposable
         if (_enumerator is not null)
         {
             IMMDevice? device = null;
+            object? activated = null;
             try
             {
                 device = _enumerator.GetDefaultAudioEndpoint(EDataFlow.Render, ERole.Multimedia);
                 var iid = typeof(IAudioEndpointVolume).GUID;
-                var endpoint = (IAudioEndpointVolume)device.Activate(ref iid, CoreAudio.CLSCTX_ALL, 0);
+                activated = device.Activate(ref iid, CoreAudio.CLSCTX_ALL, 0);
+                var endpoint = (IAudioEndpointVolume)activated;
                 endpoint.RegisterControlChangeNotify(_volumeSink);
                 _endpoint = endpoint;
+                activated = null;
                 ReadState();
             }
             catch (COMException ex) when (ex.HResult == CoreAudio.E_NOTFOUND)
@@ -138,6 +141,12 @@ internal sealed class AudioVolumeController : IDisposable
             }
             finally
             {
+                // Only set when activation succeeded but registering the callback failed.
+                if (activated is not null)
+                {
+                    Marshal.ReleaseComObject(activated);
+                }
+
                 if (device is not null)
                 {
                     Marshal.ReleaseComObject(device);

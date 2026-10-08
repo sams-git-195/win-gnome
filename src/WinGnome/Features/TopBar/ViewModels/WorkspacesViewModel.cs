@@ -35,11 +35,7 @@ internal sealed class WorkspacesViewModel : ObservableObject, IDisposable
         }
 
         _lastScroll = now;
-        var target = CurrentIndex + (wheelDelta > 0 ? -1 : 1);
-        if (target >= 0 && target < Count)
-        {
-            SwitchTo(target);
-        }
+        _monitor.SwitchBy(wheelDelta > 0 ? -1 : 1);
     }
 
     private void OnMonitorChanged(object? sender, EventArgs e)

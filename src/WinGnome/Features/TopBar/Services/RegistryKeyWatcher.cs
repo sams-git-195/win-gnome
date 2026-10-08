@@ -81,10 +81,18 @@ internal sealed class RegistryKeyWatcher : IDisposable
             return;
         }
 
-        // Re-arm before reporting so a change made while the callback runs is not missed.
-        if (Arm())
+        // Re-arm before reporting so a change made while the callback runs is not missed. This runs on a thread-pool
+        // thread, where an escaping exception (e.g. the key closed by a Dispose that gave up waiting) ends the process.
+        try
         {
-            _changed();
+            if (Arm())
+            {
+                _changed();
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Change notification for HKCU\\{_path} failed", ex);
         }
     }
 

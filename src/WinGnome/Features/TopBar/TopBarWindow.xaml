@@ -97,14 +97,17 @@
                                                  CurrentIndex="{Binding Workspaces.CurrentIndex}"
                                                  DotBrush="{DynamicResource BarForeground}" DotClicked="OnWorkspaceDotClicked" />
                 </Border>
-                <StackPanel x:Name="FocusedApp" Orientation="Horizontal" Margin="10,0,0,0"
-                            DataContext="{Binding FocusedApp}"
-                            Visibility="{Binding HasApp, Converter={StaticResource VisibleWhen}}">
-                    <Image x:Name="FocusedAppIcon" Source="{Binding Icon}" Width="{DynamicResource BarIconSize}"
-                           Height="{DynamicResource BarIconSize}" Margin="0,0,8,0" VerticalAlignment="Center"
-                           RenderOptions.BitmapScalingMode="HighQuality" />
-                    <TextBlock Text="{Binding Name}" MaxWidth="280" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                </StackPanel>
+                <!-- Outer panel: the user's setting; inner panel: whether an app is focused at all. -->
+                <Grid Visibility="{Binding ShowFocusedAppName, Converter={StaticResource VisibleWhen}}">
+                    <StackPanel x:Name="FocusedApp" Orientation="Horizontal" Margin="10,0,0,0"
+                                DataContext="{Binding FocusedApp}"
+                                Visibility="{Binding HasApp, Converter={StaticResource VisibleWhen}}">
+                        <Image x:Name="FocusedAppIcon" Source="{Binding Icon}" Width="{DynamicResource BarIconSize}"
+                               Height="{DynamicResource BarIconSize}" Margin="0,0,8,0" VerticalAlignment="Center"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                        <TextBlock Text="{Binding Name}" MaxWidth="280" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
             </StackPanel>
 
             <!-- Centre: clock. -->

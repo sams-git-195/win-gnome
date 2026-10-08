@@ -8,10 +8,6 @@ internal static class Glyphs
     public const string Wifi = "";
     public const string Wired = "";
     public const string NoNetwork = "";
-    public const string Bluetooth = "";
-    public const string Notifications = "";
-    public const string WindowsQuickSettings = "";
-    public const string SystemTray = "";
 
     public const string VolumeMuted = "";
     public const string VolumeSilent = "";
