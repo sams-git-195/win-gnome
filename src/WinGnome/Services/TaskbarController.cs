@@ -39,11 +39,33 @@ internal static partial class TaskbarController
 
     private sealed record Marker(bool WasAutoHide);
 
+    /// <summary>
+    /// Explorer's own primary taskbar window, or 0. Not simply <c>FindWindow("Shell_TrayWnd")</c>: WinGnome's tray host
+    /// (and tools like RetroBar) register windows of that class in front of Explorer's so that apps' tray icons reach
+    /// them first. Explorer's is the one in the same process as the shell's desktop window.
+    /// </summary>
+    public static nint FindExplorerTray()
+    {
+        var shell = NativeMethods.GetShellWindow();
+        var shellProcess = shell == 0 ? 0 : NativeMethods.GetProcessId(shell);
+        nint tray = 0;
+        while ((tray = NativeMethods.FindWindowEx(0, tray, "Shell_TrayWnd", null)) != 0)
+        {
+            // Without a desktop window (Explorer still starting), take the first tray that is not one of ours.
+            if (shellProcess != 0 ? NativeMethods.GetProcessId(tray) == shellProcess : !NativeMethods.IsOwnWindow(tray))
+            {
+                return tray;
+            }
+        }
+
+        return 0;
+    }
+
     /// <summary>The primary and secondary taskbar window handles currently present.</summary>
     public static IReadOnlyList<nint> FindTaskbarWindows()
     {
         var result = new List<nint>();
-        var primary = NativeMethods.FindWindow("Shell_TrayWnd", null);
+        var primary = FindExplorerTray();
         if (primary != 0)
         {
             result.Add(primary);
@@ -59,7 +81,7 @@ internal static partial class TaskbarController
     }
 
     public static bool IsTaskbarWindow(nint hwnd) =>
-        NativeMethods.GetClassName(hwnd) is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd";
+        NativeMethods.GetClassName(hwnd) is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" && !NativeMethods.IsOwnWindow(hwnd);
 
     /// <summary>
     /// Hides the taskbar, recording the original state in <paramref name="settingsDirectory"/> first.
@@ -173,7 +195,7 @@ internal static partial class TaskbarController
     private static APPBARDATA NewData() => new()
     {
         cbSize = Marshal.SizeOf<APPBARDATA>(),
-        hWnd = NativeMethods.FindWindow("Shell_TrayWnd", null),
+        hWnd = FindExplorerTray(),
     };
 
     private static string MarkerPath(string directory) => Path.Combine(directory, MarkerFileName);

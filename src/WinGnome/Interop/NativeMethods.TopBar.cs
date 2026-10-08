@@ -61,6 +61,23 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool ProcessIdToSessionId(uint processId, out uint sessionId);
 
+    /// <summary>EXTENDED_NAME_FORMAT.NameDisplay: the account's full name ("Jane Doe").</summary>
+    private const int NameDisplay = 3;
+
+    [LibraryImport("secur32.dll", EntryPoint = "GetUserNameExW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetUserNameEx(int nameFormat, [Out] char[] buffer, ref uint size);
+
+    /// <summary>The signed-in user's display name, or the account name when there is none (some local accounts).</summary>
+    public static string GetUserDisplayName()
+    {
+        var buffer = new char[256];
+        var size = (uint)buffer.Length;
+        return GetUserNameEx(NameDisplay, buffer, ref size) && size > 0
+            ? new string(buffer, 0, (int)size)
+            : Environment.UserName;
+    }
+
     /// <summary>Returns a Win32 error code (0 = success).</summary>
     [LibraryImport("advapi32.dll")]
     public static partial int RegNotifyChangeKeyValue(

@@ -7,6 +7,7 @@ using WinGnome.Features.TopBar.Popups;
 using WinGnome.Features.TopBar.ViewModels;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
+using WinGnome.Services.Tray;
 
 namespace WinGnome.Features.TopBar;
 
@@ -101,6 +102,7 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
         var geometry = TopBarGeometry.Compute(_settings.Height, _settings.Margin, _settings.CornerRadius, scale);
         var granted = _appBar.Dock(AppBarEdge.Top, geometry.ThicknessPx, bounds);
         _window.ApplyGeometry(geometry, granted.Width, scale);
+        _viewModel?.Tray.SetBarBounds(granted);
         Log.Info($"Top bar docked at {granted.Left},{granted.Top} {granted.Width}x{granted.Height} px (DPI scale {scale:0.##})");
     }
 
@@ -111,7 +113,7 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
             // WPF rescales the window to Windows' suggested rectangle first; then restore our exact strip.
             _context.Dispatcher.BeginInvoke(Dock, DispatcherPriority.Background);
         }
-        else if (_taskbarCreatedMessage != 0 && msg == (int)_taskbarCreatedMessage)
+        else if (_taskbarCreatedMessage != 0 && msg == (int)_taskbarCreatedMessage && !TrayHost.IsOwnBroadcast(wParam))
         {
             _context.Dispatcher.BeginInvoke(() =>
             {
@@ -222,6 +224,13 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
 
     public void Dispose() => TearDown();
 
-    /// <summary>Crash path: give the reserved strip back to the work area (ABM_REMOVE is a plain Win32 call).</summary>
-    public void EmergencyRestore() => _appBar?.Undock();
+    /// <summary>
+    /// Crash path: give the reserved strip back to the work area (ABM_REMOVE is a plain Win32 call) and ask the tray
+    /// host to step aside. Explorer already has every tray icon, because the host forwarded each call to it.
+    /// </summary>
+    public void EmergencyRestore()
+    {
+        _appBar?.Undock();
+        _viewModel?.Tray.EmergencyRestore();
+    }
 }

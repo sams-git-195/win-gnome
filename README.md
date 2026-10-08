@@ -14,14 +14,16 @@ the way it was when it exits.
 ## Features
 
 ### Top bar
+- **Logo menu**: a Windows logo at the far left opens a menu like the macOS Apple menu: About This PC, System Settings, WinGnome Settings, Microsoft Store, the Start menu, Task Manager, Sleep, Restart, Shut Down, Lock Screen, Log Out and Quit WinGnome. Restart, shut down and log out ask first. Use the arrow keys and Enter, or Esc to close.
 - **Activities** button (or press **Alt+F1**, the Super key, or flick the pointer into the top-left hot corner) opens the overview.
 - **Workspace dots** for Windows virtual desktops. Click a dot to switch desktops.
 - **Focused app name** next to the dots, as in GNOME.
 - **Centred clock**, formatted GNOME-style (`Wed 8 Oct  14:05`). Click it for a calendar.
 - **System indicators**: network, volume (scroll on it to change the volume) and battery.
+- **Tray icons** (like macOS menu bar extras): the notification-area icons of your running apps (Discord, Steam, OneDrive, antivirus, ...) sit left of the system indicators, in the order they were added. Click, double-click, middle-click and right-click work as in the Windows tray, so app menus open right under the icon. Hover for the tooltip. Icons an app hides stay hidden. The Windows taskbar keeps its own copy of every icon, in both taskbar modes. Turn this off in Settings → Top Bar.
 - **Quick settings** menu: volume slider, Wi-Fi and Bluetooth shortcuts, screenshot, Windows Settings, WinGnome settings, lock, and the power menu (sleep, restart, shut down, sign out). It also links to the hidden system tray and to Windows' own quick settings and notification centre.
 - Registered as an AppBar, so maximised windows sit below the bar instead of under it. The bar hides automatically when a full-screen app runs.
-- **Appearance**: you can set the background colour, text colour, opacity (0–100%), **blur or acrylic**, height, text size, and a *floating* mode with a margin and rounded corners. The default is the classic solid black GNOME bar.
+- **Appearance**: you can set the background colour, text colour, opacity (0–100%), **blur or acrylic**, height, text size, the hover highlight's corner radius (square to pill), and a *floating* mode with a margin and rounded corners. The default is the classic solid black GNOME bar.
 
 ### Dock
 - Pinned apps plus running apps, with **running-indicator dots** (one per window, up to four).
@@ -53,7 +55,7 @@ the way it was when it exits.
 - **Centre new windows** (GNOME behaviour).
 - **Focus follows mouse** (X-Mouse style). This lasts for the session only and is restored on exit.
 - **Taskbar mode** (Settings → General):
-  - **WinGnome dock** (default): the Windows taskbar is hidden while WinGnome runs. *Show system tray* in quick settings temporarily reveals it so you can reach tray icons.
+  - **WinGnome dock** (default): the Windows taskbar is hidden while WinGnome runs. Tray icons appear in the top bar. *Show system tray* in quick settings temporarily reveals the taskbar for Windows' own icons and the hidden-icons overflow.
   - **Native Windows taskbar**: the Windows taskbar stays, with its tray icons, Start button and jump lists, and the WinGnome dock is turned off. You can optionally set the taskbar to auto-hide and streamline it with the *Taskbar* tweaks: hide Search, Task View and Copilot, and centre the icons. These use only supported Windows settings, with no code injected into Explorer, so they keep working across Windows updates.
 - Reversible **registry tweaks** (current user only, no admin needed). Each tweak backs up the original value and can be reverted one at a time or all at once:
   - Dark mode for apps and the system
@@ -100,7 +102,7 @@ top right), or run `WinGnome.exe` again: a second launch opens the running insta
 |---|---|
 | `--settings` | Open the settings window on start |
 | `--settings-dir <path>` | Use a separate profile folder (settings, tweak backups, log) |
-| `--safe` | Safe mode: no taskbar hiding, no registry writes, no keyboard hooks |
+| `--safe` | Safe mode: no taskbar hiding, no registry writes, no keyboard hooks (tray icons still show in the top bar; nothing to undo) |
 | `--selftest` | Start every feature in safe mode, run for 5 s, exit with code 0 on success (used by CI and QA) |
 | `--restore-taskbar` | Restore the Windows taskbar (after a crash, for example) and exit |
 
@@ -112,12 +114,14 @@ WinGnome changes as little as possible, and it undoes everything it changes:
 - **Title-bar colours and focus-follows-mouse** last for the session only. They are restored on exit or crash. If WinGnome is force-killed, they are restored on its next start, because WinGnome records what it changed before changing it.
 - **Quitting**: use *Quit WinGnome* in quick settings or Settings → About. `taskkill /im WinGnome.exe` (without `/f`) also quits cleanly.
 - **Registry tweaks** only touch `HKEY_CURRENT_USER`. The original values (including "value did not exist") are stored in `tweaks-backup.json`, and **Settings → Streamline → Revert all** restores them.
+- **Tray icons**: WinGnome passes every tray-icon and AppBar message on to Explorer as it arrives, so Explorer always keeps all icons, even if WinGnome is killed. If Explorer ever fails to answer while WinGnome passes a message on, WinGnome asks apps to register their icons with Explorer again when it exits.
 - WinGnome never touches elevated (administrator) windows.
 - Log file: `%APPDATA%\WinGnome\wingnome.log`.
 
 ## Known limitations
 
-- Tray icons can't be re-hosted in the top bar. Use *Show system tray* in the quick-settings menu to peek at the native tray, or switch to native taskbar mode.
+- Tray icons in the top bar come from apps that re-register their icons when asked (the Windows *TaskbarCreated* broadcast). Nearly all apps do, but an app whose icon belongs to a message-only window may only appear in the Windows tray. Windows' own system icons (network, volume, battery) are not tray icons in Windows 11; the top bar's system indicators replace them. Balloon notifications are left to Windows.
+- WinGnome shows tray icons only when it runs without administrator rights, and only one WinGnome at a time hosts them. A second copy takes over when the first one exits. If another tray host is running (RetroBar, for example), WinGnome doesn't compete with it for icons.
 - WinGnome doesn't restyle the native taskbar itself (rounded, floating or translucent). That would mean injecting code into Explorer, which breaks with Windows updates. If you want that, tools like Windhawk's *Taskbar Styler* can run alongside WinGnome in native taskbar mode.
 - Apps that draw their own title bars keep their own buttons.
 - The dock and top bar appear on the primary monitor only (multi-monitor support is on the roadmap).

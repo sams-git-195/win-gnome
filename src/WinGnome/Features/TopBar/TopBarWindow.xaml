@@ -3,6 +3,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:WinGnome.Features.TopBar.Controls"
+        xmlns:tray="clr-namespace:WinGnome.Features.TopBar.Tray"
         xmlns:sys="clr-namespace:System;assembly=System.Runtime"
         Title="WinGnome Top Bar"
         WindowStyle="None"
@@ -29,6 +30,8 @@
         <SolidColorBrush x:Key="BarHover" Color="#26FFFFFF" />
         <SolidColorBrush x:Key="BarPressed" Color="#40FFFFFF" />
         <Thickness x:Key="BarPillMargin">2,3</Thickness>
+        <!-- Hover/pressed highlight of every bar item (TopBarSettings.ItemCornerRadius): 0 = square, large = pill. -->
+        <CornerRadius x:Key="TopBarItemCornerRadius">0</CornerRadius>
         <sys:Double x:Key="BarFontSize">13.5</sys:Double>
         <sys:Double x:Key="BarIconSize">16</sys:Double>
         <BooleanToVisibilityConverter x:Key="VisibleWhen" />
@@ -43,7 +46,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Root" Margin="{DynamicResource BarPillMargin}" Padding="{TemplateBinding Padding}"
-                                Background="{TemplateBinding Background}" CornerRadius="999">
+                                Background="{TemplateBinding Background}" CornerRadius="{DynamicResource TopBarItemCornerRadius}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
@@ -62,7 +65,7 @@
         <Style x:Key="BarPill" TargetType="Border">
             <Setter Property="Margin" Value="{DynamicResource BarPillMargin}" />
             <Setter Property="Padding" Value="10,0" />
-            <Setter Property="CornerRadius" Value="999" />
+            <Setter Property="CornerRadius" Value="{DynamicResource TopBarItemCornerRadius}" />
             <Setter Property="Background" Value="Transparent" />
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
@@ -87,8 +90,13 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- Left: Activities, workspace dots, focused app. -->
+            <!-- Left: logo menu, Activities, workspace dots, focused app. -->
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="4,0,0,0">
+                <Button x:Name="LogoButton" Style="{StaticResource BarButton}" Padding="10,0" Click="OnLogoClick"
+                        AutomationProperties.Name="Windows menu"
+                        Visibility="{Binding ShowLogoMenu, Converter={StaticResource VisibleWhen}}">
+                    <controls:WindowsLogo x:Name="Logo" Fill="{DynamicResource BarForeground}" />
+                </Button>
                 <Button Style="{StaticResource BarButton}" Content="Activities" Click="OnActivitiesClick"
                         Visibility="{Binding ShowActivitiesButton, Converter={StaticResource VisibleWhen}}" />
                 <Border x:Name="WorkspacePill" Style="{StaticResource BarPill}" MouseWheel="OnWorkspaceWheel"
@@ -115,20 +123,24 @@
                 <TextBlock Text="{Binding Clock.Text}" />
             </Button>
 
-            <!-- Right: system status; scroll to change the volume. -->
-            <Button x:Name="StatusButton" Grid.Column="2" HorizontalAlignment="Right" Margin="0,0,4,0"
-                    Style="{StaticResource BarButton}" Click="OnStatusClick" MouseWheel="OnStatusWheel"
-                    DataContext="{Binding Status}" ToolTip="{Binding ToolTip}">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Style="{StaticResource BarIcon}" Text="{Binding NetworkGlyph}" />
-                    <TextBlock Style="{StaticResource BarIcon}" Text="{Binding VolumeGlyph}" Margin="12,0,0,0"
-                               Visibility="{Binding IsVolumeAvailable, Converter={StaticResource VisibleWhen}}" />
-                    <TextBlock Style="{StaticResource BarIcon}" Text="{Binding BatteryGlyph}" Margin="12,0,0,0"
-                               Visibility="{Binding HasBattery, Converter={StaticResource VisibleWhen}}" />
-                    <TextBlock Text="{Binding BatteryPercentText}" Margin="5,0,0,0" VerticalAlignment="Center"
-                               Visibility="{Binding ShowBatteryPercentage, Converter={StaticResource VisibleWhen}}" />
-                </StackPanel>
-            </Button>
+            <!-- Right: tray icons (macOS menu bar extras), then system status; scroll on the status to change the volume. -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,4,0">
+                <tray:TrayIconsView x:Name="TrayIcons" DataContext="{Binding Tray}"
+                                    Visibility="{Binding IsEnabled, Converter={StaticResource VisibleWhen}}" />
+                <Button x:Name="StatusButton"
+                        Style="{StaticResource BarButton}" Click="OnStatusClick" MouseWheel="OnStatusWheel"
+                        DataContext="{Binding Status}" ToolTip="{Binding ToolTip}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Style="{StaticResource BarIcon}" Text="{Binding NetworkGlyph}" />
+                        <TextBlock Style="{StaticResource BarIcon}" Text="{Binding VolumeGlyph}" Margin="12,0,0,0"
+                                   Visibility="{Binding IsVolumeAvailable, Converter={StaticResource VisibleWhen}}" />
+                        <TextBlock Style="{StaticResource BarIcon}" Text="{Binding BatteryGlyph}" Margin="12,0,0,0"
+                                   Visibility="{Binding HasBattery, Converter={StaticResource VisibleWhen}}" />
+                        <TextBlock Text="{Binding BatteryPercentText}" Margin="5,0,0,0" VerticalAlignment="Center"
+                                   Visibility="{Binding ShowBatteryPercentage, Converter={StaticResource VisibleWhen}}" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
         </Grid>
     </Border>
 </Window>

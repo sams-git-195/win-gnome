@@ -10,9 +10,9 @@ public enum NotifyIconMessage : uint
     SetVersion = 4,
 }
 
-/// <summary>NIF_* flags: which fields of the call are valid.</summary>
+/// <summary>NIF_* flags: which fields of a Shell_NotifyIcon call are valid.</summary>
 [Flags]
-public enum NotifyIconFlags : uint
+public enum NotifyIconFields : uint
 {
     None = 0,
     Message = 0x01,
@@ -20,7 +20,7 @@ public enum NotifyIconFlags : uint
     Tip = 0x04,
     State = 0x08,
     Info = 0x10,
-    Guid = 0x20,
+    ItemGuid = 0x20,
     Realtime = 0x40,
     ShowTip = 0x80,
 }
@@ -40,12 +40,12 @@ public enum NotifyIconStates : uint
 /// </summary>
 /// <param name="Owner">Window that receives the icon's callback messages.</param>
 /// <param name="Id">App-defined icon ID (uID).</param>
-/// <param name="Guid">guidItem, or <see cref="Guid.Empty"/> when the call did not set NIF_GUID.</param>
-public readonly record struct TrayIconId(nint Owner, uint Id, Guid Guid)
+/// <param name="ItemGuid">guidItem, or <see cref="Guid.Empty"/> when the call did not set NIF_GUID.</param>
+public readonly record struct TrayIconId(nint Owner, uint Id, Guid ItemGuid)
 {
     /// <summary>True when a call (or query) identified by <paramref name="query"/> refers to this icon.</summary>
     public bool IsIdentifiedBy(TrayIconId query) =>
-        query.Guid != Guid.Empty ? Guid == query.Guid : Owner == query.Owner && Id == query.Id;
+        query.ItemGuid != Guid.Empty ? ItemGuid == query.ItemGuid : Owner == query.Owner && Id == query.Id;
 }
 
 /// <summary>One Shell_NotifyIcon call as received by a tray window (the NOTIFYICONDATA inside SHELLTRAYDATA).</summary>
@@ -59,21 +59,21 @@ public readonly record struct TrayIconId(nint Owner, uint Id, Guid Guid)
 /// <param name="State">dwState (valid with NIF_STATE).</param>
 /// <param name="StateMask">dwStateMask: which bits of <paramref name="State"/> to apply.</param>
 /// <param name="Version">uVersion (valid with NIM_SETVERSION): 0, 3 or 4.</param>
-/// <param name="Guid">guidItem (valid with NIF_GUID).</param>
+/// <param name="ItemGuid">guidItem (valid with NIF_GUID).</param>
 public sealed record NotifyIconCommand(
     NotifyIconMessage Message,
     nint Owner,
     uint Id,
-    NotifyIconFlags Flags,
+    NotifyIconFields Flags,
     uint CallbackMessage,
     nint Icon,
     string Tip,
     NotifyIconStates State,
     NotifyIconStates StateMask,
     uint Version,
-    Guid Guid)
+    Guid ItemGuid)
 {
-    public TrayIconId Key => new(Owner, Id, Has(NotifyIconFlags.Guid) ? Guid : Guid.Empty);
+    public TrayIconId Key => new(Owner, Id, Has(NotifyIconFields.ItemGuid) ? ItemGuid : Guid.Empty);
 
-    public bool Has(NotifyIconFlags flag) => (Flags & flag) != 0;
+    public bool Has(NotifyIconFields flag) => (Flags & flag) != 0;
 }

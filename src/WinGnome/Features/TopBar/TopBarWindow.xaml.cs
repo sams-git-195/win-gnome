@@ -24,6 +24,9 @@ internal sealed partial class TopBarWindow : Window
     // GNOME's panel icons are 16 px next to ~13.5 px text; keep that ratio when the font size changes.
     private const double IconToFontRatio = 16 / 13.5;
     private const double DotToFontRatio = 7 / 13.5;
+
+    // The logo sits a little smaller than the other icons, like the Apple logo next to menu titles.
+    private const double LogoToIconRatio = 0.875;
     private const byte HoverAlpha = 0x26;
     private const byte PressedAlpha = 0x40;
 
@@ -33,6 +36,8 @@ internal sealed partial class TopBarWindow : Window
     private readonly TopBarActions _actions;
     private readonly CalendarCard _calendarCard = new();
     private readonly QuickSettingsCard _quickSettingsCard;
+    private readonly LogoMenuCard _logoMenuCard = new();
+    private readonly Popup _logoPopup;
     private readonly Popup _calendarPopup;
     private readonly Popup _quickSettingsPopup;
     private TopBarSettings _settings;
@@ -59,8 +64,14 @@ internal sealed partial class TopBarWindow : Window
         _quickSettingsCard = new QuickSettingsCard(viewModel.Status);
         _calendarCard.ActionRequested += OnActionRequested;
         _quickSettingsCard.ActionRequested += OnActionRequested;
+        _logoMenuCard.ActionRequested += OnActionRequested;
+        _logoPopup = CreatePopup(_logoMenuCard, LogoButton);
+
+        // Runs after PopupHost's own Opened handler has activated the popup: open with nothing selected, keys ready.
+        _logoPopup.Opened += (_, _) => _logoMenuCard.Reset();
         _calendarPopup = CreatePopup(_calendarCard, ClockButton);
         _quickSettingsPopup = CreatePopup(_quickSettingsCard, StatusButton);
+        TrayIcons.IconPressed += OnTrayIconPressed;
     }
 
     /// <summary>Applies colours, blur and sizes. Call after the window has a handle.</summary>
@@ -103,6 +114,8 @@ internal sealed partial class TopBarWindow : Window
         _popups.Close(restoreFocus: false);
         _calendarCard.ActionRequested -= OnActionRequested;
         _quickSettingsCard.ActionRequested -= OnActionRequested;
+        _logoMenuCard.ActionRequested -= OnActionRequested;
+        TrayIcons.IconPressed -= OnTrayIconPressed;
         _allowClose = true;
         Close();
     }
@@ -119,6 +132,8 @@ internal sealed partial class TopBarWindow : Window
     {
         Resources["BarFontSize"] = _settings.FontSize;
         Resources["BarIconSize"] = IconSize;
+        Resources["TopBarItemCornerRadius"] = new CornerRadius(_settings.ItemCornerRadius);
+        Logo.Size = Math.Round(IconSize * LogoToIconRatio);
         WorkspaceDots.DotSize = Math.Max(4, Math.Round(_settings.FontSize * DotToFontRatio));
     }
 
@@ -180,6 +195,11 @@ internal sealed partial class TopBarWindow : Window
         popup.Closed += (_, _) => anchor.ClearValue(BackgroundProperty);
         return popup;
     }
+
+    private void OnLogoClick(object sender, RoutedEventArgs e) => _popups.Toggle(_logoPopup, LogoButton, PopupAlignment.Start);
+
+    /// <summary>An app's tray menu is about to open: our own popups make way, without pulling focus back.</summary>
+    private void OnTrayIconPressed(object? sender, EventArgs e) => _popups.Close(restoreFocus: false);
 
     private void OnActivitiesClick(object sender, RoutedEventArgs e)
     {
