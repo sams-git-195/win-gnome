@@ -21,6 +21,7 @@ the way it was when it exits.
 - **System indicators**: network, volume (scroll on it to change the volume) and battery.
 - **Quick settings** menu: volume slider, Wi-Fi and Bluetooth shortcuts, screenshot, Windows Settings, WinGnome settings, lock, and the power menu (sleep, restart, shut down, sign out). It also links to the hidden system tray and to Windows' own quick settings and notification centre.
 - Registered as an AppBar, so maximised windows sit below the bar instead of under it. The bar hides automatically when a full-screen app runs.
+- **Appearance**: you can set the background colour, text colour, opacity (0–100%), **blur or acrylic**, height, text size, and a *floating* mode with a margin and rounded corners. The default is the classic solid black GNOME bar.
 
 ### Dock
 - Pinned apps plus running apps, with **running-indicator dots** (one per window, up to four).
@@ -29,7 +30,8 @@ the way it was when it exits.
 - **Super+1…9** activates the n-th dock item.
 - **Visibility modes**: *Always visible* (reserves screen space), *Intellihide* (hides only when a window overlaps it, the Ubuntu default) and *Autohide*.
 - Optional macOS-style **hover magnification**, panel mode (stretch to the screen edges), a *Show Applications* button and a recycle bin.
-- Bottom, left or right placement. You can adjust icon size and opacity.
+- Bottom, left or right placement.
+- **Appearance**: you can set the background colour (or follow the theme), opacity, **blur or acrylic** (the default), app icon size, icon spacing, distance from the screen edge, corner radius, magnification and the colour of the running-indicator dots. The settings pages show a live preview.
 - Drag `.exe` or `.lnk` files onto the dock to pin them.
 
 ### Traffic-light window buttons
