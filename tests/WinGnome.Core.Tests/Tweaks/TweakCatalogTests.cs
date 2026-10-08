@@ -18,6 +18,10 @@ public class TweakCatalogTests
         Assert.Equal(
             [
                 "dark-mode",
+                "gnome-accent",
+                "neutral-chrome",
+                "hide-desktop-icons",
+                "hide-spotlight-icon",
                 "classic-context-menu",
                 "disable-web-search",
                 "start-no-recommendations",
@@ -76,11 +80,13 @@ public class TweakCatalogTests
     }
 
     [Fact]
-    public void EveryChange_TargetsASoftwareSubKey_WithAValidValue()
+    public void EveryChange_TargetsAnHkcuSubKey_WithAValidValue()
     {
         foreach (var change in TweakCatalog.All.SelectMany(t => t.Changes))
         {
-            Assert.StartsWith(@"Software\", change.SubKey);
+            Assert.True(
+                change.SubKey.StartsWith(@"Software\", StringComparison.Ordinal) || change.SubKey.StartsWith(@"Control Panel\", StringComparison.Ordinal),
+                change.SubKey);
             Assert.DoesNotContain("HKEY_", change.SubKey);
             Assert.False(change.SubKey.StartsWith('\\') || change.SubKey.EndsWith('\\'));
             Assert.NotNull(change.Value);
@@ -99,11 +105,11 @@ public class TweakCatalogTests
     }
 
     [Fact]
-    public void AllValuesAreDWords_ExceptTheClassicMenuDefaultString()
+    public void AllValuesAreDWords_ExceptTheClassicMenuStringAndTheAccentPalette()
     {
         foreach (var t in TweakCatalog.All.Where(t => t.Id != "classic-context-menu"))
         {
-            Assert.All(t.Changes, c => Assert.Equal(RegistryValueKind.DWord, c.Value.Kind));
+            Assert.All(t.Changes.Where(c => c.ValueName != "AccentPalette"), c => Assert.Equal(RegistryValueKind.DWord, c.Value.Kind));
         }
     }
 
@@ -132,9 +138,9 @@ public class TweakCatalogTests
     }
 
     [Fact]
-    public void OnlyDarkMode_BroadcastsThemeChanges()
+    public void OnlyTheColourTweaks_BroadcastThemeChanges()
     {
-        Assert.Equal(["dark-mode"], TweakCatalog.All.Where(t => t.BroadcastThemeChange).Select(t => t.Id));
+        Assert.Equal(["dark-mode", "gnome-accent", "neutral-chrome"], TweakCatalog.All.Where(t => t.BroadcastThemeChange).Select(t => t.Id));
     }
 
     [Fact]

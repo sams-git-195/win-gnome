@@ -61,6 +61,7 @@ the way it was when it exits.
   - **Native Windows taskbar**: the Windows taskbar stays, with its tray icons, Start button and jump lists, and the WinGnome dock is turned off. You can optionally set the taskbar to auto-hide and streamline it with the *Taskbar* tweaks: hide Search, Task View and Copilot, and centre the icons. These use only supported Windows settings, with no code injected into Explorer, so they keep working across Windows updates.
 - Reversible **registry tweaks** (current user only, no admin needed). Each tweak backs up the original value and can be reverted one at a time or all at once:
   - Dark mode for apps and the system
+  - **GNOME look** group: Adwaita blue accent colour (`#3584E4`, wallpaper-derived accent off), neutral title bars, Start and taskbar (no accent colour on them), an empty desktop (hide all icons) and no "Learn about this picture" Spotlight icon. Running apps are told about colour changes straight away; Start and the taskbar may need an Explorer restart, and the desktop tweaks always do
   - Classic (full) right-click context menu
   - No web results in Start search
   - No Start menu recommendations
