@@ -70,6 +70,12 @@ internal sealed class DecoratedWindow : IDisposable
         _style = style;
         _view.SetAppearance(style.Colors, style.Settings);
         UpdateMask(style.Settings.Side == ButtonSide.Left);
+        if (!style.Settings.UnifyTitleBarColor)
+        {
+            // Restore now: the rebuild below does not run while the window is minimised or on another desktop.
+            _isUnified = false;
+            _colorizer.Restore(Target);
+        }
 
         // Force a full rebuild: side, order, size and colour mode may all have changed.
         _layoutKey = default;
@@ -137,7 +143,10 @@ internal sealed class DecoratedWindow : IDisposable
         _mask?.Place(metrics.Buttons);
         if (!_shown)
         {
+            // Stack the hidden surfaces first so they never flash above windows that cover the target, then once
+            // more after showing in case showing moved them.
             _shown = true;
+            Restack();
             _buttons.Reveal();
             _mask?.Reveal();
             Restack();
@@ -208,10 +217,10 @@ internal sealed class DecoratedWindow : IDisposable
         _view.SetLayout(_layout, metrics.Scale, canMinimize, canMaximize);
         _view.SetSurfaceScale(_buttons.SurfaceScale);
 
-        // Only surfaces touching the window's top-right corner need its rounding.
-        var rounded = !isMaximized;
-        _buttons.SetRoundedCorners(rounded && _style.Settings.Side == ButtonSide.Right);
-        _mask?.SetRoundedCorners(rounded);
+        // Only surfaces touching the window's top-right corner need its rounding; maximised windows are square.
+        var cornerRadius = isMaximized ? 0 : CaptionButtonGeometry.WindowCornerRadiusPixels(metrics.Scale);
+        _buttons.SetTopRightCornerRadius(_style.Settings.Side == ButtonSide.Right ? cornerRadius : 0);
+        _mask?.SetTopRightCornerRadius(cornerRadius);
 
         var clientOrigin = default(POINT);
         _drawsOwnCaption = NativeMethods.ClientToScreen(Target, ref clientOrigin)
@@ -294,7 +303,14 @@ internal sealed class DecoratedWindow : IDisposable
 
     private void OnButtonClicked(CaptionButtonKind kind)
     {
-        if (!_disposed && CaptionCommands.Invoke(Target, kind) == CaptionCommandResult.AccessDenied)
+        // A disabled window (one showing a modal dialog) ignores its native caption buttons. DefWindowProc would
+        // still act on a posted WM_SYSCOMMAND, closing or minimising the owner out from under its dialog.
+        if (_disposed || !NativeMethods.IsWindowEnabled(Target))
+        {
+            return;
+        }
+
+        if (CaptionCommands.Invoke(Target, kind) == CaptionCommandResult.AccessDenied)
         {
             RemovalRequested?.Invoke(this, true);
         }

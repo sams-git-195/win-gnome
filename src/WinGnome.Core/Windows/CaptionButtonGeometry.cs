@@ -8,6 +8,19 @@ public static class CaptionButtonGeometry
     /// <summary>Distance in DIPs between the native buttons and the point sampled for the title bar colour.</summary>
     public const double SampleInset = 3;
 
+    /// <summary>Corner radius in DIPs of a restored (not maximised) top-level window on Windows 11.</summary>
+    public const double WindowCornerRadius = 8;
+
+    /// <summary>
+    /// The Windows 11 window corner radius in physical pixels for a window at <paramref name="dpiScale"/>
+    /// (physical pixels per DIP). Invalid scales count as 100 %.
+    /// </summary>
+    public static int WindowCornerRadiusPixels(double dpiScale)
+    {
+        var scale = double.IsFinite(dpiScale) && dpiScale > 0 ? dpiScale : 1;
+        return Math.Max(1, (int)Math.Round(WindowCornerRadius * scale, MidpointRounding.AwayFromZero));
+    }
+
     /// <summary>
     /// Converts DWMWA_CAPTION_BUTTON_BOUNDS (relative to the window rectangle) to screen pixels, clipped to the
     /// visible frame. Maximised windows extend past the monitor by their invisible resize border, and DWM's

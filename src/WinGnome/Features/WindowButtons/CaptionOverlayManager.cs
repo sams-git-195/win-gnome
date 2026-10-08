@@ -18,6 +18,15 @@ internal sealed class CaptionOverlayManager : IDisposable
     /// <summary>How long to wait before sampling a title bar, so the app has repainted it (e.g. after activation).</summary>
     private static readonly TimeSpan SampleDelay = TimeSpan.FromMilliseconds(150);
 
+    /// <summary>
+    /// When to re-check the stacking after a foreground change. EVENT_SYSTEM_FOREGROUND is raised as soon as the
+    /// foreground queue changes, but when another process activates the window (taskbar, Alt+Tab, restore) the
+    /// target's own thread raises it in the z-order later, when it processes the activation; the immediate restack
+    /// then sees the old order and the raised target ends up covering its overlay.
+    /// </summary>
+    private static readonly TimeSpan[] RestackDelays =
+        [TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(1000)];
+
     private readonly WindowTracker _tracker;
     private readonly CaptionColorizer _colorizer;
     private readonly Dispatcher _dispatcher;
@@ -29,8 +38,10 @@ internal sealed class CaptionOverlayManager : IDisposable
     private readonly HashSet<DecoratedWindow> _pendingSamples = [];
     private readonly List<nint> _scratch = [];
     private readonly DispatcherTimer _sampleTimer;
+    private readonly DispatcherTimer _restackTimer;
     private DecorationStyle _style;
     private nint _foreground;
+    private int _restackPass;
     private bool _started;
 
     public CaptionOverlayManager(WindowTracker tracker, CaptionColorizer colorizer, Dispatcher dispatcher, DecorationStyle style)
@@ -40,6 +51,7 @@ internal sealed class CaptionOverlayManager : IDisposable
         _dispatcher = dispatcher;
         _style = style;
         _sampleTimer = new DispatcherTimer(SampleDelay, DispatcherPriority.Background, OnSampleTimer, dispatcher) { IsEnabled = false };
+        _restackTimer = new DispatcherTimer(RestackDelays[0], DispatcherPriority.Normal, OnRestackTimer, dispatcher) { IsEnabled = false };
     }
 
     /// <summary>Number of windows currently decorated.</summary>
@@ -93,6 +105,7 @@ internal sealed class CaptionOverlayManager : IDisposable
         }
 
         _sampleTimer.Stop();
+        _restackTimer.Stop();
         _scratch.Clear();
         _scratch.AddRange(_windows.Keys);
         foreach (var hwnd in _scratch)
@@ -251,6 +264,30 @@ internal sealed class CaptionOverlayManager : IDisposable
         else if (_windows.TryGetValue(NativeMethods.GetAncestor(hwnd, NativeMethods.GA_ROOTOWNER), out var owner))
         {
             owner.Restack();
+        }
+
+        // The raise may still be pending (see RestackDelays), and a foreground change can also lower windows
+        // (Alt+Esc sends the active window to the bottom), so check every overlay again shortly.
+        _restackPass = 0;
+        _restackTimer.Stop();
+        _restackTimer.Interval = RestackDelays[0];
+        _restackTimer.Start();
+    }
+
+    private void OnRestackTimer(object? sender, EventArgs e)
+    {
+        _restackTimer.Stop();
+
+        // Restack is a few cheap GetWindow calls and no SetWindowPos when the overlay is already in place.
+        foreach (var window in _windows.Values)
+        {
+            window.Restack();
+        }
+
+        if (++_restackPass < RestackDelays.Length)
+        {
+            _restackTimer.Interval = RestackDelays[_restackPass];
+            _restackTimer.Start();
         }
     }
 

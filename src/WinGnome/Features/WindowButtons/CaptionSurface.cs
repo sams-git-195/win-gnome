@@ -30,7 +30,7 @@ internal sealed class CaptionSurface : Window
 {
     private PixelRect _bounds;
     private bool _isTopmost;
-    private bool _isRounded;
+    private int _cornerRadius;
     private HexColor _fill;
     private bool _closed;
 
@@ -59,10 +59,12 @@ internal sealed class CaptionSurface : Window
             source.CompositionTarget.RenderMode = RenderMode.SoftwareOnly;
         }
 
-        // Windows 11 draws a thin border around rounded popups; it would outline the surface on the title bar.
+        // No DWM border or rounding: a DWM-rounded window also gets a drop shadow, which would smear over the
+        // target's client area below the title bar. The rounded corner is cut with a window region instead.
         var noBorder = NativeMethods.DWMWA_COLOR_NONE;
         NativeMethods.DwmSetWindowAttribute(Handle, NativeMethods.DWMWA_BORDER_COLOR, ref noBorder, sizeof(uint));
-        SetRoundedCorners(false, force: true);
+        var square = NativeMethods.DWMWCP_DONOTROUND;
+        NativeMethods.DwmSetWindowAttribute(Handle, NativeMethods.DWMWA_WINDOW_CORNER_PREFERENCE, ref square, sizeof(int));
         DpiChanged += (_, _) => Dispatcher.BeginInvoke(ReapplyBounds);
     }
 
@@ -97,15 +99,30 @@ internal sealed class CaptionSurface : Window
             return;
         }
 
+        var resized = bounds.Width != _bounds.Width || bounds.Height != _bounds.Height;
         _bounds = bounds;
         ApplyBounds();
+        if (resized && _cornerRadius > 0)
+        {
+            ApplyRegion();
+        }
     }
 
     /// <summary>
-    /// Matches the rounded top-right corner of a restored Windows 11 window, so the opaque surface does not show
-    /// a square corner where the target's own corner is cut away. Maximised windows are square.
+    /// Matches the rounded top-right corner of a restored Windows 11 window (radius in physical pixels, 0 for
+    /// square), so the opaque surface does not show a square corner where the target's own corner is cut away.
     /// </summary>
-    public void SetRoundedCorners(bool rounded) => SetRoundedCorners(rounded, force: false);
+    public void SetTopRightCornerRadius(int radius)
+    {
+        radius = Math.Max(0, radius);
+        if (_closed || radius == _cornerRadius)
+        {
+            return;
+        }
+
+        _cornerRadius = radius;
+        ApplyRegion();
+    }
 
     /// <summary>
     /// Places the surface directly above <paramref name="below"/> in the z-order, matching its topmost state, so
@@ -219,16 +236,36 @@ internal sealed class CaptionSurface : Window
         return false;
     }
 
-    private void SetRoundedCorners(bool rounded, bool force)
+    /// <summary>Cuts the top-right corner along a circle of <see cref="_cornerRadius"/>, or removes the cut.</summary>
+    private void ApplyRegion()
     {
-        if (_closed || (rounded == _isRounded && !force))
+        if (_closed || _bounds.IsEmpty)
         {
             return;
         }
 
-        _isRounded = rounded;
-        var preference = rounded ? NativeMethods.DWMWCP_ROUND : NativeMethods.DWMWCP_DONOTROUND;
-        NativeMethods.DwmSetWindowAttribute(Handle, NativeMethods.DWMWA_WINDOW_CORNER_PREFERENCE, ref preference, sizeof(int));
+        if (_cornerRadius == 0)
+        {
+            _ = NativeMethods.SetWindowRgn(Handle, 0, true);
+            return;
+        }
+
+        // A rounded rectangle that extends past the left and bottom edges, so only its top-right corner falls
+        // inside the window. Regions exclude their right and bottom edges, hence the +1.
+        var diameter = _cornerRadius * 2;
+        var region = NativeMethods.CreateRoundRectRgn(-diameter, 0, _bounds.Width + 1, _bounds.Height + diameter, diameter, diameter);
+        if (region == 0)
+        {
+            ThrottledLog.Warn("surface-region", "CreateRoundRectRgn failed for a window-buttons surface");
+            return;
+        }
+
+        // On success the system owns the region.
+        if (NativeMethods.SetWindowRgn(Handle, region, true) == 0)
+        {
+            NativeMethods.DeleteObject(region);
+            ThrottledLog.Warn("surface-region", $"SetWindowRgn on a window-buttons surface failed: error {Marshal.GetLastPInvokeError()}");
+        }
     }
 
     private void ReapplyBounds()

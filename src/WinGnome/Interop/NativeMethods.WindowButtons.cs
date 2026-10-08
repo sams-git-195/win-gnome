@@ -19,10 +19,20 @@ internal static partial class NativeMethods
 
     // ---- DWM corner preferences -------------------------------------------------------------
     public const int DWMWCP_DONOTROUND = 1;
-    public const int DWMWCP_ROUND = 2;
 
     [LibraryImport("user32.dll")]
     public static partial nint WindowFromPoint(POINT point);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool IsWindowEnabled(nint hwnd);
+
+    /// <summary>On success the system owns <paramref name="region"/>; the caller deletes it only on failure.</summary>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    public static partial int SetWindowRgn(nint hwnd, nint region, [MarshalAs(UnmanagedType.Bool)] bool redraw);
+
+    [LibraryImport("gdi32.dll")]
+    public static partial nint CreateRoundRectRgn(int left, int top, int right, int bottom, int widthEllipse, int heightEllipse);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

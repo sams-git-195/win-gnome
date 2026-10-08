@@ -82,4 +82,20 @@ public class CaptionButtonGeometryTests
         Assert.Equal(expectedX, x);
         Assert.Equal(220, y);
     }
+
+    [Theory]
+    [InlineData(1.0, 8)]
+    [InlineData(1.25, 10)]
+    [InlineData(1.5, 12)]
+    [InlineData(1.75, 14)]
+    [InlineData(2.0, 16)]
+    [InlineData(0.01, 1)]
+    [InlineData(0.0, 8)]
+    [InlineData(-1.0, 8)]
+    [InlineData(double.NaN, 8)]
+    [InlineData(double.PositiveInfinity, 8)]
+    public void WindowCornerRadiusPixels_ScalesTheEightDipRadius(double scale, int expected)
+    {
+        Assert.Equal(expected, CaptionButtonGeometry.WindowCornerRadiusPixels(scale));
+    }
 }
