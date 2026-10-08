@@ -132,6 +132,9 @@ public sealed class TopBarSettings
 
     public bool ShowBatteryPercentage { get; set; } = true;
 
+    /// <summary>Show notification-area (system tray) icons in the top bar, like macOS menu bar extras.</summary>
+    public bool ShowTrayIcons { get; set; } = true;
+
     internal void Normalize()
     {
         Height = Math.Clamp(double.IsFinite(Height) ? Height : 32, 24, 48);
