@@ -64,6 +64,17 @@ public sealed class GeneralSettings
 
 public enum ClockStyle { TwentyFourHour, TwelveHour }
 
+/// <summary>Background material behind a translucent top bar or dock.</summary>
+public enum BlurEffect
+{
+    /// <summary>Plain colour at the configured opacity.</summary>
+    None,
+    /// <summary>Gaussian blur of whatever is behind the surface, tinted with the background colour.</summary>
+    Blur,
+    /// <summary>Windows acrylic (blur plus noise and luminosity), tinted with the background colour.</summary>
+    Acrylic,
+}
+
 public sealed class TopBarSettings
 {
     public bool Enabled { get; set; } = true;
@@ -75,6 +86,21 @@ public sealed class TopBarSettings
     public double Opacity { get; set; } = 1.0;
 
     public string BackgroundColor { get; set; } = "#000000";
+
+    /// <summary>Text and icon colour.</summary>
+    public string ForegroundColor { get; set; } = "#FFFFFF";
+
+    /// <summary>Blur/acrylic behind the bar; only visible when <see cref="Opacity"/> is below 1.</summary>
+    public BlurEffect Blur { get; set; } = BlurEffect.None;
+
+    /// <summary>Text size in device-independent pixels; icons scale with it.</summary>
+    public double FontSize { get; set; } = 13.5;
+
+    /// <summary>Gap between the bar and the screen edges (0 = classic edge-to-edge bar, &gt;0 = floating bar).</summary>
+    public double Margin { get; set; }
+
+    /// <summary>Corner radius of the bar; mostly useful together with <see cref="Margin"/>.</summary>
+    public double CornerRadius { get; set; }
 
     public bool ShowActivitiesButton { get; set; } = true;
     public bool ShowWorkspaceIndicator { get; set; } = true;
@@ -90,10 +116,15 @@ public sealed class TopBarSettings
     internal void Normalize()
     {
         Height = Math.Clamp(double.IsFinite(Height) ? Height : 32, 24, 48);
-        Opacity = Math.Clamp(double.IsFinite(Opacity) ? Opacity : 1, 0.3, 1);
-        if (!Theming.HexColor.TryParse(BackgroundColor, out _))
+        Opacity = Math.Clamp(double.IsFinite(Opacity) ? Opacity : 1, 0, 1);
+        FontSize = Math.Clamp(double.IsFinite(FontSize) ? FontSize : 13.5, 10, 20);
+        Margin = Math.Clamp(double.IsFinite(Margin) ? Margin : 0, 0, 24);
+        CornerRadius = Math.Clamp(double.IsFinite(CornerRadius) ? CornerRadius : 0, 0, 24);
+        BackgroundColor = ColorSetting.Normalize(BackgroundColor, "#000000");
+        ForegroundColor = ColorSetting.Normalize(ForegroundColor, "#FFFFFF");
+        if (!Enum.IsDefined(Blur))
         {
-            BackgroundColor = "#000000";
+            Blur = BlurEffect.None;
         }
     }
 }
@@ -135,6 +166,24 @@ public sealed class DockSettings
     /// <summary>0..1 background opacity.</summary>
     public double Opacity { get; set; } = 0.75;
 
+    /// <summary>Background colour ("#RRGGBB"); empty follows the theme (Adwaita dark/light).</summary>
+    public string BackgroundColor { get; set; } = "";
+
+    /// <summary>Blur/acrylic behind the dock; only visible when <see cref="Opacity"/> is below 1.</summary>
+    public BlurEffect Blur { get; set; } = BlurEffect.Acrylic;
+
+    /// <summary>Corner radius of the dock in device-independent pixels (ignored on the screen-edge side in panel mode).</summary>
+    public double CornerRadius { get; set; } = 18;
+
+    /// <summary>Padding around each icon in device-independent pixels (controls spacing between apps).</summary>
+    public double IconSpacing { get; set; } = 6;
+
+    /// <summary>Gap between the dock and the screen edge in device-independent pixels.</summary>
+    public double EdgeMargin { get; set; } = 8;
+
+    /// <summary>Colour of the running-app indicator dots ("#RRGGBB"); empty uses the accent colour.</summary>
+    public string IndicatorColor { get; set; } = "";
+
     /// <summary>Stretch across the whole edge (Ubuntu panel mode) instead of a centred floating dock.</summary>
     public bool ExtendToEdges { get; set; }
 
@@ -163,6 +212,16 @@ public sealed class DockSettings
         IconSize = Math.Clamp(double.IsFinite(IconSize) ? IconSize : 48, 24, 128);
         Magnification = Math.Clamp(double.IsFinite(Magnification) ? Magnification : 1, 1, 2);
         Opacity = Math.Clamp(double.IsFinite(Opacity) ? Opacity : 0.75, 0, 1);
+        CornerRadius = Math.Clamp(double.IsFinite(CornerRadius) ? CornerRadius : 18, 0, 40);
+        IconSpacing = Math.Clamp(double.IsFinite(IconSpacing) ? IconSpacing : 6, 0, 24);
+        EdgeMargin = Math.Clamp(double.IsFinite(EdgeMargin) ? EdgeMargin : 8, 0, 48);
+        BackgroundColor = ColorSetting.NormalizeOptional(BackgroundColor);
+        IndicatorColor = ColorSetting.NormalizeOptional(IndicatorColor);
+        if (!Enum.IsDefined(Blur))
+        {
+            Blur = BlurEffect.Acrylic;
+        }
+
         PinnedApps = (PinnedApps ?? [])
             .Where(p => p is not null && !string.IsNullOrWhiteSpace(p.LaunchId))
             .DistinctBy(p => p.LaunchId, StringComparer.OrdinalIgnoreCase)
@@ -241,9 +300,9 @@ public sealed class WindowButtonSettings
     {
         Diameter = Math.Clamp(double.IsFinite(Diameter) ? Diameter : 14, 8, 24);
         Spacing = Math.Clamp(double.IsFinite(Spacing) ? Spacing : 8, 2, 20);
-        CloseColor = NormalizeColor(CloseColor, "#FF5F57");
-        MinimizeColor = NormalizeColor(MinimizeColor, "#FEBC2E");
-        MaximizeColor = NormalizeColor(MaximizeColor, "#28C840");
+        CloseColor = ColorSetting.Normalize(CloseColor, "#FF5F57");
+        MinimizeColor = ColorSetting.Normalize(MinimizeColor, "#FEBC2E");
+        MaximizeColor = ColorSetting.Normalize(MaximizeColor, "#28C840");
         ExcludedProcesses = (ExcludedProcesses ?? [])
             .Select(p => p?.Trim() ?? "")
             .Select(p => p.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? p[..^4] : p)
@@ -251,9 +310,18 @@ public sealed class WindowButtonSettings
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+}
 
-    private static string NormalizeColor(string? value, string fallback) =>
+/// <summary>Normalisation helpers for colour strings stored in settings.</summary>
+internal static class ColorSetting
+{
+    /// <summary>Canonical "#RRGGBB"/"#AARRGGBB" form of <paramref name="value"/>, or <paramref name="fallback"/> when invalid.</summary>
+    public static string Normalize(string? value, string fallback) =>
         Theming.HexColor.TryParse(value, out var color) ? color.ToString() : fallback;
+
+    /// <summary>Like <see cref="Normalize"/>, but empty/invalid means "use the default" and becomes "".</summary>
+    public static string NormalizeOptional(string? value) =>
+        Theming.HexColor.TryParse(value, out var color) ? color.ToString() : "";
 }
 
 public sealed class ActivitiesSettings

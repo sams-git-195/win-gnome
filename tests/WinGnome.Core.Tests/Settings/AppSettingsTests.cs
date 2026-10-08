@@ -70,7 +70,8 @@ public class AppSettingsTests
     }
 
     [Theory]
-    [InlineData(0, 0.3)]
+    [InlineData(-1, 0)]
+    [InlineData(0, 0)]
     [InlineData(0.5, 0.5)]
     [InlineData(2, 1)]
     [InlineData(double.NaN, 1)]
@@ -78,6 +79,89 @@ public class AppSettingsTests
     {
         var settings = new AppSettings { TopBar = { Opacity = input } };
         Assert.Equal(expected, settings.Normalize().TopBar.Opacity);
+    }
+
+    [Fact]
+    public void TopBar_AppearanceDefaults_AreGnomeLike()
+    {
+        var bar = new AppSettings().Normalize().TopBar;
+        Assert.Equal("#000000", bar.BackgroundColor);
+        Assert.Equal("#FFFFFF", bar.ForegroundColor);
+        Assert.Equal(BlurEffect.None, bar.Blur);
+        Assert.Equal(13.5, bar.FontSize);
+        Assert.Equal(0, bar.Margin);
+        Assert.Equal(0, bar.CornerRadius);
+    }
+
+    [Theory]
+    [InlineData(1, 10)]
+    [InlineData(16, 16)]
+    [InlineData(99, 20)]
+    [InlineData(double.NaN, 13.5)]
+    public void TopBar_FontSize_IsClamped(double input, double expected)
+    {
+        var settings = new AppSettings { TopBar = { FontSize = input } };
+        Assert.Equal(expected, settings.Normalize().TopBar.FontSize);
+    }
+
+    [Fact]
+    public void TopBar_MarginAndRadius_AreClamped()
+    {
+        var settings = new AppSettings { TopBar = { Margin = -5, CornerRadius = 500 } }.Normalize();
+        Assert.Equal(0, settings.TopBar.Margin);
+        Assert.Equal(24, settings.TopBar.CornerRadius);
+    }
+
+    [Fact]
+    public void TopBar_InvalidForeground_FallsBackToWhite()
+    {
+        var settings = new AppSettings { TopBar = { ForegroundColor = "nope" } }.Normalize();
+        Assert.Equal("#FFFFFF", settings.TopBar.ForegroundColor);
+    }
+
+    [Fact]
+    public void TopBar_UndefinedBlur_FallsBackToNone()
+    {
+        var settings = new AppSettings { TopBar = { Blur = (BlurEffect)42 } }.Normalize();
+        Assert.Equal(BlurEffect.None, settings.TopBar.Blur);
+    }
+
+    [Fact]
+    public void Dock_AppearanceDefaults()
+    {
+        var dock = new AppSettings().Normalize().Dock;
+        Assert.Equal("", dock.BackgroundColor);
+        Assert.Equal("", dock.IndicatorColor);
+        Assert.Equal(BlurEffect.Acrylic, dock.Blur);
+        Assert.Equal(18, dock.CornerRadius);
+        Assert.Equal(6, dock.IconSpacing);
+        Assert.Equal(8, dock.EdgeMargin);
+    }
+
+    [Theory]
+    [InlineData("#abc", "#AABBCC")]
+    [InlineData("#112233", "#112233")]
+    [InlineData("garbage", "")]
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void Dock_OptionalColours_NormaliseOrBecomeEmpty(string? input, string expected)
+    {
+        var settings = new AppSettings { Dock = { BackgroundColor = input!, IndicatorColor = input! } }.Normalize();
+        Assert.Equal(expected, settings.Dock.BackgroundColor);
+        Assert.Equal(expected, settings.Dock.IndicatorColor);
+    }
+
+    [Fact]
+    public void Dock_GeometryValues_AreClamped()
+    {
+        var settings = new AppSettings
+        {
+            Dock = { CornerRadius = 100, IconSpacing = -3, EdgeMargin = double.PositiveInfinity, Blur = (BlurEffect)9 },
+        }.Normalize();
+        Assert.Equal(40, settings.Dock.CornerRadius);
+        Assert.Equal(0, settings.Dock.IconSpacing);
+        Assert.Equal(8, settings.Dock.EdgeMargin);
+        Assert.Equal(BlurEffect.Acrylic, settings.Dock.Blur);
     }
 
     [Theory]
