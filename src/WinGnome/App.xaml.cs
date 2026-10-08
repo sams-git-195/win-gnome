@@ -29,6 +29,7 @@ public partial class App : Application
     private WindowTracker? _tracker;
     private AppCatalog? _catalog;
     private ShellContext? _context;
+    private ControlWindow? _controlWindow;
     private string _settingsDirectory = SettingsStore.DefaultDirectory;
     private int _failures;
     private int _recentDispatcherErrors;
@@ -107,6 +108,7 @@ public partial class App : Application
         var launcher = new AppLauncher(_catalog.ResolvePath);
         var commands = new ShellCommands();
         commands.QuitRequested += (_, _) => Shutdown(0);
+        _controlWindow = new ControlWindow(() => Dispatcher.BeginInvoke(() => Shutdown(0)));
 
         _context = new ShellContext(Dispatcher, options, settings, _theme, _tracker, _catalog, icons, launcher, commands);
 
@@ -199,6 +201,7 @@ public partial class App : Application
         }
 
         _features.Clear();
+        _controlWindow?.Dispose();
         _catalog?.Dispose();
         _tracker?.Dispose();
         _theme?.Dispose();
