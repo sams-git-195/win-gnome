@@ -1,6 +1,6 @@
 # 0002 — Brightness slider in quick settings
 
-Status: Implemented (see the commit that adds this line)
+Status: Implemented (merged in 8d6bf12)
 
 ## Problem
 Clicking the system pill at the top right opens the quick-settings card, which has a volume slider but no

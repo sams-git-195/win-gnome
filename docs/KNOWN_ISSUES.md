@@ -34,6 +34,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-016](#ki-016) | S4 | Window buttons | The patch behind the circles is a flat colour | Open |
 | [KI-018](#ki-018) | S4 | Performance | Idle CPU of ~0.6–1 s per minute is unexplained | Open |
 | [KI-019](#ki-019) | S4 | Tray | The tray host can take up to 1 s to get back in front of Explorer's taskbar | Open |
+| [KI-021](#ki-021) | S4 | Top bar | Brightness slider controls only a laptop's built-in display | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -159,6 +160,15 @@ The front check runs every 250 ms for 2 s after activity and every 1 s at rest (
 If Explorer raises its taskbar with no event announcing it, a tray-icon call in that gap reaches Explorer
 only, and the icon appears in the top bar when the app next updates it. A posted `WM_CLOSE` to "the taskbar"
 also reaches WinGnome's host first and now quits WinGnome (see KI-020).
+
+### KI-021
+**Brightness slider controls only a laptop's built-in display** · S4 · Top bar · Open
+
+Brightness goes through WMI (`WmiMonitorBrightness`), which only covers internal panels; the row is hidden on
+desktops. External monitors would need DDC/CI (`dxva2` `GetMonitorBrightness`/`SetMonitorBrightness`).
+Also: after any WMI failure (for example while Windows has dimmed the display) the row hides until the card
+is next opened, and on the development laptop `WmiSetBrightness` failed on every instance object except the
+first, so writes go through `SWbemServices.ExecMethod` (an undocumented quirk; late-bound COM via `dynamic`).
 
 ## Resolved
 
