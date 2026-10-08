@@ -61,6 +61,7 @@ internal sealed class TrayHost : IDisposable
 
     private readonly Dispatcher _dispatcher;
     private readonly Action<TrayChange, bool, IconHandle?> _onChange;
+    private readonly Action _onCloseRequested;
     private readonly ManualResetEvent _stop = new(false);
     private readonly Thread _thread;
     private readonly NativeMethods.WndProc _wndProc;
@@ -99,10 +100,12 @@ internal sealed class TrayHost : IDisposable
     /// and the new image (null = no image). The icon handle is only valid during the call.
     /// </param>
     /// <param name="barBounds">Where the bar is, in physical pixels: the host window claims that strip, as a taskbar would.</param>
-    public TrayHost(Dispatcher dispatcher, Action<TrayChange, bool, IconHandle?> onChange, PixelRect barBounds)
+    /// <param name="onCloseRequested">Called on the UI thread when WM_CLOSE is posted to the host window (a polite quit request).</param>
+    public TrayHost(Dispatcher dispatcher, Action<TrayChange, bool, IconHandle?> onChange, PixelRect barBounds, Action onCloseRequested)
     {
         _dispatcher = dispatcher;
         _onChange = onChange;
+        _onCloseRequested = onCloseRequested;
         _barBounds = barBounds;
         _wndProc = WndProc;
         _thread = new Thread(Run) { Name = "WinGnome tray host", IsBackground = true };
@@ -400,7 +403,15 @@ internal sealed class TrayHost : IDisposable
                     break;
 
                 case (uint)NativeMethods.WM_CLOSE:
-                    // Someone closing "the taskbar". Default handling would destroy the host behind our back.
+                    // Never let default handling destroy the host behind our back. A posted WM_CLOSE is a polite quit
+                    // request for the process (taskkill without /f picks whichever of our windows it finds first, and
+                    // the host is usually in front): hand it to the UI thread without waiting.
+                    if (!NativeMethods.InSendMessage())
+                    {
+                        Log.Info("Close requested from outside (WM_CLOSE to the tray host); shutting down");
+                        _dispatcher.BeginInvoke(_onCloseRequested);
+                    }
+
                     return 0;
 
                 case NativeMethods.WM_COMMAND:

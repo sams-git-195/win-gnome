@@ -16,7 +16,7 @@ internal sealed class TopBarViewModel : ObservableObject, IDisposable
         Workspaces = new WorkspacesViewModel(context.Dispatcher);
         FocusedApp = new FocusedAppViewModel(context.Windows, context.Apps, context.Icons);
         Status = new SystemStatusViewModel(context.Dispatcher, settings.ShowBatteryPercentage);
-        Tray = new TrayViewModel(context.Dispatcher);
+        Tray = new TrayViewModel(context.Dispatcher, context.Commands.Quit);
         Tray.SetEnabled(settings.ShowTrayIcons);
     }
 

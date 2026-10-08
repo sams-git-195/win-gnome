@@ -20,15 +20,18 @@ namespace WinGnome.Features.TopBar.Tray;
 internal sealed class TrayViewModel : ObservableObject, IDisposable
 {
     private readonly Dispatcher _dispatcher;
+    private readonly Action _onCloseRequested;
     private readonly DispatcherTimer _hoverTimer;
     private TrayHost? _host;
     private PixelRect _barBounds;
     private TrayIconViewModel? _hovered;
     private PixelRect _hoveredBounds;
 
-    public TrayViewModel(Dispatcher dispatcher)
+    /// <param name="onCloseRequested">Quits WinGnome when the tray host receives a polite close request.</param>
+    public TrayViewModel(Dispatcher dispatcher, Action onCloseRequested)
     {
         _dispatcher = dispatcher;
+        _onCloseRequested = onCloseRequested;
         _hoverTimer = new DispatcherTimer(DispatcherPriority.Normal, dispatcher) { Interval = TimeSpan.FromMilliseconds(SystemParameters.MouseHoverTime.TotalMilliseconds) };
         _hoverTimer.Tick += OnHoverTimer;
     }
@@ -59,7 +62,7 @@ internal sealed class TrayViewModel : ObservableObject, IDisposable
             // Changes are queued on the dispatcher, so a stopped host's last ones can arrive after a new host started:
             // each callback names its host and only the current one's are applied.
             TrayHost? host = null;
-            host = new TrayHost(_dispatcher, (change, imageChanged, image) => OnHostChange(host, change, imageChanged, image), _barBounds);
+            host = new TrayHost(_dispatcher, (change, imageChanged, image) => OnHostChange(host, change, imageChanged, image), _barBounds, _onCloseRequested);
             _host = host;
         }
         else
