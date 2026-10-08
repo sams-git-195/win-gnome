@@ -54,7 +54,9 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | Overview | `OverviewLayout` | Arranges window thumbnails in a grid that preserves aspect ratios |
 | Search | `FuzzyMatcher` | Ranks apps and windows by a query |
 | Shell | `KnownFolderPath` | Resolves `{GUID}\path` AppsFolder parsing names |
-| TopBar | `ClockFormatter` | GNOME-style clock text |
+| TopBar | `ClockFormatter`, `BatteryStatus` | GNOME-style clock text, battery state and whether to poll it |
+| Tray | `ShellTrayData`, `TrayIconRegistry`, `TrayFrontCheckSchedule` | Tray-host message parsing, icon list, how often the host re-checks it is in front |
+| Collections | `LruCache` | Bounded least-recently-used cache |
 | Workspaces | `VirtualDesktopState` | Parses Explorer's virtual-desktop registry blobs |
 | Tweaks | `TweakCatalog`, `TweakDefinition`, `RegistryChange`, `IRegistryStore`, `TweakEngine`, `TweakBackup` | Reversible HKCU tweaks |
 

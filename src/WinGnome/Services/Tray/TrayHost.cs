@@ -51,22 +51,6 @@ internal sealed class TrayHost : IDisposable
     private const nint ZOrderTimer = 1;
     private const nint RebroadcastTimer = 2;
 
-    /// <summary>
-    /// Explorer raises its taskbar to the top of the topmost band when it is clicked or slides in; calls made while it
-    /// is in front of us reach Explorer only. A quick, allocation-free check puts us back in front.
-    /// </summary>
-    private const uint ZOrderCheckMs = 250;
-
-    /// <summary>
-    /// After a TaskbarCreated broadcast, apps re-register in a burst (NIM_ADD then often NIM_SETVERSION) while windows
-    /// come and go, which makes Explorer raise its taskbar: a call missed then (a lost NIM_SETVERSION switches the
-    /// icon to the wrong callback format) is not repeated. So for a few seconds the check runs as often as user32
-    /// timers allow.
-    /// </summary>
-    private const uint FastZOrderCheckMs = 15;
-
-    private static readonly TimeSpan FastZOrderPeriod = TimeSpan.FromSeconds(4);
-
     /// <summary>Icons whose owner window is gone are dropped every 5 s, as Explorer does.</summary>
     private static readonly TimeSpan PruneInterval = TimeSpan.FromSeconds(5);
 
@@ -81,6 +65,7 @@ internal sealed class TrayHost : IDisposable
     private readonly Thread _thread;
     private readonly NativeMethods.WndProc _wndProc;
     private readonly uint _taskbarCreated = NativeMethods.RegisterWindowMessage("TaskbarCreated");
+    private readonly uint _shellHook = NativeMethods.RegisterWindowMessage("SHELLHOOK");
 
     // Shared with the UI thread.
     private readonly object _gate = new();
@@ -91,10 +76,17 @@ internal sealed class TrayHost : IDisposable
 
     // Tray thread only.
     private readonly TrayIconRegistry _registry = new();
+
+    /// <summary>
+    /// Explorer raises its taskbar to the top of the topmost band when it is clicked, slides in, or windows come and
+    /// go; calls made while it is in front of us reach Explorer only. A quick, allocation-free check on a timer puts
+    /// us back in front; shell activity (foreground changes, shell hook messages, AppBar changes) speeds it up.
+    /// </summary>
+    private readonly TrayFrontCheckSchedule _frontChecks = new();
+    private WinEventHook? _foregroundHook;
     private nint _instance;
     private nint _explorerTray;
     private long _lastPruneMs;
-    private long _fastChecksUntilMs;
     private bool _yieldLogged;
 
     /// <summary>A call could not be passed on to Explorer, so Explorer may lack an icon we have.</summary>
@@ -296,6 +288,7 @@ internal sealed class TrayHost : IDisposable
 
         _hwnd = hwnd;
         NativeMethods.SetProp(hwnd, HostProperty, 1);
+        WatchShellActivity(hwnd);
         BringToFront();
         _lastPruneMs = Environment.TickCount64;
         AskAppsToRegister(hwnd);
@@ -311,6 +304,9 @@ internal sealed class TrayHost : IDisposable
         }
 
         _hwnd = 0;
+        _foregroundHook?.Dispose();
+        _foregroundHook = null;
+        NativeMethods.DeregisterShellHookWindow(hwnd);
         NativeMethods.KillTimer(hwnd, ZOrderTimer);
         NativeMethods.KillTimer(hwnd, RebroadcastTimer);
         NativeMethods.RemoveProp(hwnd, HostProperty);
@@ -330,12 +326,51 @@ internal sealed class TrayHost : IDisposable
         Log.Info("Tray host stopped");
     }
 
-    /// <summary>Broadcasts TaskbarCreated and guards the front closely while apps answer it.</summary>
+    /// <summary>
+    /// Both notifications are asynchronous (posted or queued to this thread), so no app or Explorer ever waits for
+    /// us to handle them. Without them the timer still runs, only at its slow rate.
+    /// </summary>
+    private void WatchShellActivity(nint hwnd)
+    {
+        if (_shellHook == 0 || !NativeMethods.RegisterShellHookWindow(hwnd))
+        {
+            Log.Warn($"Tray host: could not register for shell hook messages (error {Marshal.GetLastPInvokeError()})");
+        }
+
+        _foregroundHook = new WinEventHook((_, _) => OnShellActivity(), skipOwnProcess: false,
+            (WinEventHook.EVENT_SYSTEM_FOREGROUND, WinEventHook.EVENT_SYSTEM_FOREGROUND));
+    }
+
+    /// <summary>
+    /// Broadcasts TaskbarCreated and guards the front closely while apps answer it: they re-register in a burst (NIM_ADD
+    /// then often NIM_SETVERSION) while windows come and go, and a call missed then (a lost NIM_SETVERSION switches the
+    /// icon to the wrong callback format) is not repeated.
+    /// </summary>
     private void AskAppsToRegister(nint hwnd)
     {
-        _fastChecksUntilMs = Environment.TickCount64 + (long)FastZOrderPeriod.TotalMilliseconds;
-        NativeMethods.SetTimer(hwnd, ZOrderTimer, FastZOrderCheckMs, 0);
+        Reschedule(hwnd, _frontChecks.OnBroadcast(Environment.TickCount64));
         BroadcastTaskbarCreated();
+    }
+
+    /// <summary>Explorer may just have raised its taskbar (or is about to): check now, and more often for a while.</summary>
+    private void OnShellActivity()
+    {
+        var hwnd = _hwnd;
+        if (hwnd == 0)
+        {
+            return;
+        }
+
+        KeepInFront(hwnd);
+        Reschedule(hwnd, _frontChecks.OnShellActivity(Environment.TickCount64));
+    }
+
+    private static void Reschedule(nint hwnd, uint? intervalMs)
+    {
+        if (intervalMs is { } ms)
+        {
+            NativeMethods.SetTimer(hwnd, ZOrderTimer, ms, 0);
+        }
     }
 
     private void BroadcastTaskbarCreated()
@@ -354,7 +389,7 @@ internal sealed class TrayHost : IDisposable
             switch (msg)
             {
                 case NativeMethods.WM_COPYDATA:
-                    return OnCopyData(hwnd, wParam, lParam);
+                    return OnCopyData(wParam, lParam);
 
                 case NativeMethods.WM_TIMER:
                     OnTimer(hwnd, wParam);
@@ -378,6 +413,16 @@ internal sealed class TrayHost : IDisposable
                 return 0;
             }
 
+            if (_shellHook != 0 && msg == _shellHook)
+            {
+                if (TrayFrontCheckSchedule.IsShellActivity((int)wParam))
+                {
+                    OnShellActivity();
+                }
+
+                return 0;
+            }
+
             // Private messages apps send to "the taskbar" belong to Explorer. Registered messages (0xC000+) are
             // broadcasts every top-level window receives, Explorer included, so they are not forwarded.
             if (msg is >= NativeMethods.WM_USER and < NativeMethods.RegisteredMessageFirst)
@@ -394,7 +439,7 @@ internal sealed class TrayHost : IDisposable
         return NativeMethods.DefWindowProc(hwnd, msg, wParam, lParam);
     }
 
-    private unsafe nint OnCopyData(nint hwnd, nint wParam, nint lParam)
+    private unsafe nint OnCopyData(nint wParam, nint lParam)
     {
         if (lParam == 0)
         {
@@ -419,7 +464,7 @@ internal sealed class TrayHost : IDisposable
 
                 // Explorer raises its taskbar when AppBars change (an AppBar comes, goes or moves); until we are back
                 // in front, Shell_NotifyIcon calls would reach Explorer only. Do not wait for the next check.
-                KeepInFront(hwnd);
+                OnShellActivity();
                 return result;
         }
     }
@@ -558,11 +603,7 @@ internal sealed class TrayHost : IDisposable
 
         KeepInFront(hwnd);
         var now = Environment.TickCount64;
-        if (_fastChecksUntilMs != 0 && now >= _fastChecksUntilMs)
-        {
-            _fastChecksUntilMs = 0;
-            NativeMethods.SetTimer(hwnd, ZOrderTimer, ZOrderCheckMs, 0);
-        }
+        Reschedule(hwnd, _frontChecks.OnTick(now));
 
         if (now - _lastPruneMs >= (long)PruneInterval.TotalMilliseconds)
         {
