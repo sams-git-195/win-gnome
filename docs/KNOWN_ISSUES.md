@@ -32,6 +32,8 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-014](#ki-014) | S4 | Tweaks | GNOME look tweaks are verified by tests only, not yet on a live Windows install | Open |
 | [KI-015](#ki-015) | S3 | Window buttons | Two WinGnome instances that both decorate windows fight over title-bar colours | Open |
 | [KI-016](#ki-016) | S4 | Window buttons | The patch behind the circles is a flat colour | Open |
+| [KI-018](#ki-018) | S4 | Performance | Idle CPU of ~0.6–1 s per minute is unexplained | Open |
+| [KI-019](#ki-019) | S4 | Tray | The tray host can take up to 1 s to get back in front of Explorer's taskbar | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -144,6 +146,20 @@ The patch is one sampled colour. It matches solid and Mica title bars after the 
 code rather than dragged. Snapped windows keep a 1 px border inset, so the corner pixel shows the app's frame.
 *Fix direction:* sample a strip just left of the buttons and stretch it, re-sampling on move/size end.
 
+### KI-018
+**Idle CPU of ~0.6–1 s per minute is unexplained** · S4 · Performance · Open
+
+Measured on 2026-10-08 with window buttons off, in safe mode, with other test instances running (so noisy).
+*Fix direction:* profile on a quiet machine (ETW / PerfView CPU sampling) and find the remaining wake-ups.
+
+### KI-019
+**The tray host can take up to 1 s to get back in front of Explorer's taskbar** · S4 · Tray · Open
+
+The front check runs every 250 ms for 2 s after activity and every 1 s at rest (it was 250 ms always).
+If Explorer raises its taskbar with no event announcing it, a tray-icon call in that gap reaches Explorer
+only, and the icon appears in the top bar when the app next updates it. A posted `WM_CLOSE` to "the taskbar"
+also reaches WinGnome's host first and now quits WinGnome (see KI-020).
+
 ## Resolved
 
 | ID | Severity | Area | Summary | Fixed in |
@@ -152,3 +168,4 @@ code rather than dragged. Snapped windows keep a 1 px border inset, so the corne
 | KI-012 | S3 | Settings | A settings folder that couldn't be written silently dropped every change | 6e07eb0 (warning banner) |
 | KI-013 | S4 | Top bar | Large hover corner radius drew oval highlights instead of pills | c26e1c8 |
 | KI-017 | S3 | Window buttons | The patch behind the circles didn't match Mica title bars and hid the window border | 45ae75a |
+| KI-020 | S3 | App | A graceful `taskkill` that reached the tray host window was ignored, so WinGnome didn't quit | 085fa14 |
