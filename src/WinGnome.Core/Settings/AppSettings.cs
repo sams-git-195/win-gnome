@@ -121,6 +121,12 @@ public sealed class TopBarSettings
     /// <summary>Corner radius of the bar; mostly useful together with <see cref="Margin"/>.</summary>
     public double CornerRadius { get; set; }
 
+    /// <summary>
+    /// Corner radius of the hover/pressed highlight behind bar items and tray icons, in device-independent pixels.
+    /// 0 = square; large values (up to 100) round it into a pill.
+    /// </summary>
+    public double ItemCornerRadius { get; set; }
+
     /// <summary>Windows-logo button at the far left that opens a system menu (like the macOS Apple menu).</summary>
     public bool ShowLogoMenu { get; set; } = true;
 
@@ -145,6 +151,7 @@ public sealed class TopBarSettings
         FontSize = Math.Clamp(double.IsFinite(FontSize) ? FontSize : 13.5, 10, 20);
         Margin = Math.Clamp(double.IsFinite(Margin) ? Margin : 0, 0, 24);
         CornerRadius = Math.Clamp(double.IsFinite(CornerRadius) ? CornerRadius : 0, 0, 24);
+        ItemCornerRadius = Math.Clamp(double.IsFinite(ItemCornerRadius) ? ItemCornerRadius : 0, 0, 100);
         BackgroundColor = ColorSetting.Normalize(BackgroundColor, "#000000");
         ForegroundColor = ColorSetting.Normalize(ForegroundColor, "#FFFFFF");
         Blur = EnumSetting.Normalize(Blur, BlurEffect.None);

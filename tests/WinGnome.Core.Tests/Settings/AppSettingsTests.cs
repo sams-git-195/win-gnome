@@ -112,6 +112,19 @@ public class AppSettingsTests
         Assert.Equal(24, settings.TopBar.CornerRadius);
     }
 
+    [Theory]
+    [InlineData(-4, 0)]
+    [InlineData(0, 0)]
+    [InlineData(12, 12)]
+    [InlineData(250, 100)]
+    [InlineData(double.NaN, 0)]
+    public void TopBar_ItemCornerRadius_DefaultsSquareAndIsClamped(double input, double expected)
+    {
+        Assert.Equal(0, new AppSettings().Normalize().TopBar.ItemCornerRadius);
+        var settings = new AppSettings { TopBar = { ItemCornerRadius = input } };
+        Assert.Equal(expected, settings.Normalize().TopBar.ItemCornerRadius);
+    }
+
     [Fact]
     public void TopBar_InvalidForeground_FallsBackToWhite()
     {
