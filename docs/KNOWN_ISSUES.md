@@ -28,7 +28,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-007](#ki-007) | S4 | Window buttons | Some apps that draw their own title bars keep their own buttons | Partly fixed |
 | [KI-008](#ki-008) | S4 | Taskbar | The native taskbar isn't restyled | By design |
 | [KI-009](#ki-009) | S4 | Repo | No CI workflow, although the README says `--selftest` is used by CI | Open |
-| [KI-010](#ki-010) | S3 | App | Launched from a sandboxed terminal, WinGnome can't save settings or its restore marker | Open |
+| [KI-010](#ki-010) | S3 | App | Launched from a sandboxed terminal, WinGnome uses a private copy of its settings folder | Open |
 | [KI-014](#ki-014) | S4 | Tweaks | GNOME look tweaks are verified by tests only, not yet on a live Windows install | Open |
 | [KI-015](#ki-015) | S3 | Window buttons | Two WinGnome instances that both decorate windows fight over title-bar colours | Open |
 | [KI-016](#ki-016) | S4 | Window buttons | The patch behind the circles is a flat colour | Open |
@@ -109,16 +109,18 @@ There's no `.github/workflows` yet, so nothing builds or tests on push.
 the self-test, triggered on push to `main` and on pull requests only.
 
 ### KI-010
-**Launched from a sandboxed terminal, WinGnome can't save settings or its restore marker** · S3 · App · Open
+**Launched from a sandboxed terminal, WinGnome uses a private copy of its settings folder** · S3 · App · Open
 
-A WinGnome started from a sandboxed shell (for example an AI coding agent's terminal) may be blocked from
-reading or writing `%APPDATA%\WinGnome`. It then runs on default settings, keeps no log, can't delete its
-taskbar marker on exit, and loses every settings change. On 2026-10-08 this hid the user's pinned apps and
-left the taskbar on auto-hide after quitting. Since 6e07eb0 the Settings window shows a *Changes won't be kept*
-banner when the folder isn't writable. *Workaround:* start WinGnome from Explorer, the Start menu or sign-in;
-`WinGnome.exe --restore-taskbar` fixes a taskbar left on auto-hide.
-*Fix direction:* also warn from the top bar (not only Settings), and refuse to hide the taskbar when the
-settings folder can't be written (the marker check covers new markers, not a stale one it can't delete).
+An AI coding agent's sandboxed shell can give the processes it starts a private, copy-on-write view of
+`%APPDATA%\WinGnome`. A WinGnome started there reads and saves settings, logs and its taskbar marker in that
+private copy; the real folder never sees them, and the sandbox keeps seeing its stale copy afterwards. On
+2026-10-08 the previous session's WinGnome stored the user's setup (8 pinned apps, top bar) only in the
+sandbox's copy, so the first normal launch at 21:11 started from defaults and the user had to set everything
+up again. The sandboxed shell then misread the real log as silent and the real settings as older than they were.
+Writes succeed inside the sandbox, so the *Changes won't be kept* banner (6e07eb0) does not catch this case.
+*Workaround:* start the everyday WinGnome from Explorer, the Start menu or sign-in. Agents must launch it with
+`explorer.exe <path>\WinGnome.exe` and read its real files through an Explorer-launched process (AGENTS.md).
+*Fix direction:* none in WinGnome itself; keep test runs on `--safe` with their own `--settings-dir`.
 
 ### KI-014
 **GNOME look tweaks are verified by tests only, not yet on a live Windows install** · S4 · Tweaks · Open

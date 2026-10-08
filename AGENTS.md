@@ -256,8 +256,10 @@ or something failed, say so with the output.
   `{"Dock":{"Enabled":false},"WindowButtons":{"Enabled":false}}`). Only one instance at a time may have window
   buttons on: two draw over each other and fight over title-bar colours (KI-015). Quit instances gracefully
   (`taskkill /PID <pid>`, never `/f`) and never touch another agent's instance.
-- **Launch the everyday WinGnome outside any sandbox.** A copy started from a sandboxed agent shell may be
-  unable to use `%APPDATA%\WinGnome` and silently runs on defaults (KI-010).
+- **Launch the everyday WinGnome outside any sandbox.** A copy started from a sandboxed agent shell may see
+  a private copy of `%APPDATA%\WinGnome`, so its settings never reach the real profile, and the sandbox may
+  read stale copies of the real files (KI-010). Start it with `explorer.exe <path>\WinGnome.exe`, and read the
+  real log or settings through an Explorer-launched process.
 - **Hand-offs are self-contained.** A sub-agent prompt includes the goal, the files it owns, the
   constraints from this file, and what "done" means, because it doesn't see the conversation.
 
