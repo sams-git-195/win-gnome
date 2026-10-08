@@ -29,6 +29,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-008](#ki-008) | S4 | Taskbar | The native taskbar isn't restyled | By design |
 | [KI-009](#ki-009) | S4 | Repo | No CI workflow, although the README says `--selftest` is used by CI | Open |
 | [KI-010](#ki-010) | S3 | App | Launched from a sandboxed terminal, WinGnome can't save settings or its restore marker | Open |
+| [KI-014](#ki-014) | S4 | Tweaks | GNOME look tweaks are verified by tests only, not yet on a live Windows install | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -104,6 +105,18 @@ banner when the folder isn't writable. *Workaround:* start WinGnome from Explore
 `WinGnome.exe --restore-taskbar` fixes a taskbar left on auto-hide.
 *Fix direction:* also warn from the top bar (not only Settings), and refuse to hide the taskbar when the
 settings folder can't be written (the marker check covers new markers, not a stale one it can't delete).
+
+### KI-014
+**GNOME look tweaks are verified by tests only, not yet on a live Windows install** · S4 · Tweaks · Open
+
+The *Adwaita blue accent*, *Neutral window chrome*, *Hide desktop icons* and *Hide "Learn about this picture"*
+tweaks were written and tested against an in-memory registry. Still to confirm on a real machine:
+- Windows builds its accent palette with a private algorithm; WinGnome's tints and shades approximate it, and
+  Windows may normalise the values, so the tweak can afterwards read as not applied.
+- Whether Start, the taskbar and title bars recolour from the broadcast alone or need an Explorer restart.
+- The Spotlight icon's CLSID (`{2cc5ca98-6485-489a-920e-b3e88a6ccce3}`) is community-documented, not by Microsoft.
+- *Revert all* restores the accent from before WinGnome, discarding a newer accent picked in Windows Settings
+  (the engine does this for every tweak).
 
 ## Resolved
 
