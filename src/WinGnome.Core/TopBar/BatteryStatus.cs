@@ -38,6 +38,12 @@ public readonly record struct BatteryStatus(bool HasBattery, int? Percent, bool 
         return new BatteryStatus(true, percent, charging, pluggedIn, remaining);
     }
 
+    /// <summary>
+    /// Whether the charge level needs polling. Without a battery there is nothing to show; a battery that appears
+    /// later is announced by a power-status broadcast, which reads the status again.
+    /// </summary>
+    public bool NeedsPolling => HasBattery;
+
     /// <summary>Icon fill level 0..10 (tenths of a full battery), or null when the charge is unknown.</summary>
     public int? GlyphLevel => Percent is { } p ? Math.Clamp((int)Math.Round(p / 10.0, MidpointRounding.AwayFromZero), 0, 10) : null;
 
