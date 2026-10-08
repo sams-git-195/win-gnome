@@ -18,8 +18,11 @@ internal sealed record ShellContext(
     IAppLauncher Launcher,
     ShellCommands Commands)
 {
-    /// <summary>True in --safe or --selftest mode: no taskbar hiding, registry tweaks or input hooks.</summary>
-    public bool IsSafeMode => Options.Safe;
+    /// <summary>
+    /// True in --safe or --selftest mode: no taskbar hiding, registry tweaks or input hooks. A self-test runs
+    /// unattended (CI, QA), so it must never change the user's system state even when --safe is omitted.
+    /// </summary>
+    public bool IsSafeMode => Options.Safe || Options.SelfTest;
 }
 
 internal enum OverviewMode

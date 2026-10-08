@@ -24,7 +24,11 @@ public sealed class SettingsStore
     public static string DefaultDirectory =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WinGnome");
 
-    /// <summary>Loads settings, falling back to defaults when the file is missing or unreadable.</summary>
+    /// <summary>
+    /// Loads settings, falling back to defaults when the file is missing or is not valid settings JSON
+    /// (a corrupt file is first copied to "*.corrupt"). I/O errors such as a locked file are not caught:
+    /// returning defaults then would let the next save overwrite settings that were never read.
+    /// </summary>
     public AppSettings Load()
     {
         if (!File.Exists(FilePath))

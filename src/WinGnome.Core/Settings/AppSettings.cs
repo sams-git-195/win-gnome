@@ -21,7 +21,10 @@ public sealed class AppSettings
     /// <summary>Ids of streamline tweaks the user has switched on (see Tweaks.TweakCatalog).</summary>
     public List<string> EnabledTweaks { get; set; } = [];
 
-    /// <summary>Clamps numbers into sane ranges and repairs null collections. Returns this instance.</summary>
+    /// <summary>
+    /// Clamps numbers into sane ranges, resets undefined enum values (JSON may carry any integer) to their
+    /// defaults and repairs null collections. Returns this instance.
+    /// </summary>
     public AppSettings Normalize()
     {
         General ??= new();
@@ -31,6 +34,7 @@ public sealed class AppSettings
         Activities ??= new();
         EnabledTweaks = (EnabledTweaks ?? []).Where(t => !string.IsNullOrWhiteSpace(t)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
+        General.Normalize();
         TopBar.Normalize();
         Dock.Normalize();
         WindowButtons.Normalize();
@@ -60,6 +64,11 @@ public sealed class GeneralSettings
 
     /// <summary>X-Mouse style focus-follows-mouse. Applied for the session only and restored on exit.</summary>
     public bool FocusFollowsMouse { get; set; }
+
+    internal void Normalize()
+    {
+        Theme = EnumSetting.Normalize(Theme, ThemeMode.Dark);
+    }
 }
 
 public enum ClockStyle { TwentyFourHour, TwelveHour }
@@ -122,10 +131,8 @@ public sealed class TopBarSettings
         CornerRadius = Math.Clamp(double.IsFinite(CornerRadius) ? CornerRadius : 0, 0, 24);
         BackgroundColor = ColorSetting.Normalize(BackgroundColor, "#000000");
         ForegroundColor = ColorSetting.Normalize(ForegroundColor, "#FFFFFF");
-        if (!Enum.IsDefined(Blur))
-        {
-            Blur = BlurEffect.None;
-        }
+        Blur = EnumSetting.Normalize(Blur, BlurEffect.None);
+        ClockStyle = EnumSetting.Normalize(ClockStyle, ClockStyle.TwentyFourHour);
     }
 }
 
@@ -191,7 +198,7 @@ public sealed class DockSettings
     public bool ShowAppsButton { get; set; } = true;
     public bool ShowRecycleBin { get; set; }
 
-    /// <summary>Only show running apps that are not pinned when true; when false the dock is a pure launcher.</summary>
+    /// <summary>Also show running apps that are not pinned; when false the dock is a pure launcher.</summary>
     public bool ShowRunningApps { get; set; } = true;
 
     public DockClickAction ClickAction { get; set; } = DockClickAction.FocusOrMinimize;
@@ -217,17 +224,18 @@ public sealed class DockSettings
         EdgeMargin = Math.Clamp(double.IsFinite(EdgeMargin) ? EdgeMargin : 8, 0, 48);
         BackgroundColor = ColorSetting.NormalizeOptional(BackgroundColor);
         IndicatorColor = ColorSetting.NormalizeOptional(IndicatorColor);
-        if (!Enum.IsDefined(Blur))
-        {
-            Blur = BlurEffect.Acrylic;
-        }
+        Blur = EnumSetting.Normalize(Blur, BlurEffect.Acrylic);
+        Position = EnumSetting.Normalize(Position, DockPosition.Bottom);
+        Visibility = EnumSetting.Normalize(Visibility, DockVisibility.Intellihide);
+        ClickAction = EnumSetting.Normalize(ClickAction, DockClickAction.FocusOrMinimize);
 
         PinnedApps = (PinnedApps ?? [])
             .Where(p => p is not null && !string.IsNullOrWhiteSpace(p.LaunchId))
-            .DistinctBy(p => p.LaunchId, StringComparer.OrdinalIgnoreCase)
+            .DistinctBy(p => p.LaunchId.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToList();
         foreach (var app in PinnedApps)
         {
+            app.LaunchId = app.LaunchId.Trim();
             app.Name = string.IsNullOrWhiteSpace(app.Name) ? app.LaunchId : app.Name.Trim();
         }
     }
@@ -300,6 +308,9 @@ public sealed class WindowButtonSettings
     {
         Diameter = Math.Clamp(double.IsFinite(Diameter) ? Diameter : 14, 8, 24);
         Spacing = Math.Clamp(double.IsFinite(Spacing) ? Spacing : 8, 2, 20);
+        Preset = EnumSetting.Normalize(Preset, TrafficLightPreset.MacOS);
+        Side = EnumSetting.Normalize(Side, ButtonSide.Right);
+        Order = EnumSetting.Normalize(Order, ButtonOrder.MinimizeMaximizeClose);
         CloseColor = ColorSetting.Normalize(CloseColor, "#FF5F57");
         MinimizeColor = ColorSetting.Normalize(MinimizeColor, "#FEBC2E");
         MaximizeColor = ColorSetting.Normalize(MaximizeColor, "#28C840");
@@ -322,6 +333,18 @@ internal static class ColorSetting
     /// <summary>Like <see cref="Normalize"/>, but empty/invalid means "use the default" and becomes "".</summary>
     public static string NormalizeOptional(string? value) =>
         Theming.HexColor.TryParse(value, out var color) ? color.ToString() : "";
+}
+
+/// <summary>Normalisation helper for enum settings.</summary>
+internal static class EnumSetting
+{
+    /// <summary>
+    /// <paramref name="value"/> when it is a named member, otherwise <paramref name="fallback"/>. The JSON enum
+    /// converter accepts integers, so a hand-edited file can carry values such as 42 that no switch handles.
+    /// </summary>
+    public static T Normalize<T>(T value, T fallback)
+        where T : struct, Enum =>
+        Enum.IsDefined(value) ? value : fallback;
 }
 
 public sealed class ActivitiesSettings

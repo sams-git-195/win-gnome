@@ -67,7 +67,8 @@ internal sealed partial class WinEventHook : IDisposable
 
     private void OnEvent(nint hook, uint eventType, nint hwnd, int idObject, int idChild, uint thread, uint time)
     {
-        if (hwnd == 0 || idObject != OBJID_WINDOW || idChild != CHILDID_SELF)
+        // Events already queued when Dispose ran can still be delivered; owners have torn down by then.
+        if (_hooks.Count == 0 || hwnd == 0 || idObject != OBJID_WINDOW || idChild != CHILDID_SELF)
         {
             return;
         }

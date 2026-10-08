@@ -47,7 +47,17 @@ internal static class Log
             .Append(' ').Append(level).Append(' ').Append(message);
         if (ex is not null)
         {
-            line.Append(" | ").Append(ex.GetType().Name).Append(": ").Append(ex.Message);
+            // Errors get the full ToString (inner exceptions and stack) so crash reports are actionable;
+            // warnings are frequent and expected, so they stay on one line.
+            line.Append(" | ");
+            if (level == "ERROR")
+            {
+                line.Append(ex);
+            }
+            else
+            {
+                line.Append(ex.GetType().Name).Append(": ").Append(ex.Message);
+            }
         }
 
         var text = line.ToString();

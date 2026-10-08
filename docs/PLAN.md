@@ -71,7 +71,7 @@ All Win32 work lives in the app project, and every decision that can be expresse
 - Taskbar: restore on normal exit, on unhandled exceptions, on `SessionEnding`, and on `--restore-taskbar`.
 - Registry tweaks touch **HKCU only**, back up the previous value (including "absent"), and can be reverted one by one or all at once.
 - Never act on elevated windows (UIPI would block us anyway); skip them explicitly.
-- Command-line switches: `--settings-dir <path>` (isolated profile), `--safe` (no taskbar hiding, tweaks or hooks), `--selftest` (start every feature, run for 5 s, exit 0 or 1), `--restore-taskbar`.
+- Command-line switches: `--settings-dir <path>` (isolated profile), `--safe` (no taskbar hiding, tweaks or hooks), `--selftest` (start every feature in safe mode, run for 5 s, exit 0 or 1), `--restore-taskbar`.
 
 ## QA plan
 

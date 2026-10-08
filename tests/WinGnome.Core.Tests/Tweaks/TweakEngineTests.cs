@@ -331,6 +331,99 @@ public class TweakEngineTests
     }
 
     [Fact]
+    public void Apply_WithAnOlderBackup_BacksUpValuesTheTweakGainedSince()
+    {
+        // A backup written by a version whose dark-mode tweak only set AppsUseLightTheme.
+        _backup.Set("dark-mode", new TweakBackupRecord(false,
+            [new TweakBackupEntry(Personalize, "AppsUseLightTheme", true, RegistryValue.DWord(1))]));
+        _store.SetValue(Personalize, "AppsUseLightTheme", RegistryValue.DWord(0));
+        _store.SetValue(Personalize, "SystemUsesLightTheme", RegistryValue.DWord(1));
+
+        _engine.Apply(DarkMode);
+        _engine.Revert(DarkMode);
+
+        Assert.Equal(RegistryValue.DWord(1), _store.GetValue(Personalize, "AppsUseLightTheme"));
+        Assert.Equal(RegistryValue.DWord(1), _store.GetValue(Personalize, "SystemUsesLightTheme"));
+    }
+
+    [Fact]
+    public void Apply_WithACompleteBackup_KeepsTheSameRecord()
+    {
+        _engine.Apply(DarkMode);
+        var record = _backup.Get("dark-mode");
+
+        _engine.Apply(DarkMode);
+
+        Assert.Same(record, _backup.Get("dark-mode"));
+    }
+
+    [Fact]
+    public void Revert_WithAnOlderBackup_DeletesUncoveredValuesOnlyWhileTheyHaveTheEnabledValue()
+    {
+        _backup.Set("dark-mode", new TweakBackupRecord(false,
+            [new TweakBackupEntry(Personalize, "AppsUseLightTheme", true, RegistryValue.DWord(1))]));
+        _store.SetValue(Personalize, "SystemUsesLightTheme", RegistryValue.DWord(0));
+
+        _engine.Revert(DarkMode);
+
+        Assert.Equal(RegistryValue.DWord(1), _store.GetValue(Personalize, "AppsUseLightTheme"));
+        Assert.Null(_store.GetValue(Personalize, "SystemUsesLightTheme"));
+
+        _backup.Set("dark-mode", new TweakBackupRecord(false,
+            [new TweakBackupEntry(Personalize, "AppsUseLightTheme", true, RegistryValue.DWord(1))]));
+        _store.SetValue(Personalize, "SystemUsesLightTheme", RegistryValue.DWord(1));
+
+        _engine.Revert(DarkMode);
+
+        Assert.Equal(RegistryValue.DWord(1), _store.GetValue(Personalize, "SystemUsesLightTheme"));
+    }
+
+    [Fact]
+    public void BackupChanged_IsRaisedBeforeAnyRegistryWrite()
+    {
+        var raised = 0;
+        _engine.BackupChanged += (_, _) =>
+        {
+            raised++;
+            Assert.True(_backup.Contains("dark-mode"));
+            Assert.Null(_store.GetValue(Personalize, "AppsUseLightTheme"));
+        };
+
+        _engine.Apply(DarkMode);
+
+        Assert.Equal(1, raised);
+        Assert.True(_engine.IsApplied(DarkMode));
+    }
+
+    [Fact]
+    public void BackupChanged_HandlerFailure_AbortsApplyBeforeWriting()
+    {
+        _engine.BackupChanged += (_, _) => throw new IOException("disk full");
+
+        Assert.Throws<IOException>(() => _engine.Apply(DarkMode));
+
+        Assert.Null(_store.GetValue(Personalize, "AppsUseLightTheme"));
+        Assert.Null(_store.GetValue(Personalize, "SystemUsesLightTheme"));
+    }
+
+    [Fact]
+    public void BackupChanged_IsRaisedOnRevert_ButNotForARepeatedApplyOrABackuplessRevert()
+    {
+        _engine.Apply(DarkMode);
+        var raised = 0;
+        _engine.BackupChanged += (_, _) => raised++;
+
+        _engine.Apply(DarkMode);
+        Assert.Equal(0, raised);
+
+        _engine.Revert(DarkMode);
+        Assert.Equal(1, raised);
+
+        _engine.Revert(DarkMode);
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
     public void Apply_AndRevert_RejectNull()
     {
         Assert.Throws<ArgumentNullException>(() => _engine.Apply(null!));

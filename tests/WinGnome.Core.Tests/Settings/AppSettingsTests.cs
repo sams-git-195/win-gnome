@@ -397,6 +397,62 @@ public class AppSettingsTests
     }
 
     [Fact]
+    public void Normalize_ResetsUndefinedEnumValuesToDefaults()
+    {
+        var settings = new AppSettings
+        {
+            General = { Theme = (ThemeMode)42 },
+            TopBar = { ClockStyle = (ClockStyle)42 },
+            Dock = { Position = (DockPosition)42, Visibility = (DockVisibility)42, ClickAction = (DockClickAction)42 },
+            WindowButtons = { Preset = (TrafficLightPreset)42, Side = (ButtonSide)42, Order = (ButtonOrder)42 },
+        };
+
+        settings.Normalize();
+
+        Assert.Equal(ThemeMode.Dark, settings.General.Theme);
+        Assert.Equal(ClockStyle.TwentyFourHour, settings.TopBar.ClockStyle);
+        Assert.Equal(DockPosition.Bottom, settings.Dock.Position);
+        Assert.Equal(DockVisibility.Intellihide, settings.Dock.Visibility);
+        Assert.Equal(DockClickAction.FocusOrMinimize, settings.Dock.ClickAction);
+        Assert.Equal(TrafficLightPreset.MacOS, settings.WindowButtons.Preset);
+        Assert.Equal(ButtonSide.Right, settings.WindowButtons.Side);
+        Assert.Equal(ButtonOrder.MinimizeMaximizeClose, settings.WindowButtons.Order);
+    }
+
+    [Fact]
+    public void Normalize_KeepsDefinedEnumValues()
+    {
+        var settings = new AppSettings
+        {
+            General = { Theme = ThemeMode.Light },
+            Dock = { Position = DockPosition.Right, Visibility = DockVisibility.Autohide },
+            WindowButtons = { Side = ButtonSide.Left },
+        }.Normalize();
+
+        Assert.Equal(ThemeMode.Light, settings.General.Theme);
+        Assert.Equal(DockPosition.Right, settings.Dock.Position);
+        Assert.Equal(DockVisibility.Autohide, settings.Dock.Visibility);
+        Assert.Equal(ButtonSide.Left, settings.WindowButtons.Side);
+    }
+
+    [Fact]
+    public void Dock_PinnedApps_LaunchIdsAreTrimmed_AndDedupedAfterTrimming()
+    {
+        var settings = new AppSettings();
+        settings.Dock.PinnedApps =
+        [
+            new PinnedApp { Name = "A", LaunchId = "  contoso.app " },
+            new PinnedApp { Name = "B", LaunchId = "Contoso.App" },
+        ];
+
+        settings.Normalize();
+
+        var only = Assert.Single(settings.Dock.PinnedApps);
+        Assert.Equal("contoso.app", only.LaunchId);
+        Assert.Equal("A", only.Name);
+    }
+
+    [Fact]
     public void Clone_IsDeepAndEqualInContent()
     {
         var original = new AppSettings();

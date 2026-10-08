@@ -99,7 +99,7 @@ top right), or run `WinGnome.exe` again: a second launch opens the running insta
 | `--settings` | Open the settings window on start |
 | `--settings-dir <path>` | Use a separate profile folder (settings, tweak backups, log) |
 | `--safe` | Safe mode: no taskbar hiding, no registry writes, no keyboard hooks |
-| `--selftest` | Start every feature, run for 5 s, exit with code 0 on success (used by CI and QA) |
+| `--selftest` | Start every feature in safe mode, run for 5 s, exit with code 0 on success (used by CI and QA) |
 | `--restore-taskbar` | Restore the Windows taskbar (after a crash, for example) and exit |
 
 ## Safety and recovery

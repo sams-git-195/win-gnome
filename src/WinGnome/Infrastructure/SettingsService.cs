@@ -33,11 +33,15 @@ internal sealed class SettingsService
         Replace(draft);
     }
 
-    /// <summary>Replaces the settings wholesale (e.g. from the settings window or "reset to defaults").</summary>
+    /// <summary>
+    /// Replaces the settings wholesale (e.g. from the settings window or "reset to defaults"). A normalised copy
+    /// is stored, so the caller may keep editing its own instance without changing <see cref="Current"/> behind
+    /// the back of the <see cref="Changed"/> subscribers.
+    /// </summary>
     public void Replace(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        Current = settings.Normalize();
+        Current = settings.Clone();
         try
         {
             _store.Save(Current);

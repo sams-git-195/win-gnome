@@ -14,7 +14,15 @@ public sealed class TweakEngine
         Backup = backup;
     }
 
-    /// <summary>The backup this engine reads and writes. Persist it after Apply/Revert.</summary>
+    /// <summary>
+    /// Raised whenever <see cref="Backup"/> changes. During <see cref="Apply"/> it is raised after the original
+    /// values have been recorded but <em>before</em> anything is written, so a handler that persists the backup
+    /// guarantees the originals are on disk before the registry changes (a crash in between cannot lose them).
+    /// An exception from a handler aborts the apply before any write.
+    /// </summary>
+    public event EventHandler? BackupChanged;
+
+    /// <summary>The backup this engine reads and writes. Persist it from <see cref="BackupChanged"/> (or after Apply/Revert).</summary>
     public TweakBackup Backup { get; }
 
     /// <summary>Ids of tweaks that have a backup, i.e. were applied by this engine and not yet reverted.</summary>
@@ -28,30 +36,20 @@ public sealed class TweakEngine
     }
 
     /// <summary>
-    /// Backs up the current state (only when the tweak has no backup yet), then writes every change.
-    /// Calling it again is harmless and never overwrites the original backup.
+    /// Backs up the current state, then writes every change. An existing backup is never overwritten, so calling
+    /// it again is harmless; changes the backup does not cover yet (the tweak gained a value in a newer version)
+    /// are added to it before they are written.
     /// </summary>
     public void Apply(TweakDefinition t)
     {
         ArgumentNullException.ThrowIfNull(t);
 
-        if (!Backup.Contains(t.Id))
+        var record = Backup.Get(t.Id);
+        var updated = record is null ? CreateRecord(t) : AddMissingEntries(t, record);
+        if (!ReferenceEquals(updated, record))
         {
-            var entries = new List<TweakBackupEntry>(t.Changes.Count);
-            foreach (var change in t.Changes)
-            {
-                var existing = _store.GetValue(change.SubKey, change.ValueName);
-                entries.Add(new TweakBackupEntry(change.SubKey, change.ValueName, existing is not null, existing));
-            }
-
-            var keyCreated = false;
-            var parent = ParentKeyToDelete(t);
-            if (parent is not null)
-            {
-                keyCreated = !_store.KeyExists(parent);
-            }
-
-            Backup.Set(t.Id, new TweakBackupRecord(keyCreated, entries));
+            Backup.Set(t.Id, updated);
+            BackupChanged?.Invoke(this, EventArgs.Empty);
         }
 
         foreach (var change in t.Changes)
@@ -63,7 +61,8 @@ public sealed class TweakEngine
     /// <summary>
     /// Restores the values recorded at Apply time (deleting ones that did not exist), removes a key tree the tweak
     /// created when <see cref="TweakDefinition.DeleteKeyOnRevertIfCreated"/> is set, and forgets the backup.
-    /// Without a backup it deletes only values that still equal the tweak's enabled values.
+    /// Values the backup does not cover (including every value when there is no backup) are deleted only when they
+    /// still equal the tweak's enabled values.
     /// </summary>
     public void Revert(TweakDefinition t)
     {
@@ -85,22 +84,25 @@ public sealed class TweakEngine
                 }
             }
 
+            foreach (var change in t.Changes.Where(c => !IsCovered(record, c)))
+            {
+                DeleteIfStillEnabled(change);
+            }
+
             if (record.KeyCreated && parent is not null)
             {
                 _store.DeleteKeyTree(parent);
             }
 
             Backup.Remove(t.Id);
+            BackupChanged?.Invoke(this, EventArgs.Empty);
             return;
         }
 
         var wasApplied = IsApplied(t);
         foreach (var change in t.Changes)
         {
-            if (change.Value.Equals(_store.GetValue(change.SubKey, change.ValueName)))
-            {
-                _store.DeleteValue(change.SubKey, change.ValueName);
-            }
+            DeleteIfStillEnabled(change);
         }
 
         // The tweak's own key is only meaningful while the value is there, so remove it when we undid a full application.
@@ -109,6 +111,40 @@ public sealed class TweakEngine
             _store.DeleteKeyTree(parent);
         }
     }
+
+    private TweakBackupRecord CreateRecord(TweakDefinition t)
+    {
+        var entries = t.Changes.Select(Snapshot).ToList();
+        var parent = ParentKeyToDelete(t);
+        var keyCreated = parent is not null && !_store.KeyExists(parent);
+        return new TweakBackupRecord(keyCreated, entries);
+    }
+
+    private TweakBackupRecord AddMissingEntries(TweakDefinition t, TweakBackupRecord record)
+    {
+        var missing = t.Changes.Where(c => !IsCovered(record, c)).Select(Snapshot).ToList();
+        return missing.Count == 0 ? record : record with { Entries = [.. record.Entries, .. missing] };
+    }
+
+    private TweakBackupEntry Snapshot(RegistryChange change)
+    {
+        var existing = _store.GetValue(change.SubKey, change.ValueName);
+        return new TweakBackupEntry(change.SubKey, change.ValueName, existing is not null, existing);
+    }
+
+    private void DeleteIfStillEnabled(RegistryChange change)
+    {
+        if (change.Value.Equals(_store.GetValue(change.SubKey, change.ValueName)))
+        {
+            _store.DeleteValue(change.SubKey, change.ValueName);
+        }
+    }
+
+    /// <summary>True when the record has an entry for the change's value (registry names are case-insensitive; null and "" are both the default value).</summary>
+    private static bool IsCovered(TweakBackupRecord record, RegistryChange change) =>
+        record.Entries.Any(e =>
+            string.Equals(e.SubKey.Trim('\\'), change.SubKey.Trim('\\'), StringComparison.OrdinalIgnoreCase)
+            && string.Equals(e.ValueName ?? "", change.ValueName ?? "", StringComparison.OrdinalIgnoreCase));
 
     private static string? ParentKeyToDelete(TweakDefinition t)
     {

@@ -6,7 +6,13 @@ public enum SuperKeyAction
     /// <summary>Let the event through untouched.</summary>
     PassThrough,
 
-    /// <summary>Swallow the Windows key release (so Start does not open) and show the overview.</summary>
+    /// <summary>
+    /// Stop Start from opening and show the overview. Do not simply drop the Windows key release: the key-down
+    /// already reached the system, so Windows would treat the key as still held and turn the next keystrokes into
+    /// Win+key shortcuts. Instead swallow it and inject (SendInput) an unassigned "mask" key tap (VK 0xE8) followed
+    /// by the Windows key release; the intervening key stops Start from opening. Tag the injected events so the hook
+    /// can recognise them (they come back through it).
+    /// </summary>
     SuppressAndOpenOverview,
 }
 

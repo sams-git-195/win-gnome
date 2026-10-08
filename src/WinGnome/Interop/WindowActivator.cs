@@ -53,7 +53,8 @@ internal static partial class WindowActivator
         }
 
         // Windows only lets the process that received the last input event change the foreground.
-        // A synthetic Alt tap satisfies that rule without side effects.
+        // A synthetic Alt tap satisfies that rule. It is not entirely free of side effects: the window that was
+        // in front may see a lone Alt press and highlight its menu bar.
         TapKey(VK_MENU);
         if (!NativeMethods.SetForegroundWindow(hwnd))
         {

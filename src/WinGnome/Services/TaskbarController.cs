@@ -61,20 +61,29 @@ internal static partial class TaskbarController
     public static bool IsTaskbarWindow(nint hwnd) =>
         NativeMethods.GetClassName(hwnd) is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd";
 
-    /// <summary>Hides the taskbar, recording the original state in <paramref name="settingsDirectory"/> first.</summary>
-    public static void Hide(string settingsDirectory)
+    /// <summary>
+    /// Hides the taskbar, recording the original state in <paramref name="settingsDirectory"/> first.
+    /// Returns false, and leaves the taskbar alone, when that recovery marker cannot be written: without it
+    /// nothing could restore the taskbar after a crash.
+    /// </summary>
+    public static bool Hide(string settingsDirectory)
     {
-        if (!File.Exists(MarkerPath(settingsDirectory)))
+        // Only record the state the user had before WinGnome ever touched it.
+        if (!File.Exists(MarkerPath(settingsDirectory)) && !WriteMarker(settingsDirectory, new Marker(IsAutoHide())))
         {
-            // Only record the state the user had before WinGnome ever touched it.
-            WriteMarker(settingsDirectory, new Marker(IsAutoHide()));
+            Log.Warn("Not hiding the taskbar because its restore marker could not be written");
+            return false;
         }
 
         SetAutoHide(true);
         HideWindows();
+        return true;
     }
 
-    /// <summary>Hides the taskbar windows again (Explorer re-shows them on some events).</summary>
+    /// <summary>
+    /// Hides the taskbar windows again (Explorer re-shows them on some events). Only call while a successful
+    /// <see cref="Hide"/> is in effect: its marker is what lets a crash or <c>--restore-taskbar</c> undo this.
+    /// </summary>
     public static void HideWindows()
     {
         foreach (var hwnd in FindTaskbarWindows())
@@ -144,16 +153,18 @@ internal static partial class TaskbarController
 
     private static string MarkerPath(string directory) => Path.Combine(directory, MarkerFileName);
 
-    private static void WriteMarker(string directory, Marker marker)
+    private static bool WriteMarker(string directory, Marker marker)
     {
         try
         {
             Directory.CreateDirectory(directory);
             File.WriteAllText(MarkerPath(directory), JsonSerializer.Serialize(marker));
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Log.Error("Could not write taskbar marker", ex);
+            return false;
         }
     }
 

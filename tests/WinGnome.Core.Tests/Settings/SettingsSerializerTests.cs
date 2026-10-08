@@ -136,6 +136,16 @@ public class SettingsSerializerTests
     }
 
     [Fact]
+    public void Deserialize_IntegerEnumValues_AreAcceptedWhenDefined_AndResetWhenNot()
+    {
+        var settings = SettingsSerializer.Deserialize("""{ "Dock": { "Position": 2, "Visibility": 99 }, "General": { "Theme": -1 } }""");
+
+        Assert.Equal(DockPosition.Right, settings.Dock.Position);
+        Assert.Equal(DockVisibility.Intellihide, settings.Dock.Visibility);
+        Assert.Equal(ThemeMode.Dark, settings.General.Theme);
+    }
+
+    [Fact]
     public void Deserialize_ExplicitNullSection_IsRepaired()
     {
         var settings = SettingsSerializer.Deserialize("""{ "Dock": null, "EnabledTweaks": null }""");

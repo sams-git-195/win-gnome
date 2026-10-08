@@ -40,7 +40,7 @@ internal static partial class WindowBlur
     {
         public int Attribute;
         public nint Data;
-        public int SizeOfData;
+        public nint SizeOfData; // SIZE_T
     }
 
     private const int WCA_ACCENT_POLICY = 19;

@@ -25,6 +25,7 @@ internal sealed partial class WindowTracker : IDisposable
     private readonly ConcurrentDictionary<uint, ProcessFacts> _processCache = new();
     private readonly uint _ownProcessId = NativeMethods.GetCurrentProcessId();
     private WinEventHook? _hook;
+    private WinEventHook? _foregroundHook;
     private nint _foreground;
 
     public WindowTracker(Dispatcher dispatcher)
@@ -48,8 +49,9 @@ internal sealed partial class WindowTracker : IDisposable
     public event EventHandler<nint>? ForegroundChanged;
 
     /// <summary>
-    /// Raised immediately for every top-level window event (see <see cref="WinEventHook"/> constants),
-    /// including location changes. Handlers must be cheap.
+    /// Raised immediately for every top-level window event of other processes (see <see cref="WinEventHook"/>
+    /// constants), including location changes, plus foreground changes to WinGnome's own windows.
+    /// Handlers must be cheap.
     /// </summary>
     public event Action<uint, nint>? RawWindowEvent;
 
@@ -61,8 +63,12 @@ internal sealed partial class WindowTracker : IDisposable
         }
 
         _foreground = NativeMethods.GetForegroundWindow();
+
+        // Foreground changes must include WinGnome's own windows (settings, overview); otherwise Foreground would
+        // keep pointing at the previously active app while one of ours has focus.
+        _foregroundHook = new WinEventHook(OnWinEvent, skipOwnProcess: false,
+            (WinEventHook.EVENT_SYSTEM_FOREGROUND, WinEventHook.EVENT_SYSTEM_FOREGROUND));
         _hook = new WinEventHook(OnWinEvent, skipOwnProcess: true,
-            (WinEventHook.EVENT_SYSTEM_FOREGROUND, WinEventHook.EVENT_SYSTEM_FOREGROUND),
             (WinEventHook.EVENT_SYSTEM_MOVESIZESTART, WinEventHook.EVENT_SYSTEM_MOVESIZEEND),
             (WinEventHook.EVENT_SYSTEM_MINIMIZESTART, WinEventHook.EVENT_SYSTEM_MINIMIZEEND),
             (WinEventHook.EVENT_OBJECT_CREATE, WinEventHook.EVENT_OBJECT_REORDER),
@@ -158,7 +164,7 @@ internal sealed partial class WindowTracker : IDisposable
 
         if (eventType == WinEventHook.EVENT_OBJECT_DESTROY)
         {
-            // Process ids are recycled; drop facts lazily when windows go away.
+            // Keep the cache bounded: entries of exited processes are never looked up again.
             if (_processCache.Count > 512)
             {
                 _processCache.Clear();
@@ -203,13 +209,16 @@ internal sealed partial class WindowTracker : IDisposable
 
     private ProcessFacts GetProcessFacts(uint pid)
     {
-        if (_processCache.TryGetValue(pid, out var cached))
+        // Process ids are recycled, so a cached entry is only valid for the same process instance.
+        var startTime = GetProcessStartTime(pid);
+        if (_processCache.TryGetValue(pid, out var cached) && cached.StartTime == startTime)
         {
             return cached;
         }
 
         var path = NativeMethods.GetProcessPath(pid);
         var facts = new ProcessFacts(
+            startTime,
             path,
             DescribeProcess(path),
             NativeMethods.IsProcessElevated(pid),
@@ -243,6 +252,29 @@ internal sealed partial class WindowTracker : IDisposable
 
     [LibraryImport("kernel32.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int GetApplicationUserModelId(nint process, ref int length, [Out] char[]? buffer);
+
+    // FILETIME is two DWORDs (low part first), which is the layout of a little-endian 64-bit integer.
+    [LibraryImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetProcessTimes(nint process, out long creation, out long exit, out long kernel, out long user);
+
+    private static long GetProcessStartTime(uint pid)
+    {
+        var process = NativeMethods.OpenProcess(NativeMethods.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (process == 0)
+        {
+            return 0;
+        }
+
+        try
+        {
+            return GetProcessTimes(process, out var creation, out _, out _, out _) ? creation : 0;
+        }
+        finally
+        {
+            NativeMethods.CloseHandle(process);
+        }
+    }
 
     /// <summary>The package AUMID of a packaged (MSIX/UWP) process, or null for classic desktop apps.</summary>
     private static string? GetPackagedAppUserModelId(uint pid)
@@ -278,7 +310,10 @@ internal sealed partial class WindowTracker : IDisposable
         _refreshTimer.Stop();
         _hook?.Dispose();
         _hook = null;
+        _foregroundHook?.Dispose();
+        _foregroundHook = null;
     }
 
-    private sealed record ProcessFacts(string? Path, string DisplayName, bool IsElevated, string? PackagedAppUserModelId);
+    /// <summary>Cached per-process facts. StartTime is the process creation FILETIME (0 if unknown) and detects a recycled process id.</summary>
+    private sealed record ProcessFacts(long StartTime, string? Path, string DisplayName, bool IsElevated, string? PackagedAppUserModelId);
 }

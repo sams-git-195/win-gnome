@@ -1,3 +1,4 @@
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Windows;
@@ -34,11 +35,17 @@ public partial class App : Application
     private DateTime _dispatcherErrorWindowStart = DateTime.UtcNow;
     private bool _stopped;
 
+    /// <summary>
+    /// True once this process holds the single-instance mutex. Only the owner may restore the taskbar: a second
+    /// launch (the documented way to open settings) must not undo the running instance's taskbar state.
+    /// </summary>
+    private volatile bool _ownsInstance;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         var options = CommandLineOptions.Parse(e.Args);
-        _settingsDirectory = options.SettingsDirectory ?? SettingsStore.DefaultDirectory;
+        _settingsDirectory = FullPathOrSelf(options.SettingsDirectory ?? SettingsStore.DefaultDirectory);
         Log.Initialize(_settingsDirectory);
         Log.Info($"WinGnome {typeof(App).Assembly.GetName().Version} starting. Args: {string.Join(' ', e.Args)}");
         InstallCrashHandlers();
@@ -52,7 +59,8 @@ public partial class App : Application
 
         if (!AcquireSingleInstance(options))
         {
-            Shutdown(0);
+            // A self-test that could not run must not report success.
+            Shutdown(options.SelfTest ? 1 : 0);
             return;
         }
 
@@ -67,7 +75,12 @@ public partial class App : Application
         {
             Log.Error("Fatal error during startup", ex);
             StopShell();
-            MessageBox.Show($"WinGnome could not start:\n\n{ex.Message}", "WinGnome", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (!options.SelfTest)
+            {
+                // A modal dialog would hang an unattended self-test run.
+                MessageBox.Show($"WinGnome could not start:\n\n{ex.Message}", "WinGnome", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+
             Shutdown(1);
             return;
         }
@@ -189,15 +202,31 @@ public partial class App : Application
         _catalog?.Dispose();
         _tracker?.Dispose();
         _theme?.Dispose();
-        TaskbarController.RestoreFromMarker(_settingsDirectory);
+        if (_ownsInstance)
+        {
+            TaskbarController.RestoreFromMarker(_settingsDirectory);
+        }
 
         _activationWait?.Unregister(null);
         _activationEvent?.Dispose();
         if (_instanceMutex is not null)
         {
+            _ownsInstance = false;
             _instanceMutex.ReleaseMutex();
             _instanceMutex.Dispose();
             _instanceMutex = null;
+        }
+    }
+
+    private static string FullPathOrSelf(string directory)
+    {
+        try
+        {
+            return Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return directory;
         }
     }
 
@@ -224,6 +253,7 @@ public partial class App : Application
             return false;
         }
 
+        _ownsInstance = true;
         _activationWait = ThreadPool.RegisterWaitForSingleObject(_activationEvent,
             (_, _) => Dispatcher.BeginInvoke(() => _context?.Commands.ShowSettings()),
             null, Timeout.Infinite, executeOnlyOnce: false);
@@ -272,6 +302,11 @@ public partial class App : Application
 
     private void EmergencyRestore()
     {
+        if (!_ownsInstance)
+        {
+            return;
+        }
+
         foreach (var feature in _features.OfType<IEmergencyRestore>())
         {
             try
