@@ -6,6 +6,17 @@ namespace WinGnome.Core.Dock;
 /// <summary>Where the dock sits when shown, where it parks when hidden, and where the pointer reveals it.</summary>
 public sealed record DockGeometry(PixelRect Bounds, PixelRect HiddenBounds, PixelRect TriggerZone);
 
+/// <summary>Spacing options for the dock geometry, in device-independent pixels.</summary>
+/// <param name="IconPaddingDip">Padding around each icon (half the gap between neighbouring icons).</param>
+/// <param name="EdgeGapDip">Gap between a floating dock and the screen edge (ignored in panel mode).</param>
+/// <param name="EndPaddingDip">Padding at both ends of the dock, and the minimum distance from the monitor's ends.</param>
+/// <param name="ExtraLengthDip">Fixed-length content along the dock (separators) in addition to the icon cells.</param>
+public sealed record DockLayoutOptions(double IconPaddingDip = 6, double EdgeGapDip = 8, double EndPaddingDip = 8, double ExtraLengthDip = 0)
+{
+    /// <summary>The classic spacing: 6 DIP icon padding, 8 DIP gap and end padding, no extra length.</summary>
+    public static DockLayoutOptions Default { get; } = new();
+}
+
 /// <summary>Dock geometry and hover magnification maths.</summary>
 public static class DockLayout
 {
@@ -21,16 +32,31 @@ public static class DockLayout
     /// <param name="iconSizePx">Icon size in physical pixels.</param>
     /// <param name="dpiScale">Physical pixels per DIP.</param>
     /// <param name="extendToEdges">Stretch along the whole edge with no gap instead of floating in the middle.</param>
-    public static DockGeometry Compute(PixelRect monitor, DockPosition position, int itemCount, double iconSizePx, double dpiScale, bool extendToEdges)
+    public static DockGeometry Compute(PixelRect monitor, DockPosition position, int itemCount, double iconSizePx, double dpiScale, bool extendToEdges) =>
+        Compute(monitor, position, itemCount, iconSizePx, dpiScale, extendToEdges, DockLayoutOptions.Default);
+
+    /// <summary>
+    /// Computes the dock rectangles on <paramref name="monitor"/> (physical pixels) with custom spacing.
+    /// </summary>
+    /// <param name="monitor">Monitor bounds.</param>
+    /// <param name="position">Which edge the dock hugs.</param>
+    /// <param name="itemCount">Number of icons (at least one cell is always reserved).</param>
+    /// <param name="iconSizePx">Icon size in physical pixels.</param>
+    /// <param name="dpiScale">Physical pixels per DIP.</param>
+    /// <param name="extendToEdges">Stretch along the whole edge with no gap instead of floating in the middle.</param>
+    /// <param name="options">Spacing in DIPs; negative or non-finite values count as zero.</param>
+    public static DockGeometry Compute(PixelRect monitor, DockPosition position, int itemCount, double iconSizePx, double dpiScale, bool extendToEdges, DockLayoutOptions options)
     {
+        ArgumentNullException.ThrowIfNull(options);
         var scale = double.IsFinite(dpiScale) && dpiScale > 0 ? dpiScale : 1;
         var icon = double.IsFinite(iconSizePx) && iconSizePx > 0 ? iconSizePx : 0;
 
-        var padding = Px(6 * scale);
+        var padding = Px(NonNegative(options.IconPaddingDip) * scale);
         var cell = Px(icon + (2 * padding));
         var thickness = cell + (2 * Px(4 * scale));
-        var edgeInset = Px(8 * scale);
-        var gap = extendToEdges ? 0 : edgeInset;
+        var edgeInset = Px(NonNegative(options.EndPaddingDip) * scale);
+        var gap = extendToEdges ? 0 : Px(NonNegative(options.EdgeGapDip) * scale);
+        var extra = Px(NonNegative(options.ExtraLengthDip) * scale);
 
         var horizontal = position == DockPosition.Bottom;
         var monitorLength = horizontal ? monitor.Width : monitor.Height;
@@ -42,7 +68,7 @@ public static class DockLayout
         }
         else
         {
-            var desired = (Math.Max(1, itemCount) * cell) + (2 * edgeInset);
+            var desired = (Math.Max(1, itemCount) * cell) + extra + (2 * edgeInset);
             length = Math.Max(1, Math.Min(desired, monitorLength - (2 * edgeInset)));
             length = Math.Min(length, monitorLength);
         }
@@ -100,4 +126,6 @@ public static class DockLayout
     }
 
     private static int Px(double value) => (int)Math.Round(value, MidpointRounding.AwayFromZero);
+
+    private static double NonNegative(double value) => double.IsFinite(value) && value > 0 ? value : 0;
 }
