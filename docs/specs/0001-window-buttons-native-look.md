@@ -54,5 +54,13 @@ window whose colour is sampled, per activation change. No polling.
 4. Unified-colour windows (Control Panel) still match exactly.
 
 ## Risks and open questions
-- Apps that draw their own buttons can only be supported by locating their buttons through UI Automation or
-  hard-coded per-framework geometry; both are fragile across app versions and not done here.
+- Apps that draw their own buttons report an empty `DWMWA_CAPTION_BUTTON_BOUNDS`. Options measured:
+  - **UI Automation**: Dia's tree had 3,896 buttons and took 2.97 s to search, with no caption buttons found.
+    GitHub Desktop exposed nothing until Chromium accessibility is switched on, which is expensive inside the
+    target app. Rejected.
+  - **`WM_NCHITTEST` probing** (`SendMessageTimeout`, no injection): apps that support Snap Layouts answer
+    `HTMINBUTTON`/`HTMAXBUTTON`/`HTCLOSE` over their own buttons. Claude desktop (Electron, Windows Controls
+    Overlay) answered three 56 px runs at 125 %. GitHub Desktop (HTML buttons) and Dia answered `HTCLIENT`. This is
+    the realistic route for a follow-up: probe once per size change (never per move), stop at the first timeout,
+    remember failures for each window size, take the colour from sampling, and keep it behind an opt-in setting.
+    Not done here because it sends cross-process messages from the UI thread and needs its own spec.
