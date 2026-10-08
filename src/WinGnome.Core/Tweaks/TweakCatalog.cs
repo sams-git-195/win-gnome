@@ -1,3 +1,5 @@
+using WinGnome.Core.Theming;
+
 namespace WinGnome.Core.Tweaks;
 
 /// <summary>The built-in "streamline" tweaks. The data is declarative so it is easy to review and edit.</summary>
@@ -8,7 +10,13 @@ public static class TweakCatalog
     private const string ContentDelivery = @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager";
     private const string ExplorerPolicy = @"Software\Policies\Microsoft\Windows\Explorer";
     private const string SearchSettings = @"Software\Microsoft\Windows\CurrentVersion\Search";
+    private const string DwmKey = @"Software\Microsoft\Windows\DWM";
+    private const string DesktopIcons = @"Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel";
+    private const string SpotlightIconGuid = "{2cc5ca98-6485-489a-920e-b3e88a6ccce3}";
     private const string ClassicMenuKey = @"Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32";
+
+    // Initialised before All, which uses it: static initialisers run in textual order.
+    private static readonly HexColor AdwaitaBlue = HexColor.FromRgb(0x35, 0x84, 0xE4);
 
     /// <summary>All tweaks in display order.</summary>
     public static IReadOnlyList<TweakDefinition> All { get; } =
@@ -21,6 +29,41 @@ public static class TweakCatalog
             [DWord(Personalize, "AppsUseLightTheme", 0), DWord(Personalize, "SystemUsesLightTheme", 0)],
             RequiresExplorerRestart: false,
             BroadcastThemeChange: true),
+
+        // GNOME look: Adwaita blue as the only accent, neutral chrome, an empty desktop.
+        new TweakDefinition(
+            "gnome-accent",
+            "Adwaita blue accent",
+            "Sets the Windows accent colour to GNOME's blue (#3584E4) for selections, toggles and focus rings, instead of one picked from your wallpaper.",
+            TweakCategory.GnomeLook,
+            AccentColorChanges.For(AdwaitaBlue),
+            RequiresExplorerRestart: false,
+            BroadcastThemeChange: true),
+
+        new TweakDefinition(
+            "neutral-chrome",
+            "Neutral title bars, Start and taskbar",
+            "Keeps the accent colour off title bars, window borders, Start and the taskbar, so the window chrome stays neutral like GNOME's.",
+            TweakCategory.GnomeLook,
+            [DWord(DwmKey, "ColorPrevalence", 0), DWord(Personalize, "ColorPrevalence", 0)],
+            RequiresExplorerRestart: false,
+            BroadcastThemeChange: true),
+
+        new TweakDefinition(
+            "hide-desktop-icons",
+            "Empty desktop",
+            "Hides every icon on the desktop, as GNOME does by default; your files stay in the Desktop folder.",
+            TweakCategory.GnomeLook,
+            [DWord(ExplorerAdvanced, "HideIcons", 1)],
+            RequiresExplorerRestart: true),
+
+        new TweakDefinition(
+            "hide-spotlight-icon",
+            "Hide \"Learn about this picture\"",
+            "Removes the Windows Spotlight icon that appears on the desktop when Spotlight picks your wallpaper.",
+            TweakCategory.GnomeLook,
+            [DWord(DesktopIcons, SpotlightIconGuid, 1)],
+            RequiresExplorerRestart: true),
 
         new TweakDefinition(
             "classic-context-menu",

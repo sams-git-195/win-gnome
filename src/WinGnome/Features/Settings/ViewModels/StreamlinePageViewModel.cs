@@ -204,9 +204,14 @@ internal sealed class StreamlinePageViewModel : SettingsPageViewModel
         TweakCategory.Shell => "Start and shell",
         TweakCategory.Privacy => "Privacy",
         TweakCategory.Taskbar => "Taskbar",
+        TweakCategory.GnomeLook => "GNOME look",
         _ => "Behaviour",
     };
 
-    private static string? CategoryDescription(TweakCategory category) =>
-        category == TweakCategory.Taskbar ? "For native taskbar mode — uses supported Windows settings only." : null;
+    private static string? CategoryDescription(TweakCategory category) => category switch
+    {
+        TweakCategory.Taskbar => "For native taskbar mode — uses supported Windows settings only.",
+        TweakCategory.GnomeLook => "Make the rest of Windows calmer and more neutral, like GNOME. Colour changes apply straight away; the desktop ones need an Explorer restart.",
+        _ => null,
+    };
 }
