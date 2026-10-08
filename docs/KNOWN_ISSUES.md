@@ -25,11 +25,13 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-004](#ki-004) | S4 | Overview | Super key opens Start when an elevated window has focus | By design |
 | [KI-005](#ki-005) | S4 | Tray | Some tray icons only appear in the Windows tray | By design |
 | [KI-006](#ki-006) | S4 | Tray | No tray icons when running elevated or alongside another tray host | By design |
-| [KI-007](#ki-007) | S4 | Window buttons | Apps that draw their own title bars keep their own buttons | By design |
+| [KI-007](#ki-007) | S3 | Window buttons | Apps that draw their own title bars keep their own buttons | Open |
 | [KI-008](#ki-008) | S4 | Taskbar | The native taskbar isn't restyled | By design |
 | [KI-009](#ki-009) | S4 | Repo | No CI workflow, although the README says `--selftest` is used by CI | Open |
 | [KI-010](#ki-010) | S3 | App | Launched from a sandboxed terminal, WinGnome can't save settings or its restore marker | Open |
 | [KI-014](#ki-014) | S4 | Tweaks | GNOME look tweaks are verified by tests only, not yet on a live Windows install | Open |
+| [KI-015](#ki-015) | S3 | Window buttons | Two WinGnome instances that both decorate windows fight over title-bar colours | Open |
+| [KI-016](#ki-016) | S4 | Window buttons | The patch behind the circles is a flat colour | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -75,10 +77,19 @@ at a time (a second copy takes over when the first exits). If another tray host 
 WinGnome doesn't compete with it.
 
 ### KI-007
-**Apps that draw their own title bars keep their own buttons** · S4 · Window buttons · By design
+**Apps that draw their own title bars keep their own buttons** · S3 · Window buttons · Open
 
-Chrome, Edge, VS Code, Windows Terminal, WinUI 3 apps and others draw custom title bars, so traffic-light
-buttons can't be overlaid reliably. They're detected and left alone.
+Chrome, Edge, Electron apps (Claude desktop, GitHub Desktop, VS Code), Windows Terminal, WinUI 3 apps (Dia)
+and UWP apps (Settings, Calculator) draw their own caption buttons and don't report where they are
+(`DWMWA_CAPTION_BUTTON_BOUNDS` is empty or stale), so they're detected and left alone. Investigated 2026-10-08:
+- UI Automation is too slow and unreliable: searching Dia took 3 s across ~3,900 buttons without finding
+  them, and Electron apps expose nothing until accessibility is switched on inside the app.
+- Asking the window what's under a point (`WM_NCHITTEST`) works for apps that support Snap Layouts:
+  Claude desktop reports its minimise, maximise and close zones (56 px each at 125 %). GitHub Desktop and
+  Dia don't.
+*Fix direction:* an opt-in "Decorate apps with custom title bars (experimental)" setting that probes with
+`WM_NCHITTEST` off the UI thread (with `SendMessageTimeout`), decorates only when exactly three adjacent zones
+are found, and re-probes on resize. Needs its own spec.
 
 ### KI-008
 **The native taskbar isn't restyled** · S4 · Taskbar · By design
@@ -118,6 +129,21 @@ tweaks were written and tested against an in-memory registry. Still to confirm o
 - *Revert all* restores the accent from before WinGnome, discarding a newer accent picked in Windows Settings
   (the engine does this for every tweak).
 
+### KI-015
+**Two WinGnome instances that both decorate windows fight over title-bar colours** · S3 · Window buttons · Open
+
+With *Unify title bar colour* on in both, each records and restores the colours it changed, and the first to
+quit resets them under the other. Only matters with a second profile (`--settings-dir`) running alongside the
+everyday one, e.g. during QA: turn window buttons off in test profiles.
+
+### KI-016
+**The patch behind the circles is a flat colour** · S4 · Window buttons · Open
+
+The patch is one sampled colour. It matches solid and Mica title bars after the Mica fade settles (re-sampled
+~450 ms after activation), but doesn't reproduce a gradient, and can go stale when a Mica window is moved by
+code rather than dragged. Snapped windows keep a 1 px border inset, so the corner pixel shows the app's frame.
+*Fix direction:* sample a strip just left of the buttons and stretch it, re-sampling on move/size end.
+
 ## Resolved
 
 | ID | Severity | Area | Summary | Fixed in |
@@ -125,3 +151,4 @@ tweaks were written and tested against an in-memory registry. Still to confirm o
 | KI-011 | S2 | Settings | Non-safe runs with `--settings-dir` rewrote or deleted the shared "Start with Windows" entry | 6aeef5f |
 | KI-012 | S3 | Settings | A settings folder that couldn't be written silently dropped every change | 6e07eb0 (warning banner) |
 | KI-013 | S4 | Top bar | Large hover corner radius drew oval highlights instead of pills | c26e1c8 |
+| KI-017 | S3 | Window buttons | The patch behind the circles didn't match Mica title bars and hid the window border | 45ae75a |
