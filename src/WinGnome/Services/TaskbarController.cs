@@ -100,7 +100,8 @@ internal static partial class TaskbarController
 
     /// <summary>
     /// Hides the taskbar windows again (Explorer re-shows them on some events). Only call while a successful
-    /// <see cref="Hide"/> is in effect: its marker is what lets a crash or <c>--restore-taskbar</c> undo this.
+    /// <see cref="Hide"/> is in effect (<see cref="HasMarker"/>): its marker is what lets a crash or
+    /// <c>--restore-taskbar</c> undo this.
     /// </summary>
     public static void HideWindows()
     {
@@ -149,6 +150,12 @@ internal static partial class TaskbarController
         Log.Info("Taskbar restored");
         return true;
     }
+
+    /// <summary>
+    /// True while a restore marker exists, i.e. while WinGnome is allowed to keep the taskbar hidden or auto-hidden.
+    /// It disappears when anything restores the taskbar (settings page, <c>--restore-taskbar</c>, a crash handler).
+    /// </summary>
+    public static bool HasMarker(string settingsDirectory) => File.Exists(MarkerPath(settingsDirectory));
 
     public static bool IsAutoHide()
     {

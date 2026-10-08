@@ -18,6 +18,15 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
     /// <summary>Delay before re-hiding a taskbar Explorer just showed, so we never fight Explorer in a tight loop.</summary>
     private static readonly TimeSpan RehideDelay = TimeSpan.FromMilliseconds(250);
 
+    /// <summary>
+    /// If Explorer re-shows the taskbar more than <see cref="RehideBurstLimit"/> times within
+    /// <see cref="RehideBurstWindow"/>, re-hiding slows down to <see cref="RehideBackoffDelay"/> so the two never
+    /// flicker the taskbar back and forth several times a second.
+    /// </summary>
+    private const int RehideBurstLimit = 5;
+    private static readonly TimeSpan RehideBurstWindow = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan RehideBackoffDelay = TimeSpan.FromSeconds(5);
+
     /// <summary>Delay after an Explorer restart; the new taskbar is still initialising when the broadcast arrives.</summary>
     private static readonly TimeSpan RecreatedDelay = TimeSpan.FromSeconds(1);
 
@@ -31,7 +40,9 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
     private readonly string _settingsDirectory;
     private readonly DispatcherTimer _rehideTimer;
     private readonly DispatcherTimer _peekTimer;
+    private readonly Queue<DateTime> _recentRehides = new();
     private TaskbarCreatedListener? _listener;
+    private bool _backoffLogged;
 
     /// <summary>
     /// What is currently in effect. Anything but <see cref="TaskbarMode.Untouched"/> is backed by the restore marker.
@@ -132,8 +143,53 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
     {
         if (eventType == WinEventHook.EVENT_OBJECT_SHOW && IsHidden && !_peeking && TaskbarController.IsTaskbarWindow(hwnd))
         {
-            ScheduleRehide(RehideDelay);
+            ScheduleRehide(NextRehideDelay());
         }
+    }
+
+    private TimeSpan NextRehideDelay()
+    {
+        var now = DateTime.UtcNow;
+        while (_recentRehides.Count > 0 && now - _recentRehides.Peek() > RehideBurstWindow)
+        {
+            _recentRehides.Dequeue();
+        }
+
+        if (_recentRehides.Count < RehideBurstLimit)
+        {
+            _backoffLogged = false;
+            return RehideDelay;
+        }
+
+        if (!_backoffLogged)
+        {
+            _backoffLogged = true;
+            Log.Warn("Explorer keeps showing the taskbar again; re-hiding it less often");
+        }
+
+        return RehideBackoffDelay;
+    }
+
+    /// <summary>
+    /// The taskbar may only stay hidden or auto-hidden while its restore marker exists. When something else restored
+    /// it (the settings page's "Restore taskbar" button, <c>--restore-taskbar</c>), the marker is gone: stop managing
+    /// the taskbar until the taskbar mode is applied again, rather than hiding it with nothing able to undo that.
+    /// </summary>
+    private bool StillOwnsTaskbar()
+    {
+        if (_mode == TaskbarMode.Untouched)
+        {
+            return false;
+        }
+
+        if (TaskbarController.HasMarker(_settingsDirectory))
+        {
+            return true;
+        }
+
+        Log.Info("The taskbar was restored outside the taskbar feature; leaving it alone");
+        _mode = TaskbarMode.Untouched;
+        return false;
     }
 
     private void OnTaskbarCreated()
@@ -163,13 +219,19 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
     private void OnRehideTimer(object? sender, EventArgs e)
     {
         _rehideTimer.Stop();
-        if (_mode == TaskbarMode.Untouched || _peeking)
+        if (_peeking)
         {
             return;
         }
 
         try
         {
+            if (!StillOwnsTaskbar())
+            {
+                _recreated = false;
+                return;
+            }
+
             if (_recreated)
             {
                 // A new Explorer may have reset the auto-hide state. The marker already exists, so these only re-apply.
@@ -184,6 +246,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
             }
             else if (IsHidden)
             {
+                _recentRehides.Enqueue(DateTime.UtcNow);
                 TaskbarController.HideWindows();
             }
         }
@@ -195,7 +258,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
 
     private void OnPeekRequested(object? sender, EventArgs e)
     {
-        if (!IsHidden)
+        if (!IsHidden || !StillOwnsTaskbar())
         {
             return;
         }
@@ -277,7 +340,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
         }
 
         _peeking = false;
-        if (rehide && IsHidden)
+        if (rehide && IsHidden && StillOwnsTaskbar())
         {
             TaskbarController.HideWindows();
         }

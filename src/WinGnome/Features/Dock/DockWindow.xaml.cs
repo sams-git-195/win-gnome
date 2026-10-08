@@ -484,6 +484,11 @@ internal sealed partial class DockWindow : Window
 
     private void ResetSlideTransform()
     {
+        // Removing a running slide animation means its Completed handler never runs: finish the slide here, or the
+        // per-frame backdrop tracking would stay subscribed (forcing continuous rendering) and a dock that was
+        // sliding out would stay shown, invisible but topmost.
+        var wasSliding = _trackingSlide;
+        _slideGeneration++;
         Slide.BeginAnimation(TranslateTransform.XProperty, null);
         Slide.BeginAnimation(TranslateTransform.YProperty, null);
         Slide.X = 0;
@@ -491,6 +496,11 @@ internal sealed partial class DockWindow : Window
         if (_hasRevealState && !_revealed)
         {
             Slide.SetValue(SlideProperty(), HiddenOffset());
+        }
+
+        if (wasSliding)
+        {
+            FinishSlide();
         }
     }
 

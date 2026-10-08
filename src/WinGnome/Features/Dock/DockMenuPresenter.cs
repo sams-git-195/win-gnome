@@ -35,8 +35,6 @@ internal sealed class DockMenuPresenter
     /// <summary>Raised with true when a menu opens and false when it closes.</summary>
     public event EventHandler<bool>? OpenChanged;
 
-    public bool IsOpen => _menu is not null;
-
     /// <summary>Opens <paramref name="menu"/> beside <paramref name="target"/>, on the side away from the screen edge.</summary>
     /// <param name="menu">The menu to show.</param>
     /// <param name="target">The dock item the menu belongs to.</param>
@@ -107,8 +105,14 @@ internal sealed class DockMenuPresenter
         _dispatcher.BeginInvoke(DispatcherPriority.Background, () => RestoreForeground(restoreTo));
     }
 
-    private static void RestoreForeground(nint restoreTo)
+    private void RestoreForeground(nint restoreTo)
     {
+        // Another menu opened in the meantime (Show closes the previous one): it needs the foreground itself.
+        if (_menu is not null)
+        {
+            return;
+        }
+
         try
         {
             var foreground = NativeMethods.GetForegroundWindow();

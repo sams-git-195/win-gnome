@@ -17,7 +17,7 @@ namespace WinGnome.Features.Dock;
 /// visibility modes, context menus, drag and drop, and Super+N activation.
 /// </summary>
 [FeatureOrder(30)]
-internal sealed class DockFeature : IFeature
+internal sealed class DockFeature : IFeature, IEmergencyRestore
 {
     /// <summary>Padding at both ends of the dock (DIP).</summary>
     private const double EndPadding = 8;
@@ -372,6 +372,9 @@ internal sealed class DockFeature : IFeature
             Log.Warn("Dock: action failed", ex);
         }
     }
+
+    /// <summary>Crash path: give the reserved strip back to the work area (ABM_REMOVE is a plain Win32 call).</summary>
+    public void EmergencyRestore() => _reservation?.Release();
 
     public void Dispose()
     {
