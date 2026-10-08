@@ -26,6 +26,9 @@ internal sealed class ThumbnailLayer
     /// <summary>Duration of the "zoom out" from the real window positions into the grid.</summary>
     private static readonly TimeSpan OpenDuration = TimeSpan.FromMilliseconds(220);
 
+    /// <summary>Fade-in of captions and highlight rings once the thumbnails have landed.</summary>
+    private static readonly TimeSpan CaptionFadeDuration = TimeSpan.FromMilliseconds(120);
+
     /// <summary>Gap between slots. Rows need room for the caption under each thumbnail plus the highlight rings.</summary>
     private const double Spacing = WindowSlotView.CaptionHeight + (2 * WindowSlotView.FramePadding) + 16;
 
@@ -284,8 +287,12 @@ internal sealed class ThumbnailLayer
             slot.Thumbnail?.Show(slot.StartPx, slot.StartOpacity);
         }
 
-        // Captions and highlight rings are ordinary WPF content; they fade in alongside.
-        _canvas.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, OpenDuration));
+        // Captions and highlight rings are ordinary WPF content. They stay hidden while the thumbnails glide and
+        // fade in once they have landed (as in GNOME): fading the full-screen canvas during the glide made WPF
+        // re-render an overview-sized layer every frame, which halved the glide's frame rate (measured on a
+        // 2560x1440 screen: 8 instead of 16 frames per glide, 5 with software rendering).
+        _canvas.BeginAnimation(UIElement.OpacityProperty, null);
+        _canvas.Visibility = Visibility.Hidden;
         _animationClock = Stopwatch.StartNew();
         CompositionTarget.Rendering += OnRendering;
     }
@@ -302,6 +309,11 @@ internal sealed class ThumbnailLayer
         {
             StopAnimation();
             ApplyTargets();
+            if (_visible)
+            {
+                _canvas.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, CaptionFadeDuration));
+            }
+
             return;
         }
 
@@ -314,7 +326,9 @@ internal sealed class ThumbnailLayer
         }
     }
 
-    /// <summary>Ends a running opening animation immediately (thumbnails are left where they were).</summary>
+    /// <summary>
+    /// Ends a running opening animation immediately (thumbnails are left where they were) and shows the captions.
+    /// </summary>
     private void StopAnimation()
     {
         if (_animationClock is null)
@@ -324,7 +338,7 @@ internal sealed class ThumbnailLayer
 
         _animationClock = null;
         CompositionTarget.Rendering -= OnRendering;
-        _canvas.BeginAnimation(UIElement.OpacityProperty, null);
+        _canvas.Visibility = _visible ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private sealed class WindowSlot(WindowInfo window, DwmThumbnail? thumbnail, WindowSlotView view, ImageSource? icon, LayoutSize naturalSize)

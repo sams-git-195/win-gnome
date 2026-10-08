@@ -26,7 +26,12 @@ internal sealed class DwmThumbnail : IDisposable
         var hr = NativeMethods.DwmRegisterThumbnail(destination, source, out var handle);
         if (hr < 0 || handle == 0)
         {
-            Log.Warn($"DwmRegisterThumbnail failed for 0x{source:X} (hr=0x{hr:X8})");
+            // A window that closed after the window list was taken is expected, not worth a warning.
+            if (NativeMethods.IsWindow(source))
+            {
+                Log.Warn($"DwmRegisterThumbnail failed for 0x{source:X} (hr=0x{hr:X8})");
+            }
+
             return null;
         }
 
@@ -87,8 +92,10 @@ internal sealed class DwmThumbnail : IDisposable
     {
         if (_handle != 0)
         {
+            // DWM drops the thumbnail itself when the source window is destroyed (E_INVALIDARG here), which
+            // happens routinely when a window closes while the overview shows it: nothing to report then.
             var hr = NativeMethods.DwmUnregisterThumbnail(_handle);
-            if (hr < 0)
+            if (hr < 0 && NativeMethods.IsWindow(Source))
             {
                 Log.Warn($"DwmUnregisterThumbnail failed for 0x{Source:X} (hr=0x{hr:X8})");
             }

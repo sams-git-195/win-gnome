@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using WinGnome.Core.Settings;
 using WinGnome.Core.Theming;
 using WinGnome.Core.Windows;
@@ -14,7 +15,12 @@ internal sealed class DecoratedWindow : IDisposable
 {
     private readonly CaptionColorizer _colorizer;
     private readonly TrafficLightButtonsView _view = new();
-    private readonly CaptionSurface _buttons;
+
+    // Created on the first supported layout, not up front: many tracked windows never get one (dialogs with only
+    // a close button, DPI-virtualised apps), and each surface is a full WPF window kept for the target's lifetime.
+    // A surface that is never placed keeps WPF's default window size and its render buffers: measured about 9 MB,
+    // 4 GDI and 2 USER objects for every such window.
+    private CaptionSurface? _buttons;
     private CaptionSurface? _mask;
     private DecorationStyle _style;
 
@@ -31,7 +37,8 @@ internal sealed class DecoratedWindow : IDisposable
     private bool _disposed;
 
     /// <summary>
-    /// Creates the (hidden) surfaces. Subscribe to the events, then call <see cref="UpdatePlacement"/> to show them.
+    /// Tracks <paramref name="target"/>. Subscribe to the events, then call <see cref="UpdatePlacement"/>, which
+    /// creates and shows the surfaces once the target has a layout they can cover.
     /// </summary>
     public DecoratedWindow(nint target, DecorationStyle style, CaptionColorizer colorizer, bool isActive)
     {
@@ -40,11 +47,7 @@ internal sealed class DecoratedWindow : IDisposable
         _colorizer = colorizer;
         _view.IsWindowActive = isActive;
         _view.ButtonClicked += OnButtonClicked;
-        _buttons = new CaptionSurface(_view);
-        _buttons.Closed += OnSurfaceClosed;
-        _buttons.DpiChanged += (_, _) => _view.SetSurfaceScale(_buttons.SurfaceScale);
         _view.SetAppearance(style.Colors, style.Settings);
-        UpdateMask(style.Settings.Side == ButtonSide.Left);
     }
 
     /// <summary>The decorated window.</summary>
@@ -69,7 +72,7 @@ internal sealed class DecoratedWindow : IDisposable
 
         _style = style;
         _view.SetAppearance(style.Colors, style.Settings);
-        UpdateMask(style.Settings.Side == ButtonSide.Left);
+        UpdateMask();
         if (!style.Settings.UnifyTitleBarColor)
         {
             // Restore now: the rebuild below does not run while the window is minimised or on another desktop.
@@ -138,8 +141,9 @@ internal sealed class DecoratedWindow : IDisposable
             return;
         }
 
-        // Same size as when the layout was built, so the overlay just moves with the frame.
-        _buttons.Place(_layout.Bounds.Offset(metrics.Frame.Left - _anchor.Frame.Left, metrics.Buttons.Top - _anchor.Buttons.Top));
+        // Same size as when the layout was built, so the overlay just moves with the frame. A layout implies that
+        // the surfaces exist (see Rebuild).
+        _buttons!.Place(_layout.Bounds.Offset(metrics.Frame.Left - _anchor.Frame.Left, metrics.Buttons.Top - _anchor.Buttons.Top));
         _mask?.Place(metrics.Buttons);
         if (!_shown)
         {
@@ -157,7 +161,7 @@ internal sealed class DecoratedWindow : IDisposable
     /// <summary>Puts the surfaces back directly above the target after it may have moved in the z-order.</summary>
     public void Restack()
     {
-        if (_disposed || !_shown)
+        if (_disposed || !_shown || _buttons is null)
         {
             return;
         }
@@ -191,8 +195,12 @@ internal sealed class DecoratedWindow : IDisposable
 
         _disposed = true;
         _view.ButtonClicked -= OnButtonClicked;
-        _buttons.Closed -= OnSurfaceClosed;
-        _buttons.Destroy();
+        if (_buttons is not null)
+        {
+            _buttons.Closed -= OnSurfaceClosed;
+            _buttons.Destroy();
+        }
+
         _mask?.Destroy();
         _colorizer.Restore(Target);
     }
@@ -205,9 +213,10 @@ internal sealed class DecoratedWindow : IDisposable
         _layout = CaptionDecorationRules.HasButtonTrio(canMinimize, canMaximize) && !IsDpiVirtualized(metrics.Dpi)
             ? CaptionButtonLayout.Compute(metrics.Buttons, metrics.Frame, metrics.Scale, _style.Settings)
             : null;
-        if (_layout is null)
+        if (_layout is null || !EnsureSurfaces())
         {
             // Hidden until the window is supported again; it should not keep a recoloured title bar meanwhile.
+            _layout = null;
             _isUnified = false;
             _colorizer.Restore(Target);
             return;
@@ -215,7 +224,7 @@ internal sealed class DecoratedWindow : IDisposable
 
         _anchor = metrics;
         _view.SetLayout(_layout, metrics.Scale, canMinimize, canMaximize);
-        _view.SetSurfaceScale(_buttons.SurfaceScale);
+        _view.SetSurfaceScale(_buttons!.SurfaceScale);
 
         // Only surfaces touching the window's top-right corner need its rounding; maximised windows are square.
         var cornerRadius = isMaximized ? 0 : CaptionButtonGeometry.WindowCornerRadiusPixels(metrics.Scale);
@@ -250,12 +259,39 @@ internal sealed class DecoratedWindow : IDisposable
 
     private void SetFill(HexColor color)
     {
-        _buttons.SetFill(color);
+        _buttons?.SetFill(color);
         _mask?.SetFill(color);
     }
 
-    private void UpdateMask(bool needed)
+    /// <summary>Creates the surfaces on first use; false (after asking to be dropped) when the system refused.</summary>
+    private bool EnsureSurfaces()
     {
+        if (_buttons is not null)
+        {
+            return true;
+        }
+
+        try
+        {
+            var buttons = new CaptionSurface(_view);
+            buttons.Closed += OnSurfaceClosed;
+            buttons.DpiChanged += (_, _) => _view.SetSurfaceScale(buttons.SurfaceScale);
+            _buttons = buttons;
+            UpdateMask();
+            return true;
+        }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+        {
+            ThrottledLog.Warn("decorate", $"Could not create window buttons for 0x{Target:X}: {ex.Message}");
+            RemovalRequested?.Invoke(this, false);
+            return false;
+        }
+    }
+
+    /// <summary>Left-side circles also need a surface that masks the native buttons (once the buttons exist).</summary>
+    private void UpdateMask()
+    {
+        var needed = _buttons is not null && _style.Settings.Side == ButtonSide.Left;
         if (needed && _mask is null)
         {
             _mask = new CaptionSurface(content: null);
@@ -282,7 +318,7 @@ internal sealed class DecoratedWindow : IDisposable
         }
 
         _shown = false;
-        _buttons.Conceal();
+        _buttons?.Conceal();
         _mask?.Conceal();
     }
 

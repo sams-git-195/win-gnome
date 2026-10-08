@@ -149,6 +149,11 @@ internal sealed partial class OverviewWindow : Window
         if (!_closed)
         {
             Hide();
+
+            // A hidden WPF window keeps its full-screen back buffer (about 15 MB at 2560x1440, plus scratch layers).
+            // Shrinking it while hidden releases that; ShowOnPrimaryMonitor sizes it again before the next show.
+            NativeMethods.SetWindowPos(_hwnd, 0, _bounds.Left, _bounds.Top, 1, 1,
+                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
         }
 
         _thumbnails.Clear();

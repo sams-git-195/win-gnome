@@ -2,6 +2,8 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Windows;
+using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using WinGnome.Core.Settings;
 using WinGnome.Infrastructure;
@@ -45,6 +47,15 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // Software rendering for every window (before any is created). WinGnome runs all day and is idle almost
+        // all the time; its windows are small or static and its expensive visuals (blur, acrylic, live window
+        // thumbnails) are drawn by DWM either way. Hardware rendering costs a Direct3D device with the GPU
+        // driver's heaps and threads plus a swap chain per window, even while nothing animates. Measured on a
+        // 2560x1600 Intel iGPU: idle private bytes ~120 -> ~80 MB, threads 43 -> 24, and 166 -> 107 MB after the
+        // overview has been used; startup is ~100 ms faster and the overview glide keeps its frame rate.
+        RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
+
         var options = CommandLineOptions.Parse(e.Args);
         _settingsDirectory = FullPathOrSelf(options.SettingsDirectory ?? SettingsStore.DefaultDirectory);
         Log.Initialize(_settingsDirectory);
