@@ -52,7 +52,9 @@ the way it was when it exits.
 ### Streamline
 - **Centre new windows** (GNOME behaviour).
 - **Focus follows mouse** (X-Mouse style). This lasts for the session only and is restored on exit.
-- **Hide the Windows taskbar** while WinGnome runs. A top-bar menu item temporarily reveals it so you can reach tray icons.
+- **Taskbar mode** (Settings → General):
+  - **WinGnome dock** (default): the Windows taskbar is hidden while WinGnome runs. *Show system tray* in quick settings temporarily reveals it so you can reach tray icons.
+  - **Native Windows taskbar**: the Windows taskbar stays, with its tray icons, Start button and jump lists, and the WinGnome dock is turned off. You can optionally set the taskbar to auto-hide and streamline it with the *Taskbar* tweaks: hide Search, Task View and Copilot, and centre the icons. These use only supported Windows settings, with no code injected into Explorer, so they keep working across Windows updates.
 - Reversible **registry tweaks** (current user only, no admin needed). Each tweak backs up the original value and can be reverted one at a time or all at once:
   - Dark mode for apps and the system
   - Classic (full) right-click context menu
@@ -114,7 +116,8 @@ WinGnome changes as little as possible, and it undoes everything it changes:
 
 ## Known limitations
 
-- Tray icons can't be re-hosted in the top bar. Use *Show system tray* in the quick-settings menu to peek at the native tray.
+- Tray icons can't be re-hosted in the top bar. Use *Show system tray* in the quick-settings menu to peek at the native tray, or switch to native taskbar mode.
+- WinGnome doesn't restyle the native taskbar itself (rounded, floating or translucent). That would mean injecting code into Explorer, which breaks with Windows updates. If you want that, tools like Windhawk's *Taskbar Styler* can run alongside WinGnome in native taskbar mode.
 - Apps that draw their own title bars keep their own buttons.
 - The dock and top bar appear on the primary monitor only (multi-monitor support is on the roadmap).
 - Workspace switching works by sending Ctrl+Win+←/→, because Windows has no public API for switching virtual desktops.
