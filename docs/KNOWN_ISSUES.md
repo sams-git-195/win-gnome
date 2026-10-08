@@ -32,7 +32,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-014](#ki-014) | S4 | Tweaks | GNOME look tweaks are verified by tests only, not yet on a live Windows install | Open |
 | [KI-015](#ki-015) | S3 | Window buttons | Two WinGnome instances that both decorate windows fight over title-bar colours | Open |
 | [KI-016](#ki-016) | S4 | Window buttons | The patch behind the circles is a flat colour | Open |
-| [KI-018](#ki-018) | S4 | Performance | Idle CPU of ~0.6–1 s per minute is unexplained | Open |
+| [KI-018](#ki-018) | S4 | Performance | Idle CPU needs profiling on a quiet machine | Open |
 | [KI-019](#ki-019) | S4 | Tray | The tray host can take up to 1 s to get back in front of Explorer's taskbar | Open |
 | [KI-021](#ki-021) | S4 | Top bar | Brightness slider controls only a laptop's built-in display | Open |
 
@@ -147,10 +147,12 @@ code rather than dragged. Snapped windows keep a 1 px border inset, so the corne
 *Fix direction:* sample a strip just left of the buttons and stretch it, re-sampling on move/size end.
 
 ### KI-018
-**Idle CPU of ~0.6–1 s per minute is unexplained** · S4 · Performance · Open
+**Idle CPU needs profiling on a quiet machine** · S4 · Performance · Open
 
-Measured on 2026-10-08 with window buttons off, in safe mode, with other test instances running (so noisy).
-*Fix direction:* profile on a quiet machine (ETW / PerfView CPU sampling) and find the remaining wake-ups.
+On 2026-10-08 the footprint work measured 0.6–1 s of CPU per idle minute, but with other test instances
+running. The final build, measured alone with every feature on (user's settings, safe mode, one decorated
+window), used 0.24 s per idle minute, ~82 MB private memory and 15 threads once settled.
+*Fix direction:* ETW / PerfView CPU sampling over a long idle period to find the remaining wake-ups.
 
 ### KI-019
 **The tray host can take up to 1 s to get back in front of Explorer's taskbar** · S4 · Tray · Open
