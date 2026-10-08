@@ -1,5 +1,7 @@
 # 0005 — Window buttons on custom title bars (experimental)
 
+Status: Implemented (merged in 652c6cc)
+
 ## Problem
 Apps that draw their own title bar (Electron, Chromium, WinUI 3, Windows Terminal) keep their own buttons
 (KI-007), because `DWMWA_CAPTION_BUTTON_BOUNDS` is empty or stale for them. The user's everyday apps are of

@@ -35,6 +35,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-018](#ki-018) | S4 | Performance | Idle CPU needs profiling on a quiet machine | Open |
 | [KI-019](#ki-019) | S4 | Tray | The tray host can take up to 1 s to get back in front of Explorer's taskbar | Open |
 | [KI-021](#ki-021) | S4 | Top bar | Brightness slider controls only a laptop's built-in display | Open |
+| [KI-022](#ki-022) | S4 | Tray | A `WM_CLOSE` posted to "the taskbar" quits WinGnome while it hosts tray icons | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -159,8 +160,7 @@ window), used 0.24 s per idle minute, ~82 MB private memory and 15 threads once 
 
 The front check runs every 250 ms for 2 s after activity and every 1 s at rest (it was 250 ms always).
 If Explorer raises its taskbar with no event announcing it, a tray-icon call in that gap reaches Explorer
-only, and the icon appears in the top bar when the app next updates it. A posted `WM_CLOSE` to "the taskbar"
-also reaches WinGnome's host first and now quits WinGnome (see KI-020).
+only, and the icon appears in the top bar when the app next updates it.
 
 ### KI-021
 **Brightness slider controls only a laptop's built-in display** · S4 · Top bar · Open
@@ -170,6 +170,16 @@ desktops. External monitors would need DDC/CI (`dxva2` `GetMonitorBrightness`/`S
 Also: after any WMI failure (for example while Windows has dimmed the display) the row hides until the card
 is next opened, and on the development laptop `WmiSetBrightness` failed on every instance object except the
 first, so writes go through `SWbemServices.ExecMethod` (an undocumented quirk; late-bound COM via `dynamic`).
+
+### KI-022
+**A `WM_CLOSE` posted to "the taskbar" quits WinGnome while it hosts tray icons** · S4 · Tray · Open
+
+While WinGnome hosts the tray, its hidden host window is the first `Shell_TrayWnd` that `FindWindow` returns.
+Since 085fa14 a posted `WM_CLOSE` to it is treated as a quit request (that fixed KI-020, where a graceful
+`taskkill` was ignored). A tool or script that posts `WM_CLOSE` to the taskbar to open Explorer's *Shut Down
+Windows* dialog therefore quits WinGnome instead. *Fix direction:* if taskkill is confirmed to post to every
+top-level window of the process, forward the message to Explorer's real taskbar again and rely on the
+UI-thread windows for quitting.
 
 ## Resolved
 

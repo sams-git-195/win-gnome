@@ -49,16 +49,16 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | Theming | `HexColor`, `TrafficLightPalette` | Colour parsing, presets → `TrafficLightColors` |
 | Input | `Hotkey`, `SuperKeyStateMachine`, `HotCornerDetector` | Hotkey parsing, the "Win alone" detector, corner dwell |
 | Geometry | `PixelRect`, `LayoutRect`, `LayoutSize`, `BackdropPlacement` | Integer screen rectangles, double layout rectangles, blur backdrop inset under rounded bodies |
-| Windows | `WindowInfo`, `WindowFilter`, `AppIdentity`, `CaptionButtonLayout` | Alt-tab filtering, app grouping keys, traffic-light geometry |
+| Windows | `WindowInfo`, `WindowFilter`, `AppIdentity`, `CaptionButtonLayout`, `CaptionButtonGeometry`, `CaptionHitTestProbe` | Alt-tab filtering, app grouping keys, traffic-light geometry, finding custom title bars' buttons from hit-test samples |
 | Dock | `DockModelBuilder`, `DockApp`, `RunningWindow`, `DockLayout`, `DockClickPlanner` | Dock items, geometry, magnification, click behaviour |
 | Overview | `OverviewLayout` | Arranges window thumbnails in a grid that preserves aspect ratios |
 | Search | `FuzzyMatcher` | Ranks apps and windows by a query |
 | Shell | `KnownFolderPath` | Resolves `{GUID}\path` AppsFolder parsing names |
-| TopBar | `ClockFormatter`, `BatteryStatus` | GNOME-style clock text, battery state and whether to poll it |
+| TopBar | `ClockFormatter`, `BatteryStatus`, `BrightnessScale`, `BrightnessWheel`, `WriteCoalescer` | GNOME-style clock text, battery state and whether to poll it, brightness levels, wheel steps and coalesced writes |
 | Tray | `ShellTrayData`, `TrayIconRegistry`, `TrayFrontCheckSchedule` | Tray-host message parsing, icon list, how often the host re-checks it is in front |
 | Collections | `LruCache` | Bounded least-recently-used cache |
 | Workspaces | `VirtualDesktopState` | Parses Explorer's virtual-desktop registry blobs |
-| Tweaks | `TweakCatalog`, `TweakDefinition`, `RegistryChange`, `IRegistryStore`, `TweakEngine`, `TweakBackup` | Reversible HKCU tweaks |
+| Tweaks | `TweakCatalog`, `TweakDefinition`, `RegistryChange`, `IRegistryStore`, `TweakEngine`, `TweakBackup`, `AccentColorChanges` | Reversible HKCU tweaks, accent-colour registry values |
 
 ## App modules (WinGnome)
 

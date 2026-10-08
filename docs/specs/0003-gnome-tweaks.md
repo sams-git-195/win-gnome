@@ -1,6 +1,6 @@
 # 0003 — GNOME look tweaks
 
-Status: Implemented
+Status: Implemented (merged in e929d28)
 
 ## Problem
 WinGnome moves the shell, window buttons and overview towards GNOME, but the rest of Windows keeps its own

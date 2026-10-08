@@ -1,5 +1,7 @@
 # 0001 — Window buttons that blend into the title bar
 
+Status: Implemented (merged in 45ae75a)
+
 ## Problem
 The user reports that the round window buttons sit on an opaque patch that "looks weird" and does not match
 the title bar (dark theme, MacOS preset, unified colour on), and that the circles appear on some windows only.

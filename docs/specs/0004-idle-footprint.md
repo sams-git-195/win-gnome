@@ -1,6 +1,6 @@
 # 0004 — Idle footprint: tray front check, focused-app icon cache, battery polling
 
-*Implemented* (branch `worktree-agent-ac6913d065faf4735`)
+Status: Implemented (merged in 085fa14)
 
 ## Problem
 Reviewers of the idle-memory work left three follow-ups:
