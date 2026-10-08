@@ -25,7 +25,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-004](#ki-004) | S4 | Overview | Super key opens Start when an elevated window has focus | By design |
 | [KI-005](#ki-005) | S4 | Tray | Some tray icons only appear in the Windows tray | By design |
 | [KI-006](#ki-006) | S4 | Tray | No tray icons when running elevated or alongside another tray host | By design |
-| [KI-007](#ki-007) | S3 | Window buttons | Apps that draw their own title bars keep their own buttons | Open |
+| [KI-007](#ki-007) | S4 | Window buttons | Some apps that draw their own title bars keep their own buttons | Partly fixed |
 | [KI-008](#ki-008) | S4 | Taskbar | The native taskbar isn't restyled | By design |
 | [KI-009](#ki-009) | S4 | Repo | No CI workflow, although the README says `--selftest` is used by CI | Open |
 | [KI-010](#ki-010) | S3 | App | Launched from a sandboxed terminal, WinGnome can't save settings or its restore marker | Open |
@@ -80,19 +80,18 @@ at a time (a second copy takes over when the first exits). If another tray host 
 WinGnome doesn't compete with it.
 
 ### KI-007
-**Apps that draw their own title bars keep their own buttons** · S3 · Window buttons · Open
+**Some apps that draw their own title bars keep their own buttons** · S4 · Window buttons · Partly fixed
 
-Chrome, Edge, Electron apps (Claude desktop, GitHub Desktop, VS Code), Windows Terminal, WinUI 3 apps (Dia)
-and UWP apps (Settings, Calculator) draw their own caption buttons and don't report where they are
-(`DWMWA_CAPTION_BUTTON_BOUNDS` is empty or stale), so they're detected and left alone. Investigated 2026-10-08:
-- UI Automation is too slow and unreliable: searching Dia took 3 s across ~3,900 buttons without finding
-  them, and Electron apps expose nothing until accessibility is switched on inside the app.
-- Asking the window what's under a point (`WM_NCHITTEST`) works for apps that support Snap Layouts:
-  Claude desktop reports its minimise, maximise and close zones (56 px each at 125 %). GitHub Desktop and
-  Dia don't.
-*Fix direction:* an opt-in "Decorate apps with custom title bars (experimental)" setting that probes with
-`WM_NCHITTEST` off the UI thread (with `SendMessageTimeout`), decorates only when exactly three adjacent zones
-are found, and re-probes on resize. Needs its own spec.
+Chrome, Edge, Electron apps, Windows Terminal, WinUI 3 and UWP apps draw their own caption buttons and don't
+report them to DWM (`DWMWA_CAPTION_BUTTON_BOUNDS` is empty or stale). Since 652c6cc the opt-in setting
+*Decorate apps with custom title bars (experimental)* asks such windows what's under the top-right corner
+(`WM_NCHITTEST`, off the UI thread, with timeouts) and decorates them when they report three adjacent close,
+maximise and minimise zones: this works for apps that support Snap Layouts, such as Claude desktop
+(spec 0005). Apps that report plain client area over their buttons (GitHub Desktop, Dia, Windows Terminal)
+keep their own buttons; UI Automation was tried and is too slow and unreliable (3 s on Dia without a result).
+Known limits of the experimental mode: while such a window is resized live it's re-probed repeatedly and its
+circles stay hidden until the size settles, and an app that reports zones but draws its buttons elsewhere
+would be mis-decorated (mitigated by strict order, size and edge checks).
 
 ### KI-008
 **The native taskbar isn't restyled** · S4 · Taskbar · By design

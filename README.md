@@ -44,7 +44,7 @@ the way it was when it exits.
 - Left or right placement, macOS or Windows button order, adjustable size and spacing.
 - Glyphs (× − +) appear on hover, and inactive windows can be dimmed, as on macOS.
 - **Unified title bars**: optionally paints every decorated window's title bar in an Adwaita header colour so the round buttons blend in seamlessly. The original colours come back on exit.
-- Per-app exclusions. Apps that draw their own title bars (Chrome, Edge, VS Code, Windows Terminal, WinUI 3 apps) are left alone automatically.
+- Per-app exclusions. Apps that draw their own title bars (Chrome, Edge, VS Code, Windows Terminal, WinUI 3 apps) are left alone automatically, unless you turn on *Decorate apps with custom title bars (experimental)*, which adds the circles to apps that report their buttons to Windows (Claude desktop, for example).
 
 ### Activities overview
 - Full-screen overview with **live window thumbnails** (DWM). Click a thumbnail to focus that window, or hover and click × to close it.
