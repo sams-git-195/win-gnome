@@ -25,6 +25,9 @@ public static class CaptionHitTestProbe
     /// <summary>Distance in physical pixels between horizontal samples.</summary>
     public const int HorizontalStep = 2;
 
+    /// <summary>Largest gap in DIPs allowed between the frame's right edge and the close button.</summary>
+    public const double MaxEdgeGap = 8;
+
     /// <summary>Smallest believable button width in DIPs.</summary>
     public const double MinButtonWidth = 24;
 
@@ -73,6 +76,12 @@ public static class CaptionHitTestProbe
         while (i < codes.Count && !IsButton(codes[i]))
         {
             i++;
+        }
+
+        // Only the resize border may sit between the frame edge and the close button.
+        if (i < codes.Count && xs[0] - xs[i] > MaxEdgeGap * ValidScale(dpiScale))
+        {
+            return null;
         }
 
         int lastButtonIndex = -1;

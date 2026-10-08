@@ -46,7 +46,7 @@ internal sealed class CaptionOverlayManager : IDisposable
 
     // Custom title bars being probed off the UI thread, and those whose probe failed at a given size and DPI
     // (probed again only once that changes).
-    private readonly HashSet<nint> _probing = [];
+    private readonly Dictionary<nint, int> _probing = [];
     private readonly Dictionary<nint, (int Width, int Height, uint Dpi)> _probeFailed = [];
     private readonly HashSet<DecoratedWindow> _pendingSamples = [];
     private readonly List<nint> _scratch = [];
@@ -56,6 +56,7 @@ internal sealed class CaptionOverlayManager : IDisposable
     private nint _foreground;
     private int _restackPass;
     private int _samplePass;
+    private int _probeToken;
     private bool _started;
 
     public CaptionOverlayManager(WindowTracker tracker, CaptionColorizer colorizer, Dispatcher dispatcher, DecorationStyle style)
@@ -106,8 +107,13 @@ internal sealed class CaptionOverlayManager : IDisposable
             }
         }
 
-        // The custom title bar setting may have changed: reconsider every skipped window.
+        // The custom title bar setting may have changed: reconsider every skipped window, and retry failed probes
+        // after it has been switched off and on again.
         _skippedClass.Clear();
+        if (!style.Settings.DecorateCustomTitleBars)
+        {
+            _probeFailed.Clear();
+        }
         Reconcile();
     }
 
@@ -139,7 +145,7 @@ internal sealed class CaptionOverlayManager : IDisposable
         foreach (var info in _tracker.Windows)
         {
             if (!_windows.ContainsKey(info.Handle) && !_undecoratable.Contains(info.Handle)
-                && !_skippedClass.Contains(info.Handle) && !_probing.Contains(info.Handle))
+                && !_skippedClass.Contains(info.Handle) && !_probing.ContainsKey(info.Handle))
             {
                 TryDecorate(info);
             }
@@ -234,19 +240,37 @@ internal sealed class CaptionOverlayManager : IDisposable
 
     private void StartProbe(nint hwnd, PixelRect frame, uint dpi)
     {
-        if (!_probing.Add(hwnd))
+        if (_probing.ContainsKey(hwnd))
         {
             return;
         }
 
+        // The token ties the answer to this window: a window destroyed meanwhile drops its entry, so an answer for
+        // a recycled handle is ignored.
+        var token = ++_probeToken;
+        _probing[hwnd] = token;
+
         // WM_NCHITTEST goes to another process: never from the dispatcher (see CustomCaptionProbe).
-        Task.Run(() => CustomCaptionProbe.Probe(hwnd, frame, dpi))
-            .ContinueWith(task => _dispatcher.BeginInvoke(() => OnProbed(hwnd, frame, dpi, task.Result)), TaskScheduler.Default);
+        Task.Run(() =>
+        {
+            var result = CustomCaptionProbe.Probe(hwnd, frame, dpi, out var error);
+            _dispatcher.BeginInvoke(() => OnProbed(hwnd, token, frame, dpi, result, error));
+        });
     }
 
-    private void OnProbed(nint hwnd, PixelRect probedFrame, uint probedDpi, ProbedCaption? result)
+    private void OnProbed(nint hwnd, int token, PixelRect probedFrame, uint probedDpi, ProbedCaption? result, string? error)
     {
+        if (!_probing.TryGetValue(hwnd, out var current) || current != token)
+        {
+            return;
+        }
+
         _probing.Remove(hwnd);
+        if (error is not null)
+        {
+            ThrottledLog.Warn("probe", $"Probing the caption buttons of 0x{hwnd:X} failed: {error}");
+        }
+
         if (!_started || !NativeMethods.IsWindow(hwnd) || !_style.Settings.DecorateCustomTitleBars)
         {
             return;
@@ -322,6 +346,7 @@ internal sealed class CaptionOverlayManager : IDisposable
             _undecoratable.Remove(hwnd);
             _skippedClass.Remove(hwnd);
             _probeFailed.Remove(hwnd);
+            _probing.Remove(hwnd);
             if (_windows.ContainsKey(hwnd))
             {
                 _colorizer.Forget(hwnd);

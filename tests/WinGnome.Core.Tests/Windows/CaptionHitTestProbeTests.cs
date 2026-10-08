@@ -39,6 +39,17 @@ public sealed class CaptionHitTestProbeTests
         Assert.Equal(863, CaptionHitTestProbe.FindGroupLeft(xs, codes, 1.0));
     }
 
+    [Theory]
+    [InlineData(1.0, 4, 813)]   // 8 px from the edge: still the resize border at 100 %
+    [InlineData(1.0, 5, null)]  // 10 px: the trio is not at the window's edge
+    [InlineData(2.0, 8, 805)]   // 16 px is fine at 200 %
+    public void FindGroupLeft_ClosesGapToTheFrameEdgeIsLimited(double scale, int leadingSamples, int? expected)
+    {
+        var (xs, codes) = Row((Caption, leadingSamples), (Close, 30), (Max, 30), (Min, 30), (Caption, 5));
+
+        Assert.Equal(expected, CaptionHitTestProbe.FindGroupLeft(xs, codes, scale));
+    }
+
     [Fact]
     public void FindGroupLeft_AllClient_IsNull()
     {
