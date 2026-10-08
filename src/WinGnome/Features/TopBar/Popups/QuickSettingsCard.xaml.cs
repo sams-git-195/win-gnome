@@ -40,6 +40,26 @@ internal sealed partial class QuickSettingsCard : UserControl
         _status.NudgeBrightness(e.Delta);
     }
 
+    /// <summary>
+    /// Arrow and Page keys step one supported level. The slider's own keys move by 2 % or 10 %, which a panel
+    /// with coarse levels would snap straight back to the current level.
+    /// </summary>
+    private void OnBrightnessKeyDown(object sender, KeyEventArgs e)
+    {
+        var direction = e.Key switch
+        {
+            Key.Right or Key.Up or Key.PageUp => 1,
+            Key.Left or Key.Down or Key.PageDown => -1,
+            _ => 0,
+        };
+
+        if (direction != 0)
+        {
+            e.Handled = true;
+            _status.StepBrightness(direction);
+        }
+    }
+
     private void OnPowerClick(object sender, RoutedEventArgs e) =>
         PowerMenu.Visibility = PowerMenu.IsVisible ? Visibility.Collapsed : Visibility.Visible;
 

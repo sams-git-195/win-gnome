@@ -88,6 +88,9 @@ internal sealed class SystemStatusViewModel : ObservableObject, IDisposable
 
     public void NudgeBrightness(int wheelDelta) => _brightness.Nudge(wheelDelta);
 
+    /// <summary>One supported level up or down (arrow and Page keys on the slider).</summary>
+    public void StepBrightness(int direction) => _brightness.Step(direction);
+
     // ---- Battery ----------------------------------------------------------------------------
     public bool HasBattery => _battery.Status.HasBattery;
 

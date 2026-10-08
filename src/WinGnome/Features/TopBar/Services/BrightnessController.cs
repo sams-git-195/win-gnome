@@ -17,12 +17,12 @@ namespace WinGnome.Features.TopBar.Services;
 /// </remarks>
 internal sealed class BrightnessController : IDisposable
 {
+    private readonly BrightnessWheel _wheel = new();
     private WriteCoalescer _writes = new();
     private IReadOnlyList<int> _levels = [];
     private WmiBrightnessPanel? _panel;
     private int _writeCount;
     private bool _refreshing;
-    private bool _unsupported;
     private bool _disposed;
 
     /// <summary>True once a panel with brightness control has been read.</summary>
@@ -37,13 +37,15 @@ internal sealed class BrightnessController : IDisposable
     /// <summary>Reads the panel's levels and current brightness in the background.</summary>
     public async void Refresh()
     {
-        // A drag in progress owns the level; a desktop without a controllable panel is not asked again.
-        if (_disposed || _unsupported || _refreshing || _writes.IsBusy)
+        // A drag in progress owns the level. A machine without a controllable panel is asked again every time
+        // the card opens, so the row comes back after, say, undocking.
+        if (_disposed || _refreshing || _writes.IsBusy)
         {
             return;
         }
 
         _refreshing = true;
+        _wheel.Reset();
         var writesAtStart = _writeCount;
         try
         {
@@ -75,7 +77,7 @@ internal sealed class BrightnessController : IDisposable
             return;
         }
 
-        var level = BrightnessScale.Resolve(percent, Level, _levels);
+        var level = BrightnessScale.Snap(percent, _levels);
         if (level == Level)
         {
             return;
@@ -90,12 +92,21 @@ internal sealed class BrightnessController : IDisposable
         }
     }
 
-    /// <summary>Applies a mouse-wheel delta (5 % per notch).</summary>
+    /// <summary>Applies a mouse-wheel delta (5 % per notch, with touchpad fractions of a notch banked).</summary>
     public void Nudge(int wheelDelta)
     {
         if (IsAvailable)
         {
-            SetLevel(BrightnessScale.Nudge(Level, wheelDelta, _levels));
+            SetLevel(_wheel.Apply(Level, wheelDelta, _levels));
+        }
+    }
+
+    /// <summary>Moves to the next supported level up (<paramref name="direction"/> &gt; 0) or down (&lt; 0), for the keyboard.</summary>
+    public void Step(int direction)
+    {
+        if (IsAvailable)
+        {
+            SetLevel(BrightnessScale.Step(Level, direction, _levels));
         }
     }
 
@@ -113,6 +124,10 @@ internal sealed class BrightnessController : IDisposable
                 await Task.Run(() => panel.SetBrightness(level));
                 next = writes.Complete();
             }
+        }
+        catch (ObjectDisposedException)
+        {
+            // The panel was replaced or the controller disposed while this write was queued: nothing failed.
         }
         catch (Exception ex)
         {
@@ -139,7 +154,6 @@ internal sealed class BrightnessController : IDisposable
         if (panel is null)
         {
             Log.Info("No display reports brightness control; the brightness slider is hidden");
-            _unsupported = true;
             Clear();
             return;
         }

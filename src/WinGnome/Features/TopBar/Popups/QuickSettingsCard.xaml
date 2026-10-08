@@ -63,7 +63,8 @@
             <Button Style="{StaticResource QuickRoundButton}" Background="Transparent" Content="&#xE706;"
                     IsHitTestVisible="False" IsTabStop="False" Focusable="False" />
             <Slider Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Style="{StaticResource QuickSlider}"
-                    Value="{Binding BrightnessPercent, Mode=TwoWay}" AutomationProperties.Name="Screen brightness" />
+                    Value="{Binding BrightnessPercent, Mode=TwoWay}" AutomationProperties.Name="Screen brightness"
+                    PreviewKeyDown="OnBrightnessKeyDown" />
             <TextBlock Grid.Column="2" Text="{Binding BrightnessText}" VerticalAlignment="Center" HorizontalAlignment="Right"
                        Foreground="{DynamicResource SecondaryForegroundBrush}" />
         </Grid>

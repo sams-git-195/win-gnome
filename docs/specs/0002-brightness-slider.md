@@ -28,10 +28,12 @@ dim the panel.
 ## Design
 - **Core** (`WinGnome.Core.TopBar`):
   - `BrightnessScale`: `NormalizeLevels` (sort, de-duplicate, drop values outside 0..100), `Snap` (slider
-    percent to the nearest supported level; clamps non-finite input and tolerates an empty list), `Nudge`
-    (wheel step; a whole notch always reaches the adjacent supported level on panels with coarse levels, e.g.
-    0/25/50/75/100, while sub-notch touchpad deltas stay proportional), `Resolve` (a slider/arrow-key request
-    that snaps back to the current level on a coarse panel steps one level instead).
+    percent to the nearest supported level; clamps non-finite input and tolerates an empty list), `Step`
+    (the neighbouring supported level up or down, for the keyboard).
+  - `BrightnessWheel`: wheel deltas to levels, 5 % per notch. Precision touchpads send fractions of a notch,
+    so the travel that has not yet bought a whole step is banked and added to the next delta; sub-notch
+    deltas adding up to a notch move exactly one notch. On a panel with coarse levels (e.g. 0/25/50/75/100) a
+    whole notch steps to the neighbouring level. Travel that cannot be used (already at an end) is dropped.
   - `WriteCoalescer`: coalescing write state machine. At most one write is in flight; values posted while
     it runs replace each other, so a drag produces roughly one WMI call per completed call instead of one per
     mouse-move pixel, and the last value always wins.
@@ -48,7 +50,9 @@ dim the panel.
     thread never waits on WMI. The coalescer is only touched on the dispatcher thread.
   - `SystemStatusViewModel`: `IsBrightnessAvailable`, `BrightnessPercent` (two-way), `BrightnessText`,
     `NudgeBrightness`, `RefreshBrightness`.
-  - `QuickSettingsCard.xaml(.cs)`: the row and its wheel handler. `TopBarWindow` calls
+  - `QuickSettingsCard.xaml(.cs)`: the row, its wheel handler and a key handler on the slider: arrow and Page keys
+    step one supported level (the slider's own 2 % / 10 % steps would snap straight back on a coarse panel);
+    pointer drags use plain `Snap`, so a coarse panel never flips levels under a stationary pointer. `TopBarWindow` calls
     `RefreshBrightness` when the card opens.
 - Threading: reads and writes are serialised (one WMI call at a time). A read that finishes while a write
   is in flight is discarded; one that finishes after the user changed the level (even if the write is done)
@@ -62,12 +66,13 @@ Changes screen brightness only, through the supported WMI brightness interface. 
 restored: brightness is the user's own setting and persists in Windows like any other brightness change.
 `--safe` still shows the row (it is a user action, not a session tweak); `--selftest` never touches it
 because no card is opened. A WMI failure of any kind is logged with `Log.Warn` and hides the row; the next
-open of the card tries again, except that "no instances" (desktop) is remembered and not re-queried.
+open of the card tries again, including after "no instances" (a desktop, or a laptop that was docked and
+has since been undocked), so the row can come back.
 
 ## Footprint
 No timers, hooks or polling. One WMI connection plus read per card open, on a worker thread. The first open
 loads the WMI scripting libraries into the process (one-off memory cost); a machine without a controllable
-panel pays one query, then none. The COM objects are released on dispose and replaced on every refresh. While the display is dimmed or off
+panel pays one such query per card open. The COM objects are released on dispose and replaced on every refresh. While the display is dimmed or off
 (Windows presence dimming, lid closing) WMI reads 0 and writes fail; that is the normal failure path above.
 
 ## Acceptance criteria
@@ -75,8 +80,9 @@ panel pays one query, then none. The COM objects are released on dispose and rep
    inputs. (Core test)
 2. `NormalizeLevels` sorts, de-duplicates and removes out-of-range values; empty input stays empty.
    (Core test)
-3. `Nudge` moves 5 % per notch, is proportional to the wheel delta, clamps at the ends and always reaches
-   the neighbouring level on coarse panels. (Core test)
+3. `BrightnessWheel` moves 5 % per notch, banks sub-notch deltas so that they add up to exactly one notch,
+   clamps at the ends without banking unusable travel, and reaches the neighbouring level on coarse panels.
+   `Step` returns the neighbouring level, staying put at the ends. (Core tests)
 4. `WriteCoalescer` starts a write immediately when idle, keeps only the latest value while busy, skips a
    re-write of a value already written, and goes idle after the last write. (Core test)
 5. On a laptop the row appears, shows the current brightness, and dragging changes the real brightness. (QA)
