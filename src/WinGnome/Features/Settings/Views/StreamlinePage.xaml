@@ -1,0 +1,79 @@
+<UserControl x:Class="WinGnome.Features.Settings.Views.StreamlinePage" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls">
+    <StackPanel>
+        <Border Style="{DynamicResource CardBorder}" Margin="0,0,0,24" Padding="16,12"
+                Visibility="{Binding IsSimulated, Converter={x:Static c:Converters.BoolToVisibility}}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="&#xE7BA;" FontFamily="{DynamicResource IconFont}" FontSize="16" VerticalAlignment="Center"
+                           Foreground="{DynamicResource AccentBrush}" Margin="0,0,12,0" />
+                <TextBlock Text="Safe mode: changes are simulated. Nothing is written to your registry." Style="{DynamicResource RowTitleText}"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <Border Margin="0,0,0,24" Padding="16,12" CornerRadius="12" Background="{DynamicResource HoverBrush}"
+                Visibility="{Binding HasMessage, Converter={x:Static c:Converters.BoolToVisibility}}">
+            <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="14">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding MessageIsError}" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource DestructiveBrush}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </Border>
+
+        <ItemsControl x:Name="GroupsHost" ItemsSource="{Binding Groups}" Focusable="False">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <c:SettingsGroup Header="{Binding Title}" Description="{Binding Description}" ItemsSource="{Binding Items}">
+                        <c:SettingsGroup.ItemTemplate>
+                            <DataTemplate>
+                                <c:SettingsRow Title="{Binding Title}" Subtitle="{Binding Description}">
+                                    <c:SettingsRow.Details>
+                                        <StackPanel>
+                                            <Border CornerRadius="999" Padding="8,2" HorizontalAlignment="Left" Margin="0,0,0,2"
+                                                    Background="{DynamicResource HoverBrush}">
+                                                <TextBlock Text="{Binding Tag}" FontSize="12" Foreground="{DynamicResource SecondaryForegroundBrush}" />
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Tag}" Value="{x:Null}">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                            </Border>
+                                            <Button Content="Restart Explorer to apply" Style="{DynamicResource SettingsButton}" HorizontalAlignment="Left"
+                                                    Margin="0,6,0,0" Command="{Binding RestartExplorerCommand}"
+                                                    Visibility="{Binding NeedsExplorerRestart, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                                            <TextBlock Text="{Binding Error}" Margin="0,6,0,0" TextWrapping="Wrap" FontSize="13"
+                                                       Foreground="{DynamicResource DestructiveBrush}"
+                                                       Visibility="{Binding HasError, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                                        </StackPanel>
+                                    </c:SettingsRow.Details>
+                                    <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding IsApplied}" />
+                                </c:SettingsRow>
+                            </DataTemplate>
+                        </c:SettingsGroup.ItemTemplate>
+                    </c:SettingsGroup>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <c:SettingsGroup Header="Undo">
+            <c:SettingsRow Title="Revert all tweaks"
+                           Subtitle="Puts every registry value WinGnome changed back to what it was before. Your original values are kept in tweaks-backup.json.">
+                <Button Content="Revert all" Style="{DynamicResource SettingsDestructiveButton}" Command="{Binding RevertAllCommand}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+    </StackPanel>
+</UserControl>

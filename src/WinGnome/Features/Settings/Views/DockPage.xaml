@@ -1,0 +1,156 @@
+<UserControl x:Class="WinGnome.Features.Settings.Views.DockPage" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls">
+    <StackPanel>
+        <!-- Live preview at 75% scale: the checkerboard makes translucency visible. Blur and magnification cannot be previewed. -->
+        <Border CornerRadius="12" Margin="0,0,0,24" Padding="16" MinHeight="190" ClipToBounds="True"
+                Background="{DynamicResource PreviewBackdropBrush}">
+            <Border DataContext="{Binding Preview}" VerticalAlignment="Bottom" HorizontalAlignment="{Binding Alignment}"
+                    Margin="{Binding Margin}" CornerRadius="{Binding CornerRadius}" Background="{Binding Background}"
+                    Padding="6,4" AutomationProperties.Name="Dock preview">
+                <ItemsControl ItemsSource="{Binding Items}" Focusable="False" HorizontalAlignment="Center">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="{Binding DataContext.ItemPadding, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                                <Grid Width="{Binding DataContext.IconSize, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                      Height="{Binding DataContext.IconSize, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                                    <Border CornerRadius="10" Background="{Binding Fallback}">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                    <Image Source="{Binding Icon}" RenderOptions.BitmapScalingMode="HighQuality" />
+                                </Grid>
+                                <Ellipse Width="4" Height="4" Margin="0,3,0,0"
+                                         Fill="{Binding DataContext.IndicatorBrush, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Setter Property="Visibility" Value="Hidden" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsRunning}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+        </Border>
+
+        <c:SettingsGroup>
+            <c:SettingsRow Title="Show dock" Subtitle="Pinned and running apps in a dock, in the style of Dash to Dock.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding Enabled.Value}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Position">
+                <ListBox Style="{DynamicResource SegmentedListBox}" ItemsSource="{Binding Position.Options}"
+                         SelectedItem="{Binding Position.Selected}" DisplayMemberPath="Label" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Visibility" Subtitle="{Binding Visibility.SelectedDescription}">
+                <ComboBox ItemsSource="{Binding Visibility.Options}" SelectedItem="{Binding Visibility.Selected}" DisplayMemberPath="Label" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Click action" Subtitle="{Binding ClickAction.SelectedDescription}">
+                <ComboBox ItemsSource="{Binding ClickAction.Options}" SelectedItem="{Binding ClickAction.Selected}" DisplayMemberPath="Label" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Contents">
+            <c:SettingsRow Title="Show running apps" Subtitle="Turn off for a pure launcher that only shows pinned apps.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding ShowRunningApps.Value}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Running indicators" Subtitle="A dot for each open window, up to four.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding ShowRunningIndicators.Value}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Show Applications button" Subtitle="Opens the full application grid.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding ShowAppsButton.Value}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Recycle Bin">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding ShowRecycleBin.Value}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Appearance">
+            <c:SettingsRow Title="Background colour" Subtitle="Follows the theme by default.">
+                <c:ColorPickerRow DataContext="{Binding Background}" DefaultLabel="Follow theme"
+                                  DefaultBrush="{DynamicResource DockBackgroundBrush}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Opacity" Content="{Binding Opacity}" />
+            <c:SettingsRow Title="Blur effect" Subtitle="Visible when opacity is below 100%.">
+                <ComboBox ItemsSource="{Binding Blur.Options}" SelectedItem="{Binding Blur.Selected}" DisplayMemberPath="Label" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="App size" Content="{Binding IconSize}" />
+            <c:SettingsRow Title="Icon spacing" Content="{Binding IconSpacing}" />
+            <c:SettingsRow Title="Distance from edge" Content="{Binding EdgeMargin}" />
+            <c:SettingsRow Title="Corner radius" Content="{Binding CornerRadius}" />
+            <c:SettingsRow Title="Magnification" Subtitle="Icons grow under the pointer, as in macOS." Content="{Binding Magnification}" />
+            <c:SettingsRow Title="Indicator colour" Subtitle="The accent colour by default.">
+                <c:ColorPickerRow DataContext="{Binding IndicatorColor}" DefaultLabel="Accent"
+                                  DefaultBrush="{DynamicResource AccentBrush}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Panel mode" Subtitle="Stretch the dock across the whole screen edge instead of floating.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding PanelMode.Value}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Pinned apps" Description="Pinned apps stay in the dock whether or not they are running.">
+            <c:SettingsRow Title="Apps" IsStacked="True">
+                <StackPanel DataContext="{Binding PinnedApps}">
+                    <ItemsControl ItemsSource="{Binding Items}" Focusable="False">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Image Source="{Binding Icon}" Width="28" Height="28" Margin="0,0,12,0"
+                                           RenderOptions.BitmapScalingMode="HighQuality" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                               Style="{DynamicResource RowTitleText}" />
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                        <Button Content="&#xE70E;" Style="{DynamicResource SettingsIconButton}" ToolTip="Move up"
+                                                AutomationProperties.Name="Move up" IsEnabled="{Binding CanMoveUp}"
+                                                Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Content="&#xE70D;" Style="{DynamicResource SettingsIconButton}" ToolTip="Move down"
+                                                AutomationProperties.Name="Move down" IsEnabled="{Binding CanMoveDown}"
+                                                Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Content="&#xE74D;" Style="{DynamicResource SettingsIconButton}" ToolTip="Remove from dock"
+                                                AutomationProperties.Name="Remove from dock"
+                                                Command="{Binding DataContext.RemoveCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="Nothing is pinned." Style="{DynamicResource RowSubtitleText}" Margin="0,4"
+                               Visibility="{Binding IsEmpty, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Content="Add app&#x2026;" Style="{DynamicResource SettingsAccentButton}" Command="{Binding AddCommand}" />
+                        <Button Content="Reset to defaults" Style="{DynamicResource SettingsButton}" Margin="8,0,0,0"
+                                Command="{Binding ResetCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </c:SettingsRow>
+        </c:SettingsGroup>
+    </StackPanel>
+</UserControl>
