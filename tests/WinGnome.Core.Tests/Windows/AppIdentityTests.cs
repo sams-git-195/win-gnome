@@ -29,21 +29,21 @@ public class AppIdentityTests
     }
 
     [Theory]
-    [InlineData(null, @"C:\Windows\System32\ApplicationFrameHost.exe")]
-    [InlineData("  ", @"C:\Windows\System32\applicationframehost.EXE")]
-    [InlineData(null, null)]
-    [InlineData("", " ")]
-    public void ForIconCache_FrameHostOrProcessIdOnly_IsNotCacheable(string? aumid, string? path)
+    [InlineData(" Microsoft.WindowsCalculator_8wekyb3d8bbwe!App ", @"C:\Windows\System32\ApplicationFrameHost.exe")]
+    [InlineData("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", @"c:\windows\system32\applicationframehost.EXE")]
+    public void HostedAppIconId_FrameHostWithAumid_IsTheAumid(string aumid, string path)
     {
-        Assert.Null(AppIdentity.ForIconCache(aumid, path, 7));
+        Assert.Equal("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", AppIdentity.HostedAppIconId(aumid, path));
     }
 
     [Theory]
-    [InlineData("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", @"C:\Windows\System32\ApplicationFrameHost.exe", "aumid:microsoft.windowscalculator_8wekyb3d8bbwe!app")]
-    [InlineData(null, @"C:\Program Files\Foo\Foo.exe", @"path:c:\program files\foo\foo.exe")]
-    public void ForIconCache_OtherWindows_UseTheWindowIdentity(string? aumid, string? path, string expected)
+    [InlineData(null, @"C:\Windows\System32\ApplicationFrameHost.exe")]
+    [InlineData("  ", @"C:\Windows\System32\ApplicationFrameHost.exe")]
+    [InlineData("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", @"C:\Program Files\WindowsApps\Calc\CalculatorApp.exe")]
+    [InlineData("Microsoft.WindowsTerminal_8wekyb3d8bbwe!App", null)]
+    public void HostedAppIconId_OtherWindows_IsNull(string? aumid, string? path)
     {
-        Assert.Equal(expected, AppIdentity.ForIconCache(aumid, path, 7));
+        Assert.Null(AppIdentity.HostedAppIconId(aumid, path));
     }
 
     [Fact]

@@ -7,6 +7,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
+using WinGnome.Core.Collections;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
 
@@ -14,7 +15,7 @@ namespace WinGnome.Services.Apps;
 
 /// <summary>
 /// Loads app and window icons through the shell (IShellItemImageFactory) with correct alpha, and caches
-/// them per (id, size). Call from the UI thread (an STA thread with COM initialised).
+/// the most recently used per (id, size). Call from the UI thread (an STA thread with COM initialised).
 /// </summary>
 internal sealed class IconProvider : IIconProvider
 {
@@ -22,8 +23,11 @@ internal sealed class IconProvider : IIconProvider
     private const uint IconMessageTimeoutMs = 100;
     private const string AppsFolderPrefix = "shell:AppsFolder\\";
 
-    /// <summary>Keyed by "size|id". Failed lookups are cached as null so they are not retried every frame.</summary>
-    private readonly Dictionary<string, ImageSource?> _cache = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Keyed by "size|id". Failed lookups are cached as null so they are not retried every frame. Least recently used
+    /// entries go first, so a full cache does not reload every icon on screen at once.
+    /// </summary>
+    private readonly LruCache<string, ImageSource?> _cache = new(MaxCacheEntries, StringComparer.OrdinalIgnoreCase);
 
     public ImageSource? GetAppIcon(string launchIdOrPath, int sizePx)
     {
@@ -34,18 +38,13 @@ internal sealed class IconProvider : IIconProvider
 
         var id = launchIdOrPath.Trim();
         var key = sizePx.ToString(CultureInfo.InvariantCulture) + "|" + id;
-        if (_cache.TryGetValue(key, out var cached))
+        if (_cache.TryGet(key, out var cached))
         {
             return cached;
         }
 
         var icon = LoadShellImage(ToParsingName(id), sizePx);
-        if (_cache.Count >= MaxCacheEntries)
-        {
-            _cache.Clear();
-        }
-
-        _cache[key] = icon;
+        _cache.Set(key, icon);
         return icon;
     }
 
