@@ -15,8 +15,12 @@ namespace WinGnome.Features.WindowButtons;
 /// </summary>
 internal sealed class CaptionOverlayManager : IDisposable
 {
-    /// <summary>How long to wait before sampling a title bar, so the app has repainted it (e.g. after activation).</summary>
-    private static readonly TimeSpan SampleDelay = TimeSpan.FromMilliseconds(150);
+    /// <summary>
+    /// When to sample a title bar after a request: first once the app has repainted it (quick feedback), then
+    /// again once DWM's activation cross-fade has settled. Mica title bars (Explorer, Notepad) fade between their
+    /// active and inactive colours over about 300 ms, so the first sample is usually an in-between colour.
+    /// </summary>
+    private static readonly TimeSpan[] SampleDelays = [TimeSpan.FromMilliseconds(150), TimeSpan.FromMilliseconds(300)];
 
     /// <summary>
     /// When to re-check the stacking after a foreground change. EVENT_SYSTEM_FOREGROUND is raised as soon as the
@@ -42,6 +46,7 @@ internal sealed class CaptionOverlayManager : IDisposable
     private DecorationStyle _style;
     private nint _foreground;
     private int _restackPass;
+    private int _samplePass;
     private bool _started;
 
     public CaptionOverlayManager(WindowTracker tracker, CaptionColorizer colorizer, Dispatcher dispatcher, DecorationStyle style)
@@ -50,7 +55,7 @@ internal sealed class CaptionOverlayManager : IDisposable
         _colorizer = colorizer;
         _dispatcher = dispatcher;
         _style = style;
-        _sampleTimer = new DispatcherTimer(SampleDelay, DispatcherPriority.Background, OnSampleTimer, dispatcher) { IsEnabled = false };
+        _sampleTimer = new DispatcherTimer(SampleDelays[0], DispatcherPriority.Background, OnSampleTimer, dispatcher) { IsEnabled = false };
         _restackTimer = new DispatcherTimer(RestackDelays[0], DispatcherPriority.Normal, OnRestackTimer, dispatcher) { IsEnabled = false };
     }
 
@@ -294,8 +299,14 @@ internal sealed class CaptionOverlayManager : IDisposable
     private void OnSampleRequested(DecoratedWindow window)
     {
         _pendingSamples.Add(window);
-        if (!_sampleTimer.IsEnabled)
+
+        // A request while waiting for the settle pass starts over, so the new window also gets its quick sample;
+        // one while the first pass is pending simply joins it.
+        if (!_sampleTimer.IsEnabled || _samplePass > 0)
         {
+            _samplePass = 0;
+            _sampleTimer.Stop();
+            _sampleTimer.Interval = SampleDelays[0];
             _sampleTimer.Start();
         }
     }
@@ -306,6 +317,13 @@ internal sealed class CaptionOverlayManager : IDisposable
         foreach (var window in _pendingSamples)
         {
             window.SampleTitleBar();
+        }
+
+        if (++_samplePass < SampleDelays.Length)
+        {
+            _sampleTimer.Interval = SampleDelays[_samplePass];
+            _sampleTimer.Start();
+            return;
         }
 
         _pendingSamples.Clear();

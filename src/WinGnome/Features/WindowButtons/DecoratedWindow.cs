@@ -227,7 +227,10 @@ internal sealed class DecoratedWindow : IDisposable
         _view.SetSurfaceScale(_buttons!.SurfaceScale);
 
         // Only surfaces touching the window's top-right corner need its rounding; maximised windows are square.
-        var cornerRadius = isMaximized ? 0 : CaptionButtonGeometry.WindowCornerRadiusPixels(metrics.Scale);
+        // The surfaces stop inside the border (see CaptionMetrics.Buttons), so they follow its inner edge.
+        var cornerRadius = isMaximized
+            ? 0
+            : CaptionButtonGeometry.InnerCornerRadius(CaptionButtonGeometry.WindowCornerRadiusPixels(metrics.Scale), metrics.Border);
         _buttons.SetTopRightCornerRadius(_style.Settings.Side == ButtonSide.Right ? cornerRadius : 0);
         _mask?.SetTopRightCornerRadius(cornerRadius);
 

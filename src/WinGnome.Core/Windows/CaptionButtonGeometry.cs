@@ -22,6 +22,30 @@ public static class CaptionButtonGeometry
     }
 
     /// <summary>
+    /// The native buttons rectangle without the window border: DWM's caption-button rectangle includes the
+    /// frame's outermost pixels, where Windows 11 draws its 1 px (grey or accent) border. An overlay that covers
+    /// them cuts the border off at the buttons, so drop <paramref name="border"/> pixels on the top and right
+    /// wherever the buttons touch those frame edges.
+    /// </summary>
+    /// <param name="buttonsScreen">The visible native buttons in screen pixels.</param>
+    /// <param name="visibleFrame">DWMWA_EXTENDED_FRAME_BOUNDS of the window.</param>
+    /// <param name="border">Border thickness in physical pixels (0 for maximised windows, which have none).</param>
+    public static PixelRect InsideBorder(PixelRect buttonsScreen, PixelRect visibleFrame, int border)
+    {
+        if (buttonsScreen.IsEmpty || border <= 0)
+        {
+            return buttonsScreen;
+        }
+
+        var top = buttonsScreen.Top <= visibleFrame.Top ? visibleFrame.Top + border : buttonsScreen.Top;
+        var right = buttonsScreen.Right >= visibleFrame.Right ? visibleFrame.Right - border : buttonsScreen.Right;
+        return new PixelRect(buttonsScreen.Left, top, right, buttonsScreen.Bottom);
+    }
+
+    /// <summary>The radius of the border's inner edge at a window corner of radius <paramref name="outerRadius"/>.</summary>
+    public static int InnerCornerRadius(int outerRadius, int border) => Math.Max(0, outerRadius - Math.Max(0, border));
+
+    /// <summary>
     /// Converts DWMWA_CAPTION_BUTTON_BOUNDS (relative to the window rectangle) to screen pixels, clipped to the
     /// visible frame. Maximised windows extend past the monitor by their invisible resize border, and DWM's
     /// rectangle includes that off-screen strip; clipping keeps the overlay on the monitor and vertically
