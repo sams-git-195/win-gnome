@@ -26,8 +26,28 @@ public class TweakCatalogTests
                 "show-file-extensions",
                 "disable-snap-flyout",
                 "explorer-this-pc",
+                "taskbar-hide-search",
+                "taskbar-hide-task-view",
+                "taskbar-hide-copilot",
+                "taskbar-center-icons",
             ],
             TweakCatalog.All.Select(t => t.Id));
+    }
+
+    [Theory]
+    [InlineData("taskbar-hide-search", @"Software\Microsoft\Windows\CurrentVersion\Search", "SearchboxTaskbarMode", 0)]
+    [InlineData("taskbar-hide-task-view", Advanced, "ShowTaskViewButton", 0)]
+    [InlineData("taskbar-hide-copilot", Advanced, "ShowCopilotButton", 0)]
+    [InlineData("taskbar-center-icons", Advanced, "TaskbarAl", 1)]
+    public void TaskbarTweaks_WriteSingleSupportedDWord(string id, string subKey, string name, int value)
+    {
+        var t = Get(id);
+        Assert.Equal(TweakCategory.Taskbar, t.Category);
+        Assert.False(t.RequiresExplorerRestart);
+        var change = Assert.Single(t.Changes);
+        Assert.Equal(subKey, change.SubKey);
+        Assert.Equal(name, change.ValueName);
+        Assert.Equal(RegistryValue.DWord(value), change.Value);
     }
 
     [Fact]

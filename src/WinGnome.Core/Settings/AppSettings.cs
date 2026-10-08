@@ -53,8 +53,18 @@ public sealed class GeneralSettings
 {
     public bool StartWithWindows { get; set; }
 
-    /// <summary>Hide the native Windows taskbar while WinGnome runs (restored on exit).</summary>
+    /// <summary>
+    /// Hide the native Windows taskbar while WinGnome runs (restored on exit) — "WinGnome dock" mode.
+    /// When false WinGnome runs in "native taskbar" mode: the Windows taskbar stays, optionally
+    /// auto-hidden (<see cref="NativeTaskbarAutoHide"/>) and styled with the Taskbar tweaks.
+    /// </summary>
     public bool HideWindowsTaskbar { get; set; } = true;
+
+    /// <summary>
+    /// Native taskbar mode only: switch the Windows taskbar to auto-hide while WinGnome runs
+    /// (the original state is restored on exit, like taskbar hiding).
+    /// </summary>
+    public bool NativeTaskbarAutoHide { get; set; }
 
     /// <summary>Colour scheme for WinGnome's own surfaces (top bar menus, dock, overview, settings).</summary>
     public ThemeMode Theme { get; set; } = ThemeMode.Dark;

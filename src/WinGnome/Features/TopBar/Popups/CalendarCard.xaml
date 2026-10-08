@@ -1,0 +1,34 @@
+<UserControl x:Class="WinGnome.Features.TopBar.Popups.CalendarCard"
+             x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:WinGnome.Features.TopBar"
+             Width="296"
+             UseLayoutRounding="True">
+    <UserControl.Resources>
+        <ResourceDictionary Source="PopupStyles.xaml" />
+    </UserControl.Resources>
+    <StackPanel Margin="4">
+        <!-- GNOME date header: weekday on its own line above a large date. -->
+        <TextBlock x:Name="WeekdayText" Margin="8,2,8,0" FontSize="13" FontWeight="SemiBold"
+                   Foreground="{DynamicResource SecondaryForegroundBrush}" />
+        <TextBlock x:Name="DateText" Margin="8,0,8,12" FontSize="20" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+
+        <Calendar x:Name="MonthCalendar" Style="{StaticResource GnomeCalendar}" PreviewMouseUp="OnCalendarPreviewMouseUp" />
+
+        <Border Height="1" Margin="4,10,4,6" Background="{DynamicResource BorderBrush}" />
+
+        <Button Style="{StaticResource MenuRowButton}" Tag="{x:Static local:TopBarAction.Notifications}" Click="OnActionClick">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource IconText}" Text="&#xEA8F;" Margin="0,0,12,0" />
+                <TextBlock Text="Notifications" VerticalAlignment="Center" />
+            </StackPanel>
+        </Button>
+        <Button Style="{StaticResource MenuRowButton}" Tag="{x:Static local:TopBarAction.DateTimeSettings}" Click="OnActionClick">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource IconText}" Text="&#xE787;" Margin="0,0,12,0" />
+                <TextBlock Text="Date &amp; time settings" VerticalAlignment="Center" />
+            </StackPanel>
+        </Button>
+    </StackPanel>
+</UserControl>

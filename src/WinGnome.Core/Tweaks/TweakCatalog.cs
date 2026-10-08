@@ -7,6 +7,7 @@ public static class TweakCatalog
     private const string ExplorerAdvanced = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
     private const string ContentDelivery = @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager";
     private const string ExplorerPolicy = @"Software\Policies\Microsoft\Windows\Explorer";
+    private const string SearchSettings = @"Software\Microsoft\Windows\CurrentVersion\Search";
     private const string ClassicMenuKey = @"Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32";
 
     /// <summary>All tweaks in display order.</summary>
@@ -99,6 +100,39 @@ public static class TweakCatalog
             "Makes File Explorer start on This PC instead of Home.",
             TweakCategory.Behaviour,
             [DWord(ExplorerAdvanced, "LaunchTo", 1)],
+            RequiresExplorerRestart: false),
+
+        // Native taskbar mode: supported, documented settings only (no Explorer injection).
+        new TweakDefinition(
+            "taskbar-hide-search",
+            "Hide the taskbar search box",
+            "Removes the search box or button from the Windows taskbar; search still opens from Start or Win+S.",
+            TweakCategory.Taskbar,
+            [DWord(SearchSettings, "SearchboxTaskbarMode", 0)],
+            RequiresExplorerRestart: false),
+
+        new TweakDefinition(
+            "taskbar-hide-task-view",
+            "Hide the Task View button",
+            "Removes the Task View button from the Windows taskbar; Win+Tab still works.",
+            TweakCategory.Taskbar,
+            [DWord(ExplorerAdvanced, "ShowTaskViewButton", 0)],
+            RequiresExplorerRestart: false),
+
+        new TweakDefinition(
+            "taskbar-hide-copilot",
+            "Hide the Copilot button",
+            "Removes the Copilot button from the Windows taskbar on builds that show one.",
+            TweakCategory.Taskbar,
+            [DWord(ExplorerAdvanced, "ShowCopilotButton", 0)],
+            RequiresExplorerRestart: false),
+
+        new TweakDefinition(
+            "taskbar-center-icons",
+            "Centre taskbar icons",
+            "Centres the Windows taskbar icons like a dock (the Windows 11 default, in case it was changed).",
+            TweakCategory.Taskbar,
+            [DWord(ExplorerAdvanced, "TaskbarAl", 1)],
             RequiresExplorerRestart: false),
     ];
 

@@ -1,0 +1,131 @@
+<Window x:Class="WinGnome.Features.TopBar.TopBarWindow"
+        x:ClassModifier="internal"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:WinGnome.Features.TopBar.Controls"
+        xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+        Title="WinGnome Top Bar"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        Focusable="False"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display"
+        FontFamily="{StaticResource ShellFont}"
+        FontWeight="SemiBold"
+        FontSize="{DynamicResource BarFontSize}"
+        Foreground="{DynamicResource BarForeground}">
+    <!--
+        The bar ignores the light/dark palette on purpose: like GNOME's panel it uses its own colours
+        (TopBarSettings), published by code-behind as the Bar* resources below.
+    -->
+    <Window.Resources>
+        <SolidColorBrush x:Key="BarForeground" Color="White" />
+        <SolidColorBrush x:Key="BarHover" Color="#26FFFFFF" />
+        <SolidColorBrush x:Key="BarPressed" Color="#40FFFFFF" />
+        <Thickness x:Key="BarPillMargin">2,3</Thickness>
+        <sys:Double x:Key="BarFontSize">13.5</sys:Double>
+        <sys:Double x:Key="BarIconSize">16</sys:Double>
+        <BooleanToVisibilityConverter x:Key="VisibleWhen" />
+
+        <Style x:Key="BarButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource BarForeground}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Margin="{DynamicResource BarPillMargin}" Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}" CornerRadius="999">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource BarHover}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource BarPressed}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BarPill" TargetType="Border">
+            <Setter Property="Margin" Value="{DynamicResource BarPillMargin}" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="CornerRadius" Value="999" />
+            <Setter Property="Background" Value="Transparent" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource BarHover}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="BarIcon" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="FontSize" Value="{DynamicResource BarIconSize}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="Body" VerticalAlignment="Top" MouseLeftButtonDown="OnBodyMouseDown">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left: Activities, workspace dots, focused app. -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="4,0,0,0">
+                <Button Style="{StaticResource BarButton}" Content="Activities" Click="OnActivitiesClick"
+                        Visibility="{Binding ShowActivitiesButton, Converter={StaticResource VisibleWhen}}" />
+                <Border x:Name="WorkspacePill" Style="{StaticResource BarPill}" MouseWheel="OnWorkspaceWheel"
+                        Visibility="{Binding ShowWorkspaceIndicator, Converter={StaticResource VisibleWhen}}">
+                    <controls:WorkspaceIndicator x:Name="WorkspaceDots" Count="{Binding Workspaces.Count}"
+                                                 CurrentIndex="{Binding Workspaces.CurrentIndex}"
+                                                 DotBrush="{DynamicResource BarForeground}" DotClicked="OnWorkspaceDotClicked" />
+                </Border>
+                <StackPanel x:Name="FocusedApp" Orientation="Horizontal" Margin="10,0,0,0"
+                            DataContext="{Binding FocusedApp}"
+                            Visibility="{Binding HasApp, Converter={StaticResource VisibleWhen}}">
+                    <Image x:Name="FocusedAppIcon" Source="{Binding Icon}" Width="{DynamicResource BarIconSize}"
+                           Height="{DynamicResource BarIconSize}" Margin="0,0,8,0" VerticalAlignment="Center"
+                           RenderOptions.BitmapScalingMode="HighQuality" />
+                    <TextBlock Text="{Binding Name}" MaxWidth="280" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Centre: clock. -->
+            <Button x:Name="ClockButton" Grid.Column="1" Style="{StaticResource BarButton}" Click="OnClockClick">
+                <TextBlock Text="{Binding Clock.Text}" />
+            </Button>
+
+            <!-- Right: system status; scroll to change the volume. -->
+            <Button x:Name="StatusButton" Grid.Column="2" HorizontalAlignment="Right" Margin="0,0,4,0"
+                    Style="{StaticResource BarButton}" Click="OnStatusClick" MouseWheel="OnStatusWheel"
+                    DataContext="{Binding Status}" ToolTip="{Binding ToolTip}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource BarIcon}" Text="{Binding NetworkGlyph}" />
+                    <TextBlock Style="{StaticResource BarIcon}" Text="{Binding VolumeGlyph}" Margin="12,0,0,0"
+                               Visibility="{Binding IsVolumeAvailable, Converter={StaticResource VisibleWhen}}" />
+                    <TextBlock Style="{StaticResource BarIcon}" Text="{Binding BatteryGlyph}" Margin="12,0,0,0"
+                               Visibility="{Binding HasBattery, Converter={StaticResource VisibleWhen}}" />
+                    <TextBlock Text="{Binding BatteryPercentText}" Margin="5,0,0,0" VerticalAlignment="Center"
+                               Visibility="{Binding ShowBatteryPercentage, Converter={StaticResource VisibleWhen}}" />
+                </StackPanel>
+            </Button>
+        </Grid>
+    </Border>
+</Window>

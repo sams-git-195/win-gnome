@@ -1,0 +1,314 @@
+using WinGnome.Core.Settings;
+using WinGnome.Core.Theming;
+using WinGnome.Core.Windows;
+using WinGnome.Interop;
+
+namespace WinGnome.Features.WindowButtons;
+
+/// <summary>
+/// The traffic lights of one target window: keeps the button surface (and, for left-side buttons, a mask over
+/// the native buttons) positioned over the target's title bar, coloured to match it, stacked directly above it
+/// and hidden whenever the target is minimised, cloaked or has no caption buttons.
+/// </summary>
+internal sealed class DecoratedWindow : IDisposable
+{
+    private readonly CaptionColorizer _colorizer;
+    private readonly TrafficLightButtonsView _view = new();
+    private readonly CaptionSurface _buttons;
+    private CaptionSurface? _mask;
+    private DecorationStyle _style;
+
+    private CaptionOverlayLayout? _layout;
+    private CaptionMetrics _anchor;
+    private LayoutKey _layoutKey;
+    private bool _drawsOwnCaption;
+    private bool _isUnified;
+    private HexColor? _sampledCaption;
+
+    private bool _cloaked;
+    private bool _minimized;
+    private bool _shown;
+    private bool _disposed;
+
+    /// <summary>
+    /// Creates the (hidden) surfaces. Subscribe to the events, then call <see cref="UpdatePlacement"/> to show them.
+    /// </summary>
+    public DecoratedWindow(nint target, DecorationStyle style, CaptionColorizer colorizer, bool isActive)
+    {
+        Target = target;
+        _style = style;
+        _colorizer = colorizer;
+        _view.IsWindowActive = isActive;
+        _view.ButtonClicked += OnButtonClicked;
+        _buttons = new CaptionSurface(_view);
+        _buttons.Closed += OnSurfaceClosed;
+        _buttons.DpiChanged += (_, _) => _view.SetSurfaceScale(_buttons.SurfaceScale);
+        _view.SetAppearance(style.Colors, style.Settings);
+        UpdateMask(style.Settings.Side == ButtonSide.Left);
+    }
+
+    /// <summary>The decorated window.</summary>
+    public nint Target { get; }
+
+    /// <summary>
+    /// Asks the owner to drop this decoration. The flag is true when the window must never be decorated again
+    /// (UIPI blocks our commands), false when the overlay merely broke and may be recreated.
+    /// </summary>
+    public event Action<DecoratedWindow, bool>? RemovalRequested;
+
+    /// <summary>Asks the owner to sample the title bar colour shortly (after the target has repainted).</summary>
+    public event Action<DecoratedWindow>? SampleRequested;
+
+    /// <summary>Applies new settings or theme colours, recomputing the layout and colours.</summary>
+    public void ApplyStyle(DecorationStyle style)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _style = style;
+        _view.SetAppearance(style.Colors, style.Settings);
+        UpdateMask(style.Settings.Side == ButtonSide.Left);
+
+        // Force a full rebuild: side, order, size and colour mode may all have changed.
+        _layoutKey = default;
+        UpdatePlacement();
+    }
+
+    /// <summary>Updates the focus state (inactive windows are dimmed; active and inactive title bars differ).</summary>
+    public void SetActive(bool active)
+    {
+        if (_disposed || _view.IsWindowActive == active)
+        {
+            return;
+        }
+
+        _view.IsWindowActive = active;
+        RequestSample();
+    }
+
+    /// <summary>Tracks EVENT_SYSTEM_MINIMIZESTART/END.</summary>
+    public void SetMinimized(bool minimized)
+    {
+        _minimized = minimized;
+        UpdatePlacement();
+    }
+
+    /// <summary>Tracks EVENT_OBJECT_CLOAKED/UNCLOAKED (other virtual desktops, suspended UWP apps).</summary>
+    public void SetCloaked(bool cloaked)
+    {
+        _cloaked = cloaked;
+        UpdatePlacement();
+    }
+
+    /// <summary>
+    /// Follows the target's current geometry. Called for every location change while the target is dragged,
+    /// so the common case (same size, new position) only translates the cached layout and allocates nothing.
+    /// </summary>
+    public void UpdatePlacement()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (_cloaked || _minimized || NativeMethods.IsIconic(Target) || !CaptionMetrics.TryRead(Target, out var metrics))
+        {
+            Conceal();
+            return;
+        }
+
+        var key = new LayoutKey(metrics.Buttons.Width, metrics.Buttons.Height, metrics.Frame.Width, metrics.Dpi, NativeMethods.IsZoomed(Target));
+        if (key != _layoutKey)
+        {
+            _layoutKey = key;
+            Rebuild(metrics, key.IsMaximized);
+        }
+
+        if (_layout is null)
+        {
+            Conceal();
+            return;
+        }
+
+        // Same size as when the layout was built, so the overlay just moves with the frame.
+        _buttons.Place(_layout.Bounds.Offset(metrics.Frame.Left - _anchor.Frame.Left, metrics.Buttons.Top - _anchor.Buttons.Top));
+        _mask?.Place(metrics.Buttons);
+        if (!_shown)
+        {
+            _shown = true;
+            _buttons.Reveal();
+            _mask?.Reveal();
+            Restack();
+            RequestSample();
+        }
+    }
+
+    /// <summary>Puts the surfaces back directly above the target after it may have moved in the z-order.</summary>
+    public void Restack()
+    {
+        if (_disposed || !_shown)
+        {
+            return;
+        }
+
+        var topmost = (NativeMethods.GetExStyle(Target) & NativeMethods.WS_EX_TOPMOST) != 0;
+        _buttons.StackAbove(Target, topmost);
+        _mask?.StackAbove(_buttons.Handle, topmost);
+    }
+
+    /// <summary>Samples the title bar colour if this window's surface is not painted in the unified colour.</summary>
+    public void SampleTitleBar()
+    {
+        if (_disposed || !_shown || _isUnified || !CaptionMetrics.TryRead(Target, out var metrics))
+        {
+            return;
+        }
+
+        if (TitleBarSampler.TrySample(Target, metrics.Buttons, metrics.Scale, out var color))
+        {
+            _sampledCaption = color;
+            SetFill(color);
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _view.ButtonClicked -= OnButtonClicked;
+        _buttons.Closed -= OnSurfaceClosed;
+        _buttons.Destroy();
+        _mask?.Destroy();
+        _colorizer.Restore(Target);
+    }
+
+    private void Rebuild(CaptionMetrics metrics, bool isMaximized)
+    {
+        var style = NativeMethods.GetStyle(Target);
+        var canMinimize = (style & NativeMethods.WS_MINIMIZEBOX) != 0;
+        var canMaximize = (style & NativeMethods.WS_MAXIMIZEBOX) != 0;
+        _layout = CaptionDecorationRules.HasButtonTrio(canMinimize, canMaximize) && !IsDpiVirtualized(metrics.Dpi)
+            ? CaptionButtonLayout.Compute(metrics.Buttons, metrics.Frame, metrics.Scale, _style.Settings)
+            : null;
+        if (_layout is null)
+        {
+            // Hidden until the window is supported again; it should not keep a recoloured title bar meanwhile.
+            _isUnified = false;
+            _colorizer.Restore(Target);
+            return;
+        }
+
+        _anchor = metrics;
+        _view.SetLayout(_layout, metrics.Scale, canMinimize, canMaximize);
+        _view.SetSurfaceScale(_buttons.SurfaceScale);
+
+        // Only surfaces touching the window's top-right corner need its rounding.
+        var rounded = !isMaximized;
+        _buttons.SetRoundedCorners(rounded && _style.Settings.Side == ButtonSide.Right);
+        _mask?.SetRoundedCorners(rounded);
+
+        var clientOrigin = default(POINT);
+        _drawsOwnCaption = NativeMethods.ClientToScreen(Target, ref clientOrigin)
+            && CaptionButtonGeometry.ClientCoversCaption(clientOrigin.Y, metrics.Buttons);
+        UpdateCaptionColour();
+    }
+
+    /// <summary>
+    /// Unifies the title bar through DWM when enabled and visible to DWM; otherwise restores the system colour
+    /// and falls back to sampling. Apps that paint their own title bar (tabs, Mica) are never recoloured: DWM's
+    /// caption colour does not show behind their client area.
+    /// </summary>
+    private void UpdateCaptionColour()
+    {
+        _isUnified = _style.Settings.UnifyTitleBarColor && !_drawsOwnCaption
+            && _colorizer.Apply(Target, _style.UnifiedCaption, _style.UnifiedText);
+        if (_isUnified)
+        {
+            SetFill(_style.UnifiedCaption);
+            return;
+        }
+
+        _colorizer.Restore(Target);
+        SetFill(_sampledCaption ?? _style.PlaceholderCaption);
+        RequestSample();
+    }
+
+    private void SetFill(HexColor color)
+    {
+        _buttons.SetFill(color);
+        _mask?.SetFill(color);
+    }
+
+    private void UpdateMask(bool needed)
+    {
+        if (needed && _mask is null)
+        {
+            _mask = new CaptionSurface(content: null);
+            _mask.Closed += OnSurfaceClosed;
+            if (_shown)
+            {
+                // Show it on the next placement together with the buttons.
+                Conceal();
+            }
+        }
+        else if (!needed && _mask is not null)
+        {
+            _mask.Closed -= OnSurfaceClosed;
+            _mask.Destroy();
+            _mask = null;
+        }
+    }
+
+    private void Conceal()
+    {
+        if (!_shown)
+        {
+            return;
+        }
+
+        _shown = false;
+        _buttons.Conceal();
+        _mask?.Conceal();
+    }
+
+    private void RequestSample()
+    {
+        if (_shown && !_isUnified)
+        {
+            SampleRequested?.Invoke(this);
+        }
+    }
+
+    private bool IsDpiVirtualized(uint windowDpi)
+    {
+        var monitor = NativeMethods.MonitorFromWindow(Target, NativeMethods.MONITOR_DEFAULTTONEAREST);
+        return NativeMethods.GetDpiForMonitor(monitor, 0, out var monitorDpi, out _) == 0
+            && CaptionDecorationRules.IsDpiVirtualized(windowDpi, monitorDpi);
+    }
+
+    private void OnButtonClicked(CaptionButtonKind kind)
+    {
+        if (!_disposed && CaptionCommands.Invoke(Target, kind) == CaptionCommandResult.AccessDenied)
+        {
+            RemovalRequested?.Invoke(this, true);
+        }
+    }
+
+    private void OnSurfaceClosed(object? sender, EventArgs e)
+    {
+        // Only reached when a surface's HWND is destroyed behind our back (Dispose unsubscribes first).
+        if (!_disposed)
+        {
+            RemovalRequested?.Invoke(this, false);
+        }
+    }
+
+    /// <summary>The target geometry a layout depends on; a change means the layout must be recomputed.</summary>
+    private readonly record struct LayoutKey(int ButtonsWidth, int ButtonsHeight, int FrameWidth, uint Dpi, bool IsMaximized);
+}

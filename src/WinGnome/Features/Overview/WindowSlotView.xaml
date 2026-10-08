@@ -1,0 +1,63 @@
+﻿<UserControl x:Class="WinGnome.Features.Overview.WindowSlotView"
+             x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent"
+             Foreground="White"
+             FontFamily="{StaticResource ShellFont}">
+    <!--
+        The WPF half of one window thumbnail. DWM draws the live thumbnail itself on top of the window's
+        content, inside the frame below, so nothing here may overlap that area: the highlight ring sits in
+        the padding around it and the title and close button sit underneath.
+    -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition x:Name="CaptionRow" Height="34" />
+        </Grid.RowDefinitions>
+
+        <Border x:Name="Frame" CornerRadius="12" BorderThickness="3" BorderBrush="Transparent"
+                Background="#14FFFFFF">
+            <!-- Seen only when DWM has no picture of the window (some minimised apps). -->
+            <Image x:Name="PlaceholderIcon" Width="64" Height="64" Opacity="0.85"
+                   RenderOptions.BitmapScalingMode="HighQuality" />
+        </Border>
+
+        <Grid Grid.Row="1" Margin="0,6,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="28" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="28" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                <Image x:Name="AppIcon" Width="20" Height="20" Margin="0,0,6,0" VerticalAlignment="Center"
+                       RenderOptions.BitmapScalingMode="HighQuality" />
+                <Border x:Name="TitlePill" CornerRadius="10" Padding="8,2" Background="Transparent">
+                    <TextBlock x:Name="TitleText" FontSize="13" TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" />
+                </Border>
+            </StackPanel>
+
+            <Button x:Name="CloseButton" Grid.Column="2" Width="24" Height="24" Focusable="False"
+                    Visibility="Hidden" ToolTip="Close window" Click="OnCloseClick">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Circle" CornerRadius="12" Background="#59FFFFFF">
+                            <TextBlock Text="&#xE711;" FontFamily="{StaticResource IconFont}" FontSize="10"
+                                       Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Circle" Property="Background" Value="#8CFFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Circle" Property="Background" Value="#B3FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+        </Grid>
+    </Grid>
+</UserControl>
