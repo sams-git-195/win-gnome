@@ -4,7 +4,8 @@ namespace WinGnome.Core.Tweaks;
 public sealed record RegistryChange(string SubKey, string? ValueName, RegistryValue Value);
 
 /// <summary>Where a tweak is listed in the settings UI.</summary>
-public enum TweakCategory { Appearance, Shell, Privacy, Behaviour }
+/// <summary>UI grouping for tweaks. <see cref="Taskbar"/> tweaks style the native taskbar (useful in native taskbar mode).</summary>
+public enum TweakCategory { Appearance, Shell, Privacy, Behaviour, Taskbar }
 
 /// <summary>A reversible set of HKCU registry writes.</summary>
 /// <param name="Id">Stable identifier stored in settings and in the backup file.</param>
