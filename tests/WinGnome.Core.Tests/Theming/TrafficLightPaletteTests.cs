@@ -33,11 +33,11 @@ public class TrafficLightPaletteTests
     {
         var c = TrafficLightPalette.ForPreset(TrafficLightPreset.Gnome);
 
-        Assert.Equal(HexColor.Parse("#4A4A4A"), c.Close);
+        Assert.Equal(HexColor.Parse("#5E5E5E"), c.Close);
         Assert.Equal(c.Close, c.Minimize);
         Assert.Equal(c.Close, c.Maximize);
         Assert.Equal(HexColor.Parse("#FFFFFF"), c.Glyph);
-        Assert.Equal(HexColor.Parse("#3A3A3A"), c.Inactive);
+        Assert.Equal(HexColor.Parse("#484848"), c.Inactive);
         Assert.True(c.AlwaysShowGlyphs);
     }
 

@@ -37,7 +37,8 @@ public static class TweakCatalog
             "Stops Start and Search from sending what you type to the web; takes effect after you sign out and back in.",
             TweakCategory.Privacy,
             [DWord(ExplorerPolicy, "DisableSearchBoxSuggestions", 1)],
-            RequiresExplorerRestart: true),
+            RequiresExplorerRestart: true,
+            RequiresSignOut: true),
 
         new TweakDefinition(
             "start-no-recommendations",
