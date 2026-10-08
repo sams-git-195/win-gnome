@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
+using WinGnome.Services.Tray;
 
 namespace WinGnome.Services;
 
@@ -52,7 +53,7 @@ internal static partial class TaskbarController
         while ((tray = NativeMethods.FindWindowEx(0, tray, "Shell_TrayWnd", null)) != 0)
         {
             // Without a desktop window (Explorer still starting), take the first tray that is not one of ours.
-            if (shellProcess != 0 ? NativeMethods.GetProcessId(tray) == shellProcess : !NativeMethods.IsOwnWindow(tray))
+            if (shellProcess != 0 ? NativeMethods.GetProcessId(tray) == shellProcess : !IsTrayHost(tray))
             {
                 return tray;
             }
@@ -81,7 +82,10 @@ internal static partial class TaskbarController
     }
 
     public static bool IsTaskbarWindow(nint hwnd) =>
-        NativeMethods.GetClassName(hwnd) is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" && !NativeMethods.IsOwnWindow(hwnd);
+        NativeMethods.GetClassName(hwnd) is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" && !IsTrayHost(hwnd);
+
+    /// <summary>A WinGnome tray host (this process's, or another WinGnome's that currently hosts the tray).</summary>
+    private static bool IsTrayHost(nint hwnd) => NativeMethods.IsOwnWindow(hwnd) || TrayHost.IsHostWindow(hwnd);
 
     /// <summary>
     /// Hides the taskbar, recording the original state in <paramref name="settingsDirectory"/> first.

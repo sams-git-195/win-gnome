@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Text;
+using WinGnome.Core.Geometry;
 using WinGnome.Core.Tray;
 
 namespace WinGnome.Core.Tests.Tray;
@@ -107,18 +108,29 @@ public class ShellTrayDataTests
     [Theory]
     [InlineData(1u, false)]
     [InlineData(2u, true)]
-    public void ParsesIconRectQuery(uint corner, bool bottomRight)
+    public void ParsesIconRectQuery(uint part, bool size)
     {
         var guid = Guid.NewGuid();
         var data = new byte[40];
-        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(4), corner);
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(4), part);
         BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(16), 0x42);
         BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(20), 9);
         guid.TryWriteBytes(data.AsSpan(24));
 
         var query = ShellTrayData.ParseIconRectQuery(data);
 
-        Assert.Equal(new TrayIconRectQuery(new TrayIconId(0x42, 9, guid), bottomRight), query);
+        Assert.Equal(new TrayIconRectQuery(new TrayIconId(0x42, 9, guid), size), query);
+    }
+
+    [Fact]
+    public void IconRectAnswers_AreTopLeftThenSize()
+    {
+        // shell32 builds the rectangle as (first, first + second): the second answer is the size, not the corner.
+        var bounds = new PixelRect(2345, 4, 2381, 36);
+        var icon = new TrayIconId(0x42, 9, Guid.Empty);
+
+        Assert.Equal(TrayCallback.PackPoint(2345, 4), new TrayIconRectQuery(icon, Size: false).Answer(bounds));
+        Assert.Equal(TrayCallback.PackPoint(36, 32), new TrayIconRectQuery(icon, Size: true).Answer(bounds));
     }
 
     [Fact]

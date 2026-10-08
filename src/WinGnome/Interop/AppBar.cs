@@ -62,6 +62,9 @@ internal sealed partial class AppBar : IDisposable
     /// <summary>Raised when a full-screen app opens (true) or closes (false) on this bar's monitor.</summary>
     public event EventHandler<bool>? FullScreenChanged;
 
+    /// <summary>Raised when the shell moved the bar on its own (ABN_POSCHANGED: another AppBar came or went).</summary>
+    public event EventHandler? Moved;
+
     /// <summary>The rectangle the shell granted, in physical pixels.</summary>
     public PixelRect Bounds { get; private set; }
 
@@ -161,7 +164,13 @@ internal sealed partial class AppBar : IDisposable
         switch ((int)wParam)
         {
             case ABN_POSCHANGED:
+                var before = Bounds;
                 Reposition();
+                if (Bounds != before)
+                {
+                    Moved?.Invoke(this, EventArgs.Empty);
+                }
+
                 break;
             case ABN_FULLSCREENAPP:
                 FullScreenChanged?.Invoke(this, lParam != 0);

@@ -85,8 +85,6 @@ internal static partial class NativeMethods
     /// <summary>First RegisterWindowMessage value; messages from here up are app-registered broadcasts.</summary>
     public const uint RegisteredMessageFirst = 0xC000;
 
-    public const int ERROR_CLASS_ALREADY_EXISTS = 1410;
-
     [LibraryImport("user32.dll", EntryPoint = "RegisterClassExW", SetLastError = true)]
     public static partial ushort RegisterClassEx(in WNDCLASSEX windowClass);
 
@@ -119,7 +117,6 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", EntryPoint = "SendNotifyMessageW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool SendNotifyMessage(nint hwnd, uint msg, nint wParam, nint lParam);
-
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

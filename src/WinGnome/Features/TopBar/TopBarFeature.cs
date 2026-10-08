@@ -73,6 +73,7 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
         ShellSurface.MakeNonActivating(_window, topmost: true);
         _appBar = new AppBar(_window);
         _appBar.FullScreenChanged += OnFullScreenChanged;
+        _appBar.Moved += OnAppBarMoved;
         _source = HwndSource.FromHwnd(new WindowInteropHelper(_window).Handle);
         _source?.AddHook(WndProc);
 
@@ -135,6 +136,15 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
         }
 
         return 0;
+    }
+
+    /// <summary>The shell restacked the bar (another top AppBar came or went): the tray host follows it.</summary>
+    private void OnAppBarMoved(object? sender, EventArgs e)
+    {
+        if (_appBar is not null)
+        {
+            _viewModel?.Tray.SetBarBounds(_appBar.Bounds);
+        }
     }
 
     private void OnFullScreenChanged(object? sender, bool fullScreen)
@@ -214,6 +224,7 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
         if (_appBar is not null)
         {
             _appBar.FullScreenChanged -= OnFullScreenChanged;
+            _appBar.Moved -= OnAppBarMoved;
             _appBar.Dispose();
             _appBar = null;
         }

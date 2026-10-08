@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using WinGnome.Core.Geometry;
 
 namespace WinGnome.Core.Tray;
 
@@ -13,10 +14,18 @@ public enum TrayCopyDataKind
     IconRect = 3,
 }
 
-/// <summary>A Shell_NotifyIconGetRect query: which icon, and which corner of its rectangle is wanted.</summary>
+/// <summary>A Shell_NotifyIconGetRect query: which icon, and which half of its rectangle is wanted.</summary>
 /// <param name="Icon">The icon asked about.</param>
-/// <param name="BottomRight">False for the top-left corner (first call), true for the bottom-right one.</param>
-public readonly record struct TrayIconRectQuery(TrayIconId Icon, bool BottomRight);
+/// <param name="Size">
+/// False for the top-left corner (first call), true for the width and height (second call): shell32 adds the second
+/// answer to the first to build the rectangle's bottom-right corner.
+/// </param>
+public readonly record struct TrayIconRectQuery(TrayIconId Icon, bool Size)
+{
+    /// <summary>The LRESULT answering this query for an icon at <paramref name="bounds"/> (physical screen pixels).</summary>
+    public nint Answer(PixelRect bounds) =>
+        Size ? TrayCallback.PackPoint(bounds.Width, bounds.Height) : TrayCallback.PackPoint(bounds.Left, bounds.Top);
+}
 
 /// <summary>
 /// Decodes the blocks shell32 sends to the tray window. They use a fixed, bitness-independent layout: handles are
@@ -91,14 +100,14 @@ public static class ShellTrayData
             return null;
         }
 
-        var corner = ReadUInt32(data, RectMessageOffset);
-        if (corner is not (1 or 2))
+        var part = ReadUInt32(data, RectMessageOffset);
+        if (part is not (1 or 2))
         {
             return null;
         }
 
         var icon = new TrayIconId(ReadHandle(data, RectOwnerOffset), ReadUInt32(data, RectIdOffset), ReadGuid(data, RectGuidOffset));
-        return new TrayIconRectQuery(icon, corner == 2);
+        return new TrayIconRectQuery(icon, part == 2);
     }
 
     /// <summary>Reads a DWORD, or 0 when the (shorter, older-format) block does not contain it.</summary>

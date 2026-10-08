@@ -57,8 +57,18 @@ internal sealed class TrayHost : IDisposable
     /// </summary>
     private const uint ZOrderCheckMs = 250;
 
-    /// <summary>Every 20 checks (5 s) icons whose owner window is gone are dropped, as Explorer does.</summary>
-    private const int PruneEveryChecks = 20;
+    /// <summary>
+    /// After a TaskbarCreated broadcast, apps re-register in a burst (NIM_ADD then often NIM_SETVERSION) while windows
+    /// come and go, which makes Explorer raise its taskbar: a call missed then (a lost NIM_SETVERSION switches the
+    /// icon to the wrong callback format) is not repeated. So for a few seconds the check runs as often as user32
+    /// timers allow.
+    /// </summary>
+    private const uint FastZOrderCheckMs = 15;
+
+    private static readonly TimeSpan FastZOrderPeriod = TimeSpan.FromSeconds(4);
+
+    /// <summary>Icons whose owner window is gone are dropped every 5 s, as Explorer does.</summary>
+    private static readonly TimeSpan PruneInterval = TimeSpan.FromSeconds(5);
 
     /// <summary>After Explorer restarts, apps re-add their icons straight to its new (frontmost) tray; ask again.</summary>
     private const uint RebroadcastDelayMs = 2000;
@@ -83,7 +93,8 @@ internal sealed class TrayHost : IDisposable
     private readonly TrayIconRegistry _registry = new();
     private nint _instance;
     private nint _explorerTray;
-    private int _checks;
+    private long _lastPruneMs;
+    private long _fastChecksUntilMs;
     private bool _yieldLogged;
 
     /// <summary>A call could not be passed on to Explorer, so Explorer may lack an icon we have.</summary>
@@ -109,6 +120,9 @@ internal sealed class TrayHost : IDisposable
     /// <summary>True for the TaskbarCreated broadcasts a WinGnome tray host sends (Explorer did not restart).</summary>
     public static bool IsOwnBroadcast(nint wParam) => wParam == OwnBroadcastMarker;
 
+    /// <summary>True for the tray host window of any WinGnome process: a Shell_TrayWnd that is not a taskbar.</summary>
+    public static bool IsHostWindow(nint hwnd) => hwnd != 0 && NativeMethods.GetProp(hwnd, HostProperty) != 0;
+
     /// <summary>Moves the (invisible) host window onto the bar's strip.</summary>
     public void SetBarBounds(PixelRect bounds)
     {
@@ -131,6 +145,15 @@ internal sealed class TrayHost : IDisposable
     {
         lock (_gate)
         {
+            // A GUID icon that moved to a new owner window has a new ID: drop the entry under its old one.
+            if (icon.ItemGuid != Guid.Empty)
+            {
+                foreach (var stale in _iconBounds.Keys.Where(key => key.ItemGuid == icon.ItemGuid && key != icon).ToList())
+                {
+                    _iconBounds.Remove(stale);
+                }
+            }
+
             _iconBounds[icon] = bounds;
         }
     }
@@ -274,8 +297,8 @@ internal sealed class TrayHost : IDisposable
         _hwnd = hwnd;
         NativeMethods.SetProp(hwnd, HostProperty, 1);
         BringToFront();
-        NativeMethods.SetTimer(hwnd, ZOrderTimer, ZOrderCheckMs, 0);
-        BroadcastTaskbarCreated();
+        _lastPruneMs = Environment.TickCount64;
+        AskAppsToRegister(hwnd);
         return true;
     }
 
@@ -305,6 +328,14 @@ internal sealed class TrayHost : IDisposable
         }
 
         Log.Info("Tray host stopped");
+    }
+
+    /// <summary>Broadcasts TaskbarCreated and guards the front closely while apps answer it.</summary>
+    private void AskAppsToRegister(nint hwnd)
+    {
+        _fastChecksUntilMs = Environment.TickCount64 + (long)FastZOrderPeriod.TotalMilliseconds;
+        NativeMethods.SetTimer(hwnd, ZOrderTimer, FastZOrderCheckMs, 0);
+        BroadcastTaskbarCreated();
     }
 
     private void BroadcastTaskbarCreated()
@@ -379,12 +410,17 @@ internal sealed class TrayHost : IDisposable
 
             case TrayCopyDataKind.IconRect:
                 var query = ShellTrayData.ParseIconRectQuery(data);
-                return query is { } q && TryGetIconCorner(q, out var corner) ? corner : Forward(NativeMethods.WM_COPYDATA, wParam, lParam);
+                return query is { } q && TryGetIconBounds(q.Icon, out var bounds) ? q.Answer(bounds) : Forward(NativeMethods.WM_COPYDATA, wParam, lParam);
 
             default:
                 // AppBar messages (and anything unknown) are Explorer's business: pass them through untouched. The
                 // block carries the caller's process ID and shared-memory handle, so Explorer answers the caller directly.
-                return Forward(NativeMethods.WM_COPYDATA, wParam, lParam);
+                var result = Forward(NativeMethods.WM_COPYDATA, wParam, lParam);
+
+                // Explorer raises its taskbar when AppBars change (an AppBar comes, goes or moves); until we are back
+                // in front, Shell_NotifyIcon calls would reach Explorer only. Do not wait for the next check.
+                KeepInFront(hwnd);
+                return result;
         }
     }
 
@@ -443,21 +479,21 @@ internal sealed class TrayHost : IDisposable
         });
     }
 
-    private bool TryGetIconCorner(TrayIconRectQuery query, out nint corner)
+    private bool TryGetIconBounds(TrayIconId query, out PixelRect bounds)
     {
         lock (_gate)
         {
-            foreach (var (icon, bounds) in _iconBounds)
+            foreach (var (icon, iconBounds) in _iconBounds)
             {
-                if (icon.IsIdentifiedBy(query.Icon))
+                if (icon.IsIdentifiedBy(query))
                 {
-                    corner = query.BottomRight ? TrayCallback.PackPoint(bounds.Right, bounds.Bottom) : TrayCallback.PackPoint(bounds.Left, bounds.Top);
+                    bounds = iconBounds;
                     return true;
                 }
             }
         }
 
-        corner = 0;
+        bounds = default;
         return false;
     }
 
@@ -516,30 +552,43 @@ internal sealed class TrayHost : IDisposable
         {
             NativeMethods.KillTimer(hwnd, RebroadcastTimer);
             BringToFront();
-            BroadcastTaskbarCreated();
+            AskAppsToRegister(hwnd);
             return;
         }
 
-        var front = NativeMethods.FindWindow(WindowClass, null);
-        if (front != 0 && front != hwnd)
+        KeepInFront(hwnd);
+        var now = Environment.TickCount64;
+        if (_fastChecksUntilMs != 0 && now >= _fastChecksUntilMs)
         {
-            if (front == ExplorerTray() || NativeMethods.GetProp(front, HostProperty) != 0)
-            {
-                BringToFront();
-            }
-            else if (!_yieldLogged)
-            {
-                // Another program's tray host (RetroBar, for instance). Fighting it for the front would make both miss
-                // icons, so it keeps the front; we still see calls whenever we are in front of it.
-                _yieldLogged = true;
-                Log.Info("Another program hosts tray icons in front of WinGnome's tray host; not competing with it");
-            }
+            _fastChecksUntilMs = 0;
+            NativeMethods.SetTimer(hwnd, ZOrderTimer, ZOrderCheckMs, 0);
         }
 
-        if (++_checks >= PruneEveryChecks)
+        if (now - _lastPruneMs >= (long)PruneInterval.TotalMilliseconds)
         {
-            _checks = 0;
+            _lastPruneMs = now;
             PruneDeadIcons();
+        }
+    }
+
+    private void KeepInFront(nint hwnd)
+    {
+        var front = NativeMethods.FindWindow(WindowClass, null);
+        if (front == 0 || front == hwnd)
+        {
+            return;
+        }
+
+        if (front == ExplorerTray() || IsHostWindow(front))
+        {
+            BringToFront();
+        }
+        else if (!_yieldLogged)
+        {
+            // Another program's tray host (RetroBar, for instance). Fighting it for the front would make both miss
+            // icons, so it keeps the front; we still see calls whenever we are in front of it.
+            _yieldLogged = true;
+            Log.Info("Another program hosts tray icons in front of WinGnome's tray host; not competing with it");
         }
     }
 
