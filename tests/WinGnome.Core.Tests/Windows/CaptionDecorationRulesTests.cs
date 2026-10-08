@@ -28,6 +28,18 @@ public class CaptionDecorationRulesTests
     }
 
     [Theory]
+    [InlineData("Chrome_WidgetWin_1", true)]
+    [InlineData("WinUIDesktopWin32WindowClass", true)]
+    [InlineData("CASCADIA_HOSTING_WINDOW_CLASS", true)]
+    [InlineData("Ghost", false)]          // DWM's hung-window stand-in
+    [InlineData("CabinetWClass", false)]  // not skipped, so decorated the normal way
+    [InlineData(null, false)]
+    public void CanProbeSkippedClass_AllSkippedClassesButGhost(string? className, bool expected)
+    {
+        Assert.Equal(expected, CaptionDecorationRules.CanProbeSkippedClass(className));
+    }
+
+    [Theory]
     [InlineData(true, true, true)]
     [InlineData(true, false, true)]
     [InlineData(false, true, true)]

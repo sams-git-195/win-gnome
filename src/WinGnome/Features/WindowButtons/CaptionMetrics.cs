@@ -59,6 +59,41 @@ internal readonly record struct CaptionMetrics(PixelRect Frame, PixelRect Button
         return true;
     }
 
+    /// <summary>
+    /// Measures a window that draws its own title bar from where <paramref name="probe"/> found its buttons.
+    /// Fails, with <paramref name="stale"/> set, once the frame's size or DPI no longer match the probe.
+    /// </summary>
+    public static bool TryReadProbed(nint hwnd, ProbedCaption probe, out CaptionMetrics metrics, out bool stale)
+    {
+        metrics = default;
+        stale = false;
+        if (!TryReadFrame(hwnd, out var frame))
+        {
+            return false;
+        }
+
+        var dpi = NativeMethods.GetDpiForWindow(hwnd);
+        if (!probe.Matches(frame, dpi))
+        {
+            stale = true;
+            return false;
+        }
+
+        var buttons = probe.Relative.Offset(frame.Left, frame.Top);
+        var isMaximized = NativeMethods.IsZoomed(hwnd);
+        var border = isMaximized ? 0 : ReadBorder(hwnd);
+        metrics = new CaptionMetrics(frame, CaptionButtonGeometry.InsideBorder(buttons, frame, border), dpi, border, isMaximized);
+        return true;
+    }
+
+    /// <summary>The visible frame (DWMWA_EXTENDED_FRAME_BOUNDS) of <paramref name="hwnd"/>.</summary>
+    public static bool TryReadFrame(nint hwnd, out PixelRect frame)
+    {
+        var ok = NativeMethods.DwmGetWindowAttribute(hwnd, NativeMethods.DWMWA_EXTENDED_FRAME_BOUNDS, out RECT extended, RectSize) == 0;
+        frame = ok ? extended.ToPixelRect() : default;
+        return ok && !frame.IsEmpty;
+    }
+
     /// <summary>The border DWM draws around a restored window (maximised windows have none).</summary>
     private static int ReadBorder(nint hwnd)
     {

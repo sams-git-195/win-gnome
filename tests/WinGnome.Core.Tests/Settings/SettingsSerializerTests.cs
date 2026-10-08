@@ -47,6 +47,27 @@ public class SettingsSerializerTests
     }
 
     [Fact]
+    public void Deserialize_WindowButtonsWithoutCustomTitleBarField_KeepsItOff()
+    {
+        // A settings file written before DecorateCustomTitleBars existed.
+        var settings = SettingsSerializer.Deserialize("""{ "WindowButtons": { "Enabled": true, "UnifyTitleBarColor": false } }""");
+
+        Assert.False(settings.WindowButtons.DecorateCustomTitleBars);
+        Assert.False(settings.WindowButtons.UnifyTitleBarColor);
+    }
+
+    [Fact]
+    public void RoundTrip_PreservesDecorateCustomTitleBars()
+    {
+        var original = new AppSettings();
+        original.WindowButtons.DecorateCustomTitleBars = true;
+
+        var copy = SettingsSerializer.Deserialize(SettingsSerializer.Serialize(original));
+
+        Assert.True(copy.WindowButtons.DecorateCustomTitleBars);
+    }
+
+    [Fact]
     public void Serialize_WritesEnumsAsStrings()
     {
         var settings = new AppSettings();

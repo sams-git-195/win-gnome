@@ -46,12 +46,18 @@ public static class WindowFilter
     /// True when WinGnome may draw traffic-light buttons over the window: a normal captioned window that is
     /// not minimised, not elevated, big enough, and whose process is not on the exclusion list.
     /// </summary>
-    public static bool CanDecorate(WindowInfo w, IReadOnlyCollection<string> excludedProcessNames)
+    /// <param name="w">The window.</param>
+    /// <param name="excludedProcessNames">Process names that keep their native buttons.</param>
+    /// <param name="drawsOwnButtons">
+    /// The window draws its own caption buttons (found by probing). Windows only draws native buttons for
+    /// WS_SYSMENU windows, but apps with their own buttons (Electron) often drop WS_SYSMENU, so it is not required.
+    /// </param>
+    public static bool CanDecorate(WindowInfo w, IReadOnlyCollection<string> excludedProcessNames, bool drawsOwnButtons = false)
     {
         ArgumentNullException.ThrowIfNull(w);
         ArgumentNullException.ThrowIfNull(excludedProcessNames);
 
-        if (!IsTaskSwitcherWindow(w) || !w.HasCaption || !w.HasSystemMenu || w.IsMinimized || w.IsElevated)
+        if (!IsTaskSwitcherWindow(w) || !w.HasCaption || (!w.HasSystemMenu && !drawsOwnButtons) || w.IsMinimized || w.IsElevated)
         {
             return false;
         }

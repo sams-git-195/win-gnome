@@ -31,6 +31,10 @@ internal sealed class DecoratedWindow : IDisposable
     private bool _isUnified;
     private HexColor? _sampledCaption;
 
+    // Set for windows that draw their own title bar: where probing found their buttons, instead of DWM.
+    private ProbedCaption? _probe;
+    private bool _reprobeRequested;
+
     private bool _cloaked;
     private bool _minimized;
     private bool _shown;
@@ -40,9 +44,11 @@ internal sealed class DecoratedWindow : IDisposable
     /// Tracks <paramref name="target"/>. Subscribe to the events, then call <see cref="UpdatePlacement"/>, which
     /// creates and shows the surfaces once the target has a layout they can cover.
     /// </summary>
-    public DecoratedWindow(nint target, DecorationStyle style, CaptionColorizer colorizer, bool isActive)
+    /// <param name="probe">For a window that draws its own title bar, where its buttons were probed; else null.</param>
+    public DecoratedWindow(nint target, DecorationStyle style, CaptionColorizer colorizer, bool isActive, ProbedCaption? probe = null)
     {
         Target = target;
+        _probe = probe;
         _style = style;
         _colorizer = colorizer;
         _view.IsWindowActive = isActive;
@@ -61,6 +67,32 @@ internal sealed class DecoratedWindow : IDisposable
 
     /// <summary>Asks the owner to sample the title bar colour shortly (after the target has repainted).</summary>
     public event Action<DecoratedWindow>? SampleRequested;
+
+    /// <summary>
+    /// Asks the owner to probe a custom title bar again: the window's size or DPI changed, so the buttons may
+    /// have moved. The overlay stays hidden until <see cref="SetProbe"/> is called.
+    /// </summary>
+    public event Action<DecoratedWindow>? ReprobeRequested;
+
+    /// <summary>True when the buttons were found by probing rather than reported by DWM.</summary>
+    public bool IsProbed => _probe is not null;
+
+    /// <summary>Lets the next measurement ask for a probe again (the last one could not be used).</summary>
+    public void AllowReprobe() => _reprobeRequested = false;
+
+    /// <summary>Replaces the probed button position after a re-probe and shows the overlay again.</summary>
+    public void SetProbe(ProbedCaption probe)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _probe = probe;
+        _reprobeRequested = false;
+        _layoutKey = default;
+        UpdatePlacement();
+    }
 
     /// <summary>Applies new settings or theme colours, recomputing the layout and colours.</summary>
     public void ApplyStyle(DecorationStyle style)
@@ -122,7 +154,7 @@ internal sealed class DecoratedWindow : IDisposable
             return;
         }
 
-        if (_cloaked || _minimized || NativeMethods.IsIconic(Target) || !CaptionMetrics.TryRead(Target, out var metrics))
+        if (_cloaked || _minimized || NativeMethods.IsIconic(Target) || !TryMeasure(out var metrics))
         {
             Conceal();
             return;
@@ -174,7 +206,7 @@ internal sealed class DecoratedWindow : IDisposable
     /// <summary>Samples the title bar colour if this window's surface is not painted in the unified colour.</summary>
     public void SampleTitleBar()
     {
-        if (_disposed || !_shown || _isUnified || !CaptionMetrics.TryRead(Target, out var metrics))
+        if (_disposed || !_shown || _isUnified || !TryMeasure(out var metrics))
         {
             return;
         }
@@ -203,6 +235,31 @@ internal sealed class DecoratedWindow : IDisposable
 
         _mask?.Destroy();
         _colorizer.Restore(Target);
+    }
+
+    /// <summary>
+    /// Reads where the target's native buttons are: from DWM, or for a probed custom title bar from the probe,
+    /// asking (once) for a new probe when the window's size or DPI has changed since.
+    /// </summary>
+    private bool TryMeasure(out CaptionMetrics metrics)
+    {
+        if (_probe is not { } probe)
+        {
+            return CaptionMetrics.TryRead(Target, out metrics);
+        }
+
+        if (CaptionMetrics.TryReadProbed(Target, probe, out metrics, out var stale))
+        {
+            return true;
+        }
+
+        if (stale && !_reprobeRequested)
+        {
+            _reprobeRequested = true;
+            ReprobeRequested?.Invoke(this);
+        }
+
+        return false;
     }
 
     private void Rebuild(CaptionMetrics metrics, bool isMaximized)

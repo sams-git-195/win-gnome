@@ -121,6 +121,10 @@
             <c:SettingsRow Title="Unify title bar colour" Subtitle="Paints every window's title bar in the Adwaita header colour. The original colours return when WinGnome exits.">
                 <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding UnifyTitleBarColor.Value}" />
             </c:SettingsRow>
+            <c:SettingsRow Title="Decorate apps with custom title bars (experimental)"
+                           Subtitle="Also covers apps that draw their own title bar, such as Claude desktop, when they report where their buttons are. Apps that don't report them keep their own buttons.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding DecorateCustomTitleBars.Value}" />
+            </c:SettingsRow>
         </c:SettingsGroup>
 
         <c:SettingsGroup Header="Excluded apps"

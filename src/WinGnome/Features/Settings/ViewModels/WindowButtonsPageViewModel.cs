@@ -61,6 +61,7 @@ internal sealed class WindowButtonsPageViewModel : SettingsPageViewModel
         ShowSymbolsOnHover = Toggle(s => s.WindowButtons.ShowSymbolsOnHover, (s, v) => s.WindowButtons.ShowSymbolsOnHover = v);
         DimInactiveWindows = Toggle(s => s.WindowButtons.DimInactiveWindows, (s, v) => s.WindowButtons.DimInactiveWindows = v);
         UnifyTitleBarColor = Toggle(s => s.WindowButtons.UnifyTitleBarColor, (s, v) => s.WindowButtons.UnifyTitleBarColor = v);
+        DecorateCustomTitleBars = Toggle(s => s.WindowButtons.DecorateCustomTitleBars, (s, v) => s.WindowButtons.DecorateCustomTitleBars = v);
     }
 
     public TitleBarPreviewViewModel Preview { get; }
@@ -90,6 +91,8 @@ internal sealed class WindowButtonsPageViewModel : SettingsPageViewModel
     public ToggleSetting DimInactiveWindows { get; }
 
     public ToggleSetting UnifyTitleBarColor { get; }
+
+    public ToggleSetting DecorateCustomTitleBars { get; }
 
     /// <summary>The preset card matching the settings; choosing a card switches the preset.</summary>
     public PresetPreview? SelectedPreset

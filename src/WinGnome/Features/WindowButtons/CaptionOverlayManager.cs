@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows.Threading;
+using WinGnome.Core.Geometry;
 using WinGnome.Core.Windows;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
@@ -36,9 +37,17 @@ internal sealed class CaptionOverlayManager : IDisposable
     private readonly Dispatcher _dispatcher;
     private readonly Dictionary<nint, DecoratedWindow> _windows = [];
 
-    // Windows that must never be decorated: classes that draw their own title bar, and windows UIPI isolates
-    // from us. Forgotten when the window is destroyed (handles are recycled).
+    // Windows UIPI isolates from us: never decorated. Forgotten when the window is destroyed (handles are recycled).
     private readonly HashSet<nint> _undecoratable = [];
+
+    // Windows of classes that draw their own title bar, left alone under the current settings (cleared when the
+    // settings change, so turning on custom title bars reconsiders them).
+    private readonly HashSet<nint> _skippedClass = [];
+
+    // Custom title bars being probed off the UI thread, and those whose probe failed at a given size and DPI
+    // (probed again only once that changes).
+    private readonly HashSet<nint> _probing = [];
+    private readonly Dictionary<nint, (int Width, int Height, uint Dpi)> _probeFailed = [];
     private readonly HashSet<DecoratedWindow> _pendingSamples = [];
     private readonly List<nint> _scratch = [];
     private readonly DispatcherTimer _sampleTimer;
@@ -86,9 +95,10 @@ internal sealed class CaptionOverlayManager : IDisposable
         _scratch.AddRange(_windows.Keys);
         foreach (var hwnd in _scratch)
         {
-            if (IsStillDecoratable(hwnd))
+            var window = _windows[hwnd];
+            if (IsStillDecoratable(hwnd, window.IsProbed) && (!window.IsProbed || style.Settings.DecorateCustomTitleBars))
             {
-                _windows[hwnd].ApplyStyle(style);
+                window.ApplyStyle(style);
             }
             else
             {
@@ -96,6 +106,8 @@ internal sealed class CaptionOverlayManager : IDisposable
             }
         }
 
+        // The custom title bar setting may have changed: reconsider every skipped window.
+        _skippedClass.Clear();
         Reconcile();
     }
 
@@ -126,7 +138,8 @@ internal sealed class CaptionOverlayManager : IDisposable
     {
         foreach (var info in _tracker.Windows)
         {
-            if (!_windows.ContainsKey(info.Handle) && !_undecoratable.Contains(info.Handle))
+            if (!_windows.ContainsKey(info.Handle) && !_undecoratable.Contains(info.Handle)
+                && !_skippedClass.Contains(info.Handle) && !_probing.Contains(info.Handle))
             {
                 TryDecorate(info);
             }
@@ -153,7 +166,15 @@ internal sealed class CaptionOverlayManager : IDisposable
     {
         if (CaptionDecorationRules.IsSkippedClass(info.ClassName))
         {
-            _undecoratable.Add(info.Handle);
+            if (_style.Settings.DecorateCustomTitleBars && CaptionDecorationRules.CanProbeSkippedClass(info.ClassName))
+            {
+                TryProbe(info);
+            }
+            else
+            {
+                _skippedClass.Add(info.Handle);
+            }
+
             return;
         }
 
@@ -164,32 +185,125 @@ internal sealed class CaptionOverlayManager : IDisposable
             return;
         }
 
+        Decorate(info.Handle, probe: null);
+    }
+
+    private void Decorate(nint hwnd, ProbedCaption? probe)
+    {
         DecoratedWindow? window = null;
         try
         {
-            window = new DecoratedWindow(info.Handle, _style, _colorizer, info.Handle == _foreground);
+            window = new DecoratedWindow(hwnd, _style, _colorizer, hwnd == _foreground, probe);
             window.RemovalRequested += OnRemovalRequested;
             window.SampleRequested += OnSampleRequested;
-            _windows.Add(info.Handle, window);
+            window.ReprobeRequested += OnReprobeRequested;
+            _windows.Add(hwnd, window);
             window.UpdatePlacement();
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
         {
-            ThrottledLog.Warn("decorate", $"Could not create window buttons for 0x{info.Handle:X}: {ex.Message}");
+            ThrottledLog.Warn("decorate", $"Could not create window buttons for 0x{hwnd:X}: {ex.Message}");
             if (window is not null)
             {
-                _windows.Remove(info.Handle);
+                _windows.Remove(hwnd);
                 window.Dispose();
             }
         }
     }
 
-    private bool IsStillDecoratable(nint hwnd)
+    /// <summary>
+    /// Starts probing a window that draws its own title bar, unless a probe at its current size and DPI already
+    /// failed. The overlay is created when the probe finds the buttons.
+    /// </summary>
+    private void TryProbe(WindowInfo info)
+    {
+        if (!WindowFilter.CanDecorate(info, _style.Settings.ExcludedProcesses, drawsOwnButtons: true)
+            || !CaptionMetrics.TryReadFrame(info.Handle, out var frame))
+        {
+            return;
+        }
+
+        var dpi = NativeMethods.GetDpiForWindow(info.Handle);
+        if (_probeFailed.TryGetValue(info.Handle, out var failed) && failed == (frame.Width, frame.Height, dpi))
+        {
+            return;
+        }
+
+        StartProbe(info.Handle, frame, dpi);
+    }
+
+    private void StartProbe(nint hwnd, PixelRect frame, uint dpi)
+    {
+        if (!_probing.Add(hwnd))
+        {
+            return;
+        }
+
+        // WM_NCHITTEST goes to another process: never from the dispatcher (see CustomCaptionProbe).
+        Task.Run(() => CustomCaptionProbe.Probe(hwnd, frame, dpi))
+            .ContinueWith(task => _dispatcher.BeginInvoke(() => OnProbed(hwnd, frame, dpi, task.Result)), TaskScheduler.Default);
+    }
+
+    private void OnProbed(nint hwnd, PixelRect probedFrame, uint probedDpi, ProbedCaption? result)
+    {
+        _probing.Remove(hwnd);
+        if (!_started || !NativeMethods.IsWindow(hwnd) || !_style.Settings.DecorateCustomTitleBars)
+        {
+            return;
+        }
+
+        _windows.TryGetValue(hwnd, out var window);
+        if (!CaptionMetrics.TryReadFrame(hwnd, out var frame) || frame.Width != probedFrame.Width
+            || frame.Height != probedFrame.Height || NativeMethods.GetDpiForWindow(hwnd) != probedDpi)
+        {
+            // Resized while probing (e.g. mid-drag): the answer may be for the old size. Probe again at the size
+            // it settles on; a decorated window asks on its next location change.
+            window?.AllowReprobe();
+            return;
+        }
+
+        if (result is not { } probe)
+        {
+            _probeFailed[hwnd] = (frame.Width, frame.Height, probedDpi);
+            if (window is not null)
+            {
+                Log.Info($"Window 0x{hwnd:X} no longer reports its caption buttons; its own buttons stay");
+                Remove(hwnd);
+            }
+
+            return;
+        }
+
+        _probeFailed.Remove(hwnd);
+        if (window is not null)
+        {
+            window.SetProbe(probe);
+        }
+        else
+        {
+            Log.Info($"Decorating 0x{hwnd:X}, which draws its own title bar (buttons found by hit-testing)");
+            Decorate(hwnd, probe);
+        }
+    }
+
+    private void OnReprobeRequested(DecoratedWindow window)
+    {
+        if (CaptionMetrics.TryReadFrame(window.Target, out var frame))
+        {
+            StartProbe(window.Target, frame, NativeMethods.GetDpiForWindow(window.Target));
+        }
+        else
+        {
+            window.AllowReprobe();
+        }
+    }
+
+    private bool IsStillDecoratable(nint hwnd, bool drawsOwnButtons)
     {
         // Minimised or cloaked windows keep their (hidden) overlay; only settings-driven reasons drop it here.
         var info = _tracker.Inspect(hwnd);
         return info is not null
-            && WindowFilter.CanDecorate(info with { IsMinimized = false, IsCloaked = false }, _style.Settings.ExcludedProcesses);
+            && WindowFilter.CanDecorate(info with { IsMinimized = false, IsCloaked = false }, _style.Settings.ExcludedProcesses, drawsOwnButtons);
     }
 
     private void OnRawWindowEvent(uint eventType, nint hwnd)
@@ -197,6 +311,8 @@ internal sealed class CaptionOverlayManager : IDisposable
         if (eventType == WinEventHook.EVENT_OBJECT_DESTROY)
         {
             _undecoratable.Remove(hwnd);
+            _skippedClass.Remove(hwnd);
+            _probeFailed.Remove(hwnd);
             if (_windows.ContainsKey(hwnd))
             {
                 _colorizer.Forget(hwnd);
@@ -208,6 +324,13 @@ internal sealed class CaptionOverlayManager : IDisposable
 
         if (!_windows.TryGetValue(hwnd, out var window))
         {
+            // A custom title bar whose probe failed may report its buttons at the size it was resized to.
+            if (eventType == WinEventHook.EVENT_SYSTEM_MOVESIZEEND && _probeFailed.ContainsKey(hwnd)
+                && _tracker.Inspect(hwnd) is { } info)
+            {
+                TryProbe(info);
+            }
+
             return;
         }
 
@@ -358,6 +481,7 @@ internal sealed class CaptionOverlayManager : IDisposable
         _pendingSamples.Remove(window);
         window.RemovalRequested -= OnRemovalRequested;
         window.SampleRequested -= OnSampleRequested;
+        window.ReprobeRequested -= OnReprobeRequested;
         window.Dispose();
     }
 }

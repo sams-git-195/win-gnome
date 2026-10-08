@@ -25,6 +25,14 @@ public static class CaptionDecorationRules
         className is not null && SkippedClasses.Contains(className);
 
     /// <summary>
+    /// True when a skipped window may still be decorated after asking it where its buttons are
+    /// (<see cref="CaptionHitTestProbe"/>), with the experimental custom-title-bar setting on. DWM's hung-window
+    /// stand-in is never probed.
+    /// </summary>
+    public static bool CanProbeSkippedClass(string? className) =>
+        IsSkippedClass(className) && !string.Equals(className, "Ghost", StringComparison.Ordinal);
+
+    /// <summary>
     /// True when Windows draws the full minimise/maximise/close trio. With neither WS_MINIMIZEBOX nor
     /// WS_MAXIMIZEBOX only a lone close button is drawn, and three circles would not fit its space.
     /// </summary>
