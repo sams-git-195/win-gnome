@@ -55,8 +55,9 @@ Registry values (all HKCU, no admin):
 
 ## Safety and recovery
 HKCU only. The engine records each original value (including "did not exist") and persists the backup
-before writing; revert restores exactly, deleting values that were absent. A value Windows rewrote
-meanwhile is left alone only if it no longer equals ours (existing engine behaviour). `--safe` and
+before writing; revert restores exactly, deleting values that were absent. Revert writes the recorded
+originals back even if the user changed the value in Windows Settings meanwhile (existing engine behaviour for
+every tweak), so Revert on the accent tweak discards a newer accent choice. `--safe` and
 `--selftest` use the in-memory registry and skip the broadcast.
 
 ## Footprint

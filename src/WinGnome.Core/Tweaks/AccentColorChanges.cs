@@ -15,7 +15,7 @@ public static class AccentColorChanges
     /// <summary>Index of the first shade in the palette; Windows uses it as the Start and taskbar colour.</summary>
     private const int StartShadeIndex = 4;
 
-    /// <summary>Windows' eighth palette swatch, the same whatever the accent is.</summary>
+    /// <summary>Windows' eighth palette swatch. It does not follow the accent (it is not derived from it), so it is left as a constant.</summary>
     private static readonly byte[] FixedSwatch = [0x88, 0x17, 0x98, 0x00];
 
     /// <summary>How far each palette swatch sits from the base colour: tints toward white, then shades toward black.</summary>

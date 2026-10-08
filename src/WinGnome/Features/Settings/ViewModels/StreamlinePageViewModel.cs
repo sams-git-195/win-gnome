@@ -211,7 +211,7 @@ internal sealed class StreamlinePageViewModel : SettingsPageViewModel
     private static string? CategoryDescription(TweakCategory category) => category switch
     {
         TweakCategory.Taskbar => "For native taskbar mode — uses supported Windows settings only.",
-        TweakCategory.GnomeLook => "Make the rest of Windows calmer and more neutral, like GNOME. Colour changes apply straight away; the desktop ones need an Explorer restart.",
+        TweakCategory.GnomeLook => "Make the rest of Windows calmer and more neutral, like GNOME. Running apps are told about colour changes straight away, but Start and the taskbar may need an Explorer restart; the desktop ones always do.",
         _ => null,
     };
 }

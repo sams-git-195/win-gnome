@@ -161,16 +161,46 @@ public class GnomeLookTweaksTests
     public void Backup_SurvivesAJsonRoundTrip_AndStillRevertsExactly(string id)
     {
         var t = Get(id);
-        var present = t.Changes[0];
-        var original = Original(present, 0);
-        _store.SetValue(present.SubKey, present.ValueName, original);
+        var originals = t.Changes.Select((c, i) => (Change: c, Original: Original(c, i))).ToList();
+        foreach (var (change, original) in originals)
+        {
+            _store.SetValue(change.SubKey, change.ValueName, original);
+        }
+
         _engine.Apply(t);
 
         var reloaded = new TweakEngine(_store, TweakBackup.FromJson(_engine.Backup.ToJson()));
         reloaded.Revert(t);
 
-        Assert.Equal(original, _store.GetValue(present.SubKey, present.ValueName));
-        Assert.All(t.Changes.Skip(1), c => Assert.Null(_store.GetValue(c.SubKey, c.ValueName)));
+        foreach (var (change, original) in originals)
+        {
+            Assert.Equal(original, _store.GetValue(change.SubKey, change.ValueName));
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(GnomeIds))]
+    public void Backup_OfAnEmptyRegistry_SurvivesAJsonRoundTrip_AndDeletesWhatWasCreated(string id)
+    {
+        var t = Get(id);
+        _engine.Apply(t);
+
+        var reloaded = new TweakEngine(_store, TweakBackup.FromJson(_engine.Backup.ToJson()));
+        reloaded.Revert(t);
+
+        Assert.All(t.Changes, c => Assert.Null(_store.GetValue(c.SubKey, c.ValueName)));
+    }
+
+    [Fact]
+    public void GnomeAccent_Revert_RestoresAnAutoColorizationOfAnotherKind()
+    {
+        var t = Get("gnome-accent");
+        _store.SetValue(@"Control Panel\Desktop", "AutoColorization", RegistryValue.Text("1"));
+
+        _engine.Apply(t);
+        _engine.Revert(t);
+
+        Assert.Equal(RegistryValue.Text("1"), _store.GetValue(@"Control Panel\Desktop", "AutoColorization"));
     }
 
     [Fact]
