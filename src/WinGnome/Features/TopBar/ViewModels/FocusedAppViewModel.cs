@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Windows.Media;
+using WinGnome.Core.Collections;
 using WinGnome.Core.Windows;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
@@ -10,9 +12,16 @@ namespace WinGnome.Features.TopBar.ViewModels;
 /// <summary>Name and icon of the application that owns the foreground window (GNOME's app menu label).</summary>
 internal sealed class FocusedAppViewModel : ObservableObject, IDisposable
 {
+    /// <summary>Apps recently switched between; icons are small frozen bitmaps, so this costs little.</summary>
+    private const int IconCacheSize = 32;
+
     private readonly WindowTracker _windows;
     private readonly IAppCatalog _apps;
     private readonly IIconProvider _icons;
+
+    // Keyed by "size|app identity" (identities are already lower-cased). Spares the cross-process WM_GETICON and a new
+    // bitmap on every focus change for windows IconProvider cannot cache by executable (UWP frames, for instance).
+    private readonly LruCache<string, ImageSource> _iconCache = new(IconCacheSize, StringComparer.Ordinal);
     private nint _window;
     private string _name = "";
     private ImageSource? _icon;
@@ -92,12 +101,37 @@ internal sealed class FocusedAppViewModel : ObservableObject, IDisposable
 
         _window = hwnd;
         Name = _apps.FindForWindow(info.AppUserModelId, info.ProcessPath)?.Name ?? _windows.GetAppName(info);
-        Icon = _icons.GetWindowIcon(hwnd, info.ProcessPath, _iconSizePx);
+        Icon = GetIcon(info);
+    }
+
+    private ImageSource? GetIcon(WindowInfo info)
+    {
+        var identity = AppIdentity.ForIconCache(info.AppUserModelId, info.ProcessPath, info.ProcessId);
+        if (identity is null)
+        {
+            return _icons.GetWindowIcon(info.Handle, info.ProcessPath, _iconSizePx);
+        }
+
+        var key = string.Create(CultureInfo.InvariantCulture, $"{_iconSizePx}|{identity}");
+        if (_iconCache.TryGet(key, out var cached))
+        {
+            return cached;
+        }
+
+        // Not cached when missing: a new window may not have set its icon yet.
+        var icon = _icons.GetWindowIcon(info.Handle, info.ProcessPath, _iconSizePx);
+        if (icon is not null)
+        {
+            _iconCache.Set(key, icon);
+        }
+
+        return icon;
     }
 
     public void Dispose()
     {
         _windows.ForegroundChanged -= OnForegroundChanged;
         _apps.Changed -= OnCatalogChanged;
+        _iconCache.Clear();
     }
 }

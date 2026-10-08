@@ -28,6 +28,24 @@ public class AppIdentityTests
         Assert.Equal("pid:7", AppIdentity.ForWindow("", "  ", 7));
     }
 
+    [Theory]
+    [InlineData(null, @"C:\Windows\System32\ApplicationFrameHost.exe")]
+    [InlineData("  ", @"C:\Windows\System32\applicationframehost.EXE")]
+    [InlineData(null, null)]
+    [InlineData("", " ")]
+    public void ForIconCache_FrameHostOrProcessIdOnly_IsNotCacheable(string? aumid, string? path)
+    {
+        Assert.Null(AppIdentity.ForIconCache(aumid, path, 7));
+    }
+
+    [Theory]
+    [InlineData("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", @"C:\Windows\System32\ApplicationFrameHost.exe", "aumid:microsoft.windowscalculator_8wekyb3d8bbwe!app")]
+    [InlineData(null, @"C:\Program Files\Foo\Foo.exe", @"path:c:\program files\foo\foo.exe")]
+    public void ForIconCache_OtherWindows_UseTheWindowIdentity(string? aumid, string? path, string expected)
+    {
+        Assert.Equal(expected, AppIdentity.ForIconCache(aumid, path, 7));
+    }
+
     [Fact]
     public void ForLaunchId_AumidIsLowercased()
     {

@@ -25,6 +25,23 @@ public static class AppIdentity
     }
 
     /// <summary>
+    /// Key under which a running window's icon can be cached, or null when the identity does not reliably name one app:
+    /// ApplicationFrameHost hosts every UWP window, so without an AppUserModelID its path names no particular app; and
+    /// a process ID alone is reused by unrelated processes over a day.
+    /// </summary>
+    public static string? ForIconCache(string? appUserModelId, string? processPath, int processId)
+    {
+        if (string.IsNullOrWhiteSpace(appUserModelId)
+            && (string.IsNullOrWhiteSpace(processPath)
+                || PathText.FileNameWithoutExtension(processPath).Equals("ApplicationFrameHost", StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
+        return ForWindow(appUserModelId, processPath, processId);
+    }
+
+    /// <summary>
     /// Identity of a pinned launcher. File-system launch ids become "path:" keys (after
     /// <paramref name="resolvePath"/> has expanded known-folder prefixes); anything else is an AppUserModelID.
     /// </summary>
