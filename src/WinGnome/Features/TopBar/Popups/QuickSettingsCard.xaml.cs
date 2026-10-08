@@ -6,7 +6,7 @@ using WinGnome.Features.TopBar.ViewModels;
 namespace WinGnome.Features.TopBar.Popups;
 
 /// <summary>
-/// GNOME-style quick settings: volume slider, shortcut tiles, battery state, and the system row with
+/// GNOME-style quick settings: volume and brightness sliders, shortcut tiles, battery state, and the system row with
 /// screenshot, settings, lock and an expandable power menu.
 /// </summary>
 internal sealed partial class QuickSettingsCard : UserControl
@@ -32,6 +32,12 @@ internal sealed partial class QuickSettingsCard : UserControl
     {
         e.Handled = true;
         _status.NudgeVolume(e.Delta);
+    }
+
+    private void OnBrightnessWheel(object sender, MouseWheelEventArgs e)
+    {
+        e.Handled = true;
+        _status.NudgeBrightness(e.Delta);
     }
 
     private void OnPowerClick(object sender, RoutedEventArgs e) =>

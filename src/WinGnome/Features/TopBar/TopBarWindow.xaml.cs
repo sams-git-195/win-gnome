@@ -243,6 +243,7 @@ internal sealed partial class TopBarWindow : Window
         if (!_popups.IsOpen(_quickSettingsPopup))
         {
             _quickSettingsCard.Reset();
+            _viewModel.Status.RefreshBrightness();
         }
 
         _popups.Toggle(_quickSettingsPopup, StatusButton, PopupAlignment.End);

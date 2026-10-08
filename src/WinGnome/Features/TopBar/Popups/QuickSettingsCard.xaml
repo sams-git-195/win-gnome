@@ -51,6 +51,23 @@
                        Foreground="{DynamicResource SecondaryForegroundBrush}" />
         </Grid>
 
+        <!-- Brightness: same row as the volume, minus the mute button. Hidden when no panel supports brightness control. -->
+        <Grid Margin="4,0,4,10" Visibility="{Binding IsBrightnessAvailable, Converter={StaticResource VisibleWhen}}"
+              Background="Transparent" MouseWheel="OnBrightnessWheel">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="44" />
+            </Grid.ColumnDefinitions>
+            <!-- Purely an icon: not clickable, so it takes no hover or press highlight. -->
+            <Button Style="{StaticResource QuickRoundButton}" Background="Transparent" Content="&#xE706;"
+                    IsHitTestVisible="False" IsTabStop="False" Focusable="False" />
+            <Slider Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Style="{StaticResource QuickSlider}"
+                    Value="{Binding BrightnessPercent, Mode=TwoWay}" AutomationProperties.Name="Screen brightness" />
+            <TextBlock Grid.Column="2" Text="{Binding BrightnessText}" VerticalAlignment="Center" HorizontalAlignment="Right"
+                       Foreground="{DynamicResource SecondaryForegroundBrush}" />
+        </Grid>
+
         <!-- Tiles. -->
         <UniformGrid Columns="2">
             <Button Style="{StaticResource WifiTile}" Tag="{x:Static local:TopBarAction.WifiSettings}" Click="OnActionClick">
