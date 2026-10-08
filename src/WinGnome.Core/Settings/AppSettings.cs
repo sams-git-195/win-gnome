@@ -121,6 +121,9 @@ public sealed class TopBarSettings
     /// <summary>Corner radius of the bar; mostly useful together with <see cref="Margin"/>.</summary>
     public double CornerRadius { get; set; }
 
+    /// <summary>Windows-logo button at the far left that opens a system menu (like the macOS Apple menu).</summary>
+    public bool ShowLogoMenu { get; set; } = true;
+
     public bool ShowActivitiesButton { get; set; } = true;
     public bool ShowWorkspaceIndicator { get; set; } = true;
     public bool ShowFocusedAppName { get; set; } = true;
