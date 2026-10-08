@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using WinGnome.Core.Settings;
@@ -40,24 +41,33 @@ internal sealed partial class TopBarWindow : Window
     private readonly Popup _logoPopup;
     private readonly Popup _calendarPopup;
     private readonly Popup _quickSettingsPopup;
+    private readonly BlurBackdrop _backdrop;
     private TopBarSettings _settings;
     private TopBarGeometry _geometry;
-    private int _windowWidthPx;
+    private double _scale = 1;
     private bool _blurActive;
-    private bool _clipped;
     private bool _allowClose;
 
     /// <param name="context">Shared services.</param>
     /// <param name="viewModel">The bar's view model (owned by the caller).</param>
     /// <param name="settings">Initial settings.</param>
     /// <param name="popups">Popup coordinator (owned by the caller, which disposes it after <see cref="Shutdown"/>).</param>
-    public TopBarWindow(ShellContext context, TopBarViewModel viewModel, TopBarSettings settings, PopupHost popups)
+    /// <param name="backdrop">Blur backdrop (owned by the caller, which disposes it after <see cref="Shutdown"/>).</param>
+    public TopBarWindow(ShellContext context, TopBarViewModel viewModel, TopBarSettings settings, PopupHost popups, BlurBackdrop backdrop)
     {
         _context = context;
+        _backdrop = backdrop;
         _viewModel = viewModel;
         _settings = settings;
         InitializeComponent();
         DataContext = viewModel;
+
+        // The blur lives in a separate window below the bar (see BlurBackdrop), so it can follow the floating,
+        // rounded body; the backdrop follows the bar wherever the AppBar, a DPI change or a hide puts it.
+        _backdrop.Attach(this);
+        IsVisibleChanged += (_, _) => SyncBackdrop();
+        LocationChanged += (_, _) => SyncBackdrop();
+        SizeChanged += (_, _) => SyncBackdrop();
 
         _popups = popups;
         _actions = new TopBarActions(context);
@@ -84,12 +94,11 @@ internal sealed partial class TopBarWindow : Window
 
     /// <summary>Lays the visible bar body out inside the reserved strip the AppBar was granted.</summary>
     /// <param name="geometry">Pixel geometry computed for the bar's monitor.</param>
-    /// <param name="windowWidthPx">Width of the granted AppBar rectangle in physical pixels.</param>
     /// <param name="scale">DPI scale of the bar's monitor.</param>
-    public void ApplyGeometry(TopBarGeometry geometry, int windowWidthPx, double scale)
+    public void ApplyGeometry(TopBarGeometry geometry, double scale)
     {
         _geometry = geometry;
-        _windowWidthPx = windowWidthPx;
+        _scale = scale;
 
         // Work from whole physical pixels so the body edges and rounded corners stay crisp.
         var inset = geometry.InsetPx / scale;
@@ -102,8 +111,11 @@ internal sealed partial class TopBarWindow : Window
         Resources["BarPillMargin"] = new Thickness(2, pillInset, 2, pillInset);
 
         _viewModel.FocusedApp.IconSizePx = (int)Math.Round(IconSize * scale);
-        UpdateBlurClip();
+        SyncBackdrop();
     }
+
+    /// <summary>Puts the blur backdrop and then the bar at the top of the topmost band.</summary>
+    public void RaiseToTop() => _backdrop.RaiseToTop();
 
     /// <summary>Closes any open popup (e.g. when the bar hides for a full-screen app).</summary>
     public void ClosePopups() => _popups.Close(restoreFocus: false);
@@ -145,37 +157,46 @@ internal sealed partial class TopBarWindow : Window
         Resources["BarHover"] = Frozen(foreground, HoverAlpha);
         Resources["BarPressed"] = Frozen(foreground, PressedAlpha);
 
+        // The backdrop supplies only the (untinted) blur; the body draws the tint at the chosen opacity in every mode,
+        // so the same opacity looks the same with or without blur. Alpha never drops to zero: fully transparent
+        // pixels of a layered window are click-through, and empty bar space must still swallow clicks (and close
+        // popups).
+        _blurActive = _backdrop.SetEffect(_settings.Blur);
         var opacity = Math.Clamp(_settings.Opacity, 0, 1) * (background.A / 255.0);
-        if (_settings.Blur != BlurEffect.None)
-        {
-            _blurActive = WindowBlur.Apply(this, _settings.Blur, background with { A = 255 }, opacity);
-        }
-        else if (_blurActive)
-        {
-            WindowBlur.Apply(this, BlurEffect.None, background, 0);
-            _blurActive = false;
-        }
-
-        // With blur the tint comes from the accent colour. Alpha never drops to zero: fully transparent pixels of a
-        // layered window are click-through, and empty bar space must still swallow clicks (and close popups).
-        var alpha = _blurActive ? (byte)1 : (byte)Math.Max(1, Math.Round(opacity * 255));
-        Body.Background = Frozen(background, alpha);
-        UpdateBlurClip();
+        Body.Background = Frozen(background, (byte)Math.Max(1, Math.Round(opacity * 255)));
+        SyncBackdrop();
     }
 
-    /// <summary>The blur fills the whole window, so a floating or rounded bar clips it to the visible body.</summary>
-    private void UpdateBlurClip()
+    /// <summary>
+    /// Shows the blur backdrop under the visible body, or hides it (no blur, or the bar is hidden). The backdrop is
+    /// used for the edge-to-edge bar too: one path for every layout, and the tint behaves identically in all of them.
+    /// </summary>
+    private void SyncBackdrop()
     {
-        if (_blurActive && _geometry.IsInset && _windowWidthPx > 0)
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (!_blurActive || !IsVisible || hwnd == 0)
         {
-            var body = _geometry.BodyRect(_windowWidthPx);
-            WindowBlur.ClipToRoundedRect(this, body.Left, body.Top, body.Right, body.Bottom, _geometry.CornerRadiusPx);
-            _clipped = true;
+            _backdrop.Hide();
+            return;
         }
-        else if (_clipped)
+
+        // From the window's actual rectangle rather than the last docking result: the AppBar also repositions
+        // the bar on its own (ABN_POSCHANGED).
+        var window = NativeMethods.GetWindowBounds(hwnd);
+        var body = _geometry.BodyRect(window.Width).Offset(window.Left, window.Top);
+        if (window.IsEmpty || body.IsEmpty)
         {
-            WindowBlur.ClearClip(this);
-            _clipped = false;
+            _backdrop.Hide();
+            return;
+        }
+
+        _backdrop.SetBounds(body, _geometry.CornerRadiusPx, _scale);
+        if (!_backdrop.IsVisible)
+        {
+            _backdrop.Show();
+
+            // Shown in its old z-order slot: make sure no other topmost window sits between it and the bar.
+            _backdrop.RaiseToTop();
         }
     }
 

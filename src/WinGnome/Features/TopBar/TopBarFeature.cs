@@ -27,6 +27,7 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
     private TopBarSettings _settings = new();
     private TopBarViewModel? _viewModel;
     private PopupHost? _popups;
+    private BlurBackdrop? _backdrop;
     private TopBarWindow? _window;
     private AppBar? _appBar;
     private HwndSource? _source;
@@ -65,7 +66,8 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
     {
         _viewModel = new TopBarViewModel(_context, _settings);
         _popups = new PopupHost(_context.Windows);
-        _window = new TopBarWindow(_context, _viewModel, _settings, _popups);
+        _backdrop = new BlurBackdrop("WinGnome Top Bar Backdrop");
+        _window = new TopBarWindow(_context, _viewModel, _settings, _popups, _backdrop);
 
         // Creates the handle: the bar must be a no-activate tool window before it is ever shown.
         ShellSurface.MakeNonActivating(_window, topmost: true);
@@ -101,7 +103,10 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
         var scale = NativeMethods.GetMonitorScale(monitor);
         var geometry = TopBarGeometry.Compute(_settings.Height, _settings.Margin, _settings.CornerRadius, scale);
         var granted = _appBar.Dock(AppBarEdge.Top, geometry.ThicknessPx, bounds);
-        _window.ApplyGeometry(geometry, granted.Width, scale);
+        _window.ApplyGeometry(geometry, scale);
+
+        // Docking raised the bar alone; bring its blur backdrop back directly beneath it.
+        _window.RaiseToTop();
         _viewModel?.Tray.SetBarBounds(granted);
         Log.Info($"Top bar docked at {granted.Left},{granted.Top} {granted.Width}x{granted.Height} px (DPI scale {scale:0.##})");
     }
@@ -158,11 +163,11 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
         }
         else
         {
+            // The bar's blur backdrop hides and shows with the bar (TopBarWindow follows its visibility).
             _window.Show();
 
             // The full-screen app may have pushed itself above us in the topmost band.
-            NativeMethods.SetWindowPos(new WindowInteropHelper(_window).Handle, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
-                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
+            _window.RaiseToTop();
         }
     }
 
@@ -215,6 +220,10 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
 
         _window.Shutdown();
         _window = null;
+
+        // The bar is owned by its backdrop; it was closed first so WPF tears it down rather than Win32.
+        _backdrop?.Dispose();
+        _backdrop = null;
         _popups?.Dispose();
         _popups = null;
         _viewModel?.Dispose();

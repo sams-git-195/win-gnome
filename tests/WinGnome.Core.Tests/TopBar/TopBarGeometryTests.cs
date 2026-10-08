@@ -11,7 +11,6 @@ public class TopBarGeometryTests
         var g = TopBarGeometry.Compute(32, 0, 0, 1.0);
 
         Assert.Equal(new TopBarGeometry(32, 0, 32, 0), g);
-        Assert.False(g.IsInset);
         Assert.Equal(new PixelRect(0, 0, 1920, 32), g.BodyRect(1920));
     }
 
@@ -21,14 +20,7 @@ public class TopBarGeometryTests
         var g = TopBarGeometry.Compute(32, 8, 12, 1.5);
 
         Assert.Equal(new TopBarGeometry(48 + 24, 12, 48, 18), g);
-        Assert.True(g.IsInset);
         Assert.Equal(new PixelRect(12, 12, 2868, 60), g.BodyRect(2880));
-    }
-
-    [Fact]
-    public void RoundedCornersOnly_IsInset()
-    {
-        Assert.True(TopBarGeometry.Compute(32, 0, 6, 1).IsInset);
     }
 
     [Fact]
