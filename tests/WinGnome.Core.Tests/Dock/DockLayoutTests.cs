@@ -213,4 +213,82 @@ public class DockLayoutTests
     {
         Assert.Equal(1, DockLayout.MagnificationScale(0, 0, 2));
     }
+
+    [Theory]
+    [InlineData(DockPosition.Bottom, false)]
+    [InlineData(DockPosition.Left, true)]
+    [InlineData(DockPosition.Right, false)]
+    public void Options_DefaultOverload_MatchesDefaultOptions(DockPosition position, bool extend)
+    {
+        Assert.Equal(
+            DockLayout.Compute(Monitor, position, 7, 60, 1.25, extend),
+            DockLayout.Compute(Monitor, position, 7, 60, 1.25, extend, DockLayoutOptions.Default));
+    }
+
+    [Fact]
+    public void Options_IconPadding_ChangesCellAndThickness()
+    {
+        // icon 48 + 2*10 padding = cell 68; thickness 68 + 8 = 76; length 5*68 + 16 = 356.
+        var g = DockLayout.Compute(Monitor, DockPosition.Bottom, 5, 48, 1, false, new DockLayoutOptions(IconPaddingDip: 10));
+
+        Assert.Equal(356, g.Bounds.Width);
+        Assert.Equal(76, g.Bounds.Height);
+        Assert.Equal(1072, g.Bounds.Bottom);
+    }
+
+    [Fact]
+    public void Options_EdgeGap_MovesTheBodyAwayFromTheEdge()
+    {
+        var g = DockLayout.Compute(Monitor, DockPosition.Bottom, 5, 48, 1, false, new DockLayoutOptions(EdgeGapDip: 20));
+
+        Assert.Equal(1080 - 20, g.Bounds.Bottom);
+        Assert.Equal(316, g.Bounds.Width);
+        Assert.Equal(1080, g.HiddenBounds.Top);
+    }
+
+    [Fact]
+    public void Options_EdgeGap_IsIgnoredInPanelMode()
+    {
+        var g = DockLayout.Compute(Monitor, DockPosition.Left, 5, 48, 1, true, new DockLayoutOptions(EdgeGapDip: 20));
+
+        Assert.Equal(0, g.Bounds.Left);
+    }
+
+    [Fact]
+    public void Options_ZeroGap_TouchesTheEdge()
+    {
+        var g = DockLayout.Compute(Monitor, DockPosition.Right, 5, 48, 1, false, new DockLayoutOptions(EdgeGapDip: 0));
+
+        Assert.Equal(1920, g.Bounds.Right);
+    }
+
+    [Fact]
+    public void Options_ExtraLength_IsAddedToTheBody()
+    {
+        var g = DockLayout.Compute(Monitor, DockPosition.Bottom, 5, 48, 1.5, false, new DockLayoutOptions(ExtraLengthDip: 12));
+        var plain = DockLayout.Compute(Monitor, DockPosition.Bottom, 5, 48, 1.5, false);
+
+        Assert.Equal(plain.Bounds.Width + 18, g.Bounds.Width);
+    }
+
+    [Fact]
+    public void Options_EndPadding_ChangesLength()
+    {
+        var g = DockLayout.Compute(Monitor, DockPosition.Bottom, 5, 48, 1, false, new DockLayoutOptions(EndPaddingDip: 20));
+
+        Assert.Equal((5 * 60) + 40, g.Bounds.Width);
+    }
+
+    [Theory]
+    [InlineData(-5)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void Options_InvalidValues_CountAsZero(double value)
+    {
+        var g = DockLayout.Compute(Monitor, DockPosition.Bottom, 5, 48, 1, false, new DockLayoutOptions(value, value, value, value));
+        var zero = DockLayout.Compute(Monitor, DockPosition.Bottom, 5, 48, 1, false, new DockLayoutOptions(0, 0, 0, 0));
+
+        Assert.Equal(zero, g);
+        Assert.Equal(5 * 48, g.Bounds.Width);
+    }
 }

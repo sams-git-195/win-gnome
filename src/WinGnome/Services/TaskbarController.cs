@@ -81,6 +81,24 @@ internal static partial class TaskbarController
     }
 
     /// <summary>
+    /// "Native taskbar" mode: switches the taskbar to auto-hide but leaves (or makes) its windows visible,
+    /// recording the original state in the same marker as <see cref="Hide"/>, so <see cref="RestoreFromMarker"/>
+    /// undoes it. Returns false, and changes nothing, when that marker cannot be written.
+    /// </summary>
+    public static bool SetAutoHideOnly(string settingsDirectory)
+    {
+        if (!File.Exists(MarkerPath(settingsDirectory)) && !WriteMarker(settingsDirectory, new Marker(IsAutoHide())))
+        {
+            Log.Warn("Not auto-hiding the taskbar because its restore marker could not be written");
+            return false;
+        }
+
+        ShowWindows();
+        SetAutoHide(true);
+        return true;
+    }
+
+    /// <summary>
     /// Hides the taskbar windows again (Explorer re-shows them on some events). Only call while a successful
     /// <see cref="Hide"/> is in effect: its marker is what lets a crash or <c>--restore-taskbar</c> undo this.
     /// </summary>
