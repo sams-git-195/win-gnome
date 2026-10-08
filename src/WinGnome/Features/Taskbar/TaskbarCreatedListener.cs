@@ -1,6 +1,7 @@
 using System.Windows.Interop;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
+using WinGnome.Services.Tray;
 
 namespace WinGnome.Features.Taskbar;
 
@@ -45,7 +46,8 @@ internal sealed class TaskbarCreatedListener : IDisposable
 
     private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
-        if (_taskbarCreatedMessage != 0 && msg == (int)_taskbarCreatedMessage)
+        // WinGnome's tray host sends TaskbarCreated too (to collect tray icons); Explorer did not restart then.
+        if (_taskbarCreatedMessage != 0 && msg == (int)_taskbarCreatedMessage && !TrayHost.IsOwnBroadcast(wParam))
         {
             _onTaskbarCreated();
         }

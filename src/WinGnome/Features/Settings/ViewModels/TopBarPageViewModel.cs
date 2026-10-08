@@ -33,7 +33,9 @@ internal sealed class TopBarPageViewModel : SettingsPageViewModel
         FontSize = Slider(s => s.TopBar.FontSize, (s, v) => s.TopBar.FontSize = v, 10, 20, 0.5, SliderSetting.Pixels);
         Margin = Slider(s => s.TopBar.Margin, (s, v) => s.TopBar.Margin = v, 0, 24, 1, SliderSetting.Pixels);
         CornerRadius = Slider(s => s.TopBar.CornerRadius, (s, v) => s.TopBar.CornerRadius = v, 0, 24, 1, SliderSetting.Pixels);
+        ItemCornerRadius = Slider(s => s.TopBar.ItemCornerRadius, (s, v) => s.TopBar.ItemCornerRadius = v, 0, 100, 1, SliderSetting.Pixels);
 
+        ShowLogoMenu = Toggle(s => s.TopBar.ShowLogoMenu, (s, v) => s.TopBar.ShowLogoMenu = v);
         ShowActivities = Toggle(s => s.TopBar.ShowActivitiesButton, (s, v) => s.TopBar.ShowActivitiesButton = v);
         ShowWorkspaces = Toggle(s => s.TopBar.ShowWorkspaceIndicator, (s, v) => s.TopBar.ShowWorkspaceIndicator = v);
         ShowAppName = Toggle(s => s.TopBar.ShowFocusedAppName, (s, v) => s.TopBar.ShowFocusedAppName = v);
@@ -67,6 +69,10 @@ internal sealed class TopBarPageViewModel : SettingsPageViewModel
     public SliderSetting Margin { get; }
 
     public SliderSetting CornerRadius { get; }
+
+    public SliderSetting ItemCornerRadius { get; }
+
+    public ToggleSetting ShowLogoMenu { get; }
 
     public ToggleSetting ShowActivities { get; }
 

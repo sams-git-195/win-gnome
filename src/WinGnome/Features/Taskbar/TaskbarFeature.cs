@@ -270,7 +270,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
             _peekStartedUtc = DateTime.UtcNow;
             TaskbarController.ShowWindows();
 
-            var primary = NativeMethods.FindWindow("Shell_TrayWnd", null);
+            var primary = TaskbarController.FindExplorerTray();
             if (primary != 0)
             {
                 NativeMethods.SetWindowPos(primary, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
@@ -362,7 +362,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
             return true;
         }
 
-        var tray = NativeMethods.FindWindow("Shell_TrayWnd", null);
+        var tray = TaskbarController.FindExplorerTray();
         return tray != 0
             && NativeMethods.GetProcessId(hwnd) == NativeMethods.GetProcessId(tray)
             && NativeMethods.GetClassName(hwnd) is not ("CabinetWClass" or "ExploreWClass" or "Progman" or "WorkerW");

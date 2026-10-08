@@ -8,6 +8,7 @@ namespace WinGnome.Features.TopBar.Services;
 /// </summary>
 internal static class ShellShortcuts
 {
+    private const ushort VK_ESCAPE = 0x1B;
     private const ushort VK_SHIFT = 0x10;
     private const ushort VK_CONTROL = 0x11;
     private const ushort VK_LEFT = 0x25;
@@ -16,6 +17,12 @@ internal static class ShellShortcuts
     private const ushort VK_N = 0x4E;
     private const ushort VK_S = 0x53;
     private const ushort VK_LWIN = 0x5B;
+
+    /// <summary>
+    /// Ctrl+Esc: the native Start menu. Not a Win key tap, which WinGnome's own Super-key option may turn into the
+    /// Activities overview.
+    /// </summary>
+    public static void OpenStartMenu() => WindowActivator.SendChord(VK_CONTROL, VK_ESCAPE);
 
     /// <summary>Win+N: notification centre and calendar flyout.</summary>
     public static void OpenNotificationCenter() => WindowActivator.SendChord(VK_LWIN, VK_N);

@@ -1,3 +1,4 @@
+using System.IO;
 using WinGnome.Features.TopBar.Popups;
 using WinGnome.Features.TopBar.Services;
 using WinGnome.Infrastructure;
@@ -16,6 +17,10 @@ internal enum TopBarAction
     Screenshot,
     WindowsSettings,
     WinGnomeSettings,
+    AboutThisPc,
+    MicrosoftStore,
+    StartMenu,
+    TaskManager,
     Lock,
     Suspend,
     Restart,
@@ -51,7 +56,7 @@ internal sealed class TopBarActions(ShellContext context)
                 ShellShortcuts.OpenWindowsQuickSettings();
                 break;
             case TopBarAction.ShowSystemTray:
-                // Tray icons cannot be re-hosted; they live in the (hidden) native taskbar.
+                // Explorer's own tray (its overflow and system icons) lives in the hidden native taskbar.
                 context.Commands.PeekTaskbar();
                 break;
             case TopBarAction.Screenshot:
@@ -62,6 +67,18 @@ internal sealed class TopBarActions(ShellContext context)
                 break;
             case TopBarAction.WinGnomeSettings:
                 context.Commands.ShowSettings();
+                break;
+            case TopBarAction.AboutThisPc:
+                context.Launcher.Launch("ms-settings:about");
+                break;
+            case TopBarAction.MicrosoftStore:
+                context.Launcher.Launch("ms-windows-store:");
+                break;
+            case TopBarAction.StartMenu:
+                ShellShortcuts.OpenStartMenu();
+                break;
+            case TopBarAction.TaskManager:
+                context.Launcher.Launch(Path.Combine(Environment.SystemDirectory, "taskmgr.exe"));
                 break;
             case TopBarAction.Quit:
                 context.Commands.Quit();
