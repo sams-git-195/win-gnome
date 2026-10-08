@@ -91,4 +91,24 @@ public class TrayFrontCheckScheduleTests
     {
         Assert.Equal(expected, TrayFrontCheckSchedule.IsShellActivity(code));
     }
+
+    [Theory]
+    [InlineData(0x02u, false)] // ABM_QUERYPOS
+    [InlineData(0x04u, false)] // ABM_GETSTATE
+    [InlineData(0x05u, false)] // ABM_GETTASKBARPOS
+    [InlineData(0x07u, false)] // ABM_GETAUTOHIDEBAR
+    [InlineData(0x0Bu, false)] // ABM_GETAUTOHIDEBAREX
+    [InlineData(0x00u, true)]  // ABM_NEW
+    [InlineData(0x01u, true)]  // ABM_REMOVE
+    [InlineData(0x03u, true)]  // ABM_SETPOS
+    [InlineData(0x06u, true)]  // ABM_ACTIVATE
+    [InlineData(0x08u, true)]  // ABM_SETAUTOHIDEBAR
+    [InlineData(0x09u, true)]  // ABM_WINDOWPOSCHANGED
+    [InlineData(0x0Au, true)]  // ABM_SETSTATE
+    [InlineData(0x0Cu, true)]  // ABM_SETAUTOHIDEBAREX
+    [InlineData(null, true)]   // unreadable block
+    public void IsAppBarActivity_ReadOnlyQueriesAreNot(uint? message, bool expected)
+    {
+        Assert.Equal(expected, TrayFrontCheckSchedule.IsAppBarActivity(message));
+    }
 }

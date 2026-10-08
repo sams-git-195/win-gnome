@@ -29,6 +29,13 @@ public sealed class TrayFrontCheckSchedule
     private const int MonitorChanged = 16;
     private const int RudeAppActivated = 0x8004;
 
+    // SHAppBarMessage messages (ABM_*) that only read state; Explorer does not raise its taskbar for them.
+    private const uint AppBarQueryPos = 0x02;
+    private const uint AppBarGetState = 0x04;
+    private const uint AppBarGetTaskbarPos = 0x05;
+    private const uint AppBarGetAutoHideBar = 0x07;
+    private const uint AppBarGetAutoHideBarEx = 0x0B;
+
     private long _burstUntilMs;
     private long _activeUntilMs;
     private uint _currentMs;
@@ -36,6 +43,13 @@ public sealed class TrayFrontCheckSchedule
     /// <summary>True for shell hook codes after which Explorer may raise its taskbar (not title redraws or flashes).</summary>
     public static bool IsShellActivity(int shellHookCode) =>
         shellHookCode is WindowCreated or WindowDestroyed or WindowActivated or WindowReplaced or MonitorChanged or RudeAppActivated;
+
+    /// <summary>
+    /// True for SHAppBarMessage calls after which Explorer may raise its taskbar: anything that registers, moves,
+    /// activates or reconfigures an AppBar. Read-only queries are not; an unreadable message (null) counts, to be safe.
+    /// </summary>
+    public static bool IsAppBarActivity(uint? appBarMessage) =>
+        appBarMessage is not { } message || message is not (AppBarQueryPos or AppBarGetState or AppBarGetTaskbarPos or AppBarGetAutoHideBar or AppBarGetAutoHideBarEx);
 
     /// <summary>A TaskbarCreated broadcast went out. Returns the new timer interval, or null when it is unchanged.</summary>
     public uint? OnBroadcast(long nowMs)

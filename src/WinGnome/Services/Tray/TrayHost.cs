@@ -463,8 +463,13 @@ internal sealed class TrayHost : IDisposable
                 var result = Forward(NativeMethods.WM_COPYDATA, wParam, lParam);
 
                 // Explorer raises its taskbar when AppBars change (an AppBar comes, goes or moves); until we are back
-                // in front, Shell_NotifyIcon calls would reach Explorer only. Do not wait for the next check.
-                OnShellActivity();
+                // in front, Shell_NotifyIcon calls would reach Explorer only. Do not wait for the next check. Read-only
+                // queries (ABM_GETSTATE, ABM_GETTASKBARPOS, ...) change nothing and some apps poll them.
+                if (copy.dwData != (nint)TrayCopyDataKind.AppBar || TrayFrontCheckSchedule.IsAppBarActivity(ShellTrayData.ParseAppBarMessage(data)))
+                {
+                    OnShellActivity();
+                }
+
                 return result;
         }
     }

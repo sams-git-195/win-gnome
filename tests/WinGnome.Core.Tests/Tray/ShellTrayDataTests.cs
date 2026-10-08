@@ -142,4 +142,39 @@ public class ShellTrayDataTests
         Assert.Null(ShellTrayData.ParseIconRectQuery(data));
         Assert.Null(ShellTrayData.ParseIconRectQuery(new byte[39]));
     }
+
+    private static byte[] AppBarBlock(uint dataSize, uint message, int length)
+    {
+        var data = new byte[length];
+        if (length >= 4)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(data, dataSize);
+        }
+
+        if (dataSize + 4 <= length)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan((int)dataSize), message);
+        }
+
+        return data;
+    }
+
+    [Theory]
+    [InlineData(40u, 0x05u)]
+    [InlineData(48u, 0x0Au)]
+    public void ParseAppBarMessage_ReadsTheMessageAfterTheAppBarData(uint dataSize, uint message)
+    {
+        Assert.Equal(message, ShellTrayData.ParseAppBarMessage(AppBarBlock(dataSize, message, 56)));
+    }
+
+    [Theory]
+    [InlineData(40u, 0x05u, 43)] // too short for dwMessage
+    [InlineData(32u, 0x05u, 56)] // cbSize too small for an APPBARDATA
+    [InlineData(200u, 0x05u, 256)] // cbSize too large
+    [InlineData(40u, 0x0Du, 56)] // no such ABM_ message
+    [InlineData(40u, 0x05u, 3)] // no cbSize at all
+    public void ParseAppBarMessage_MalformedBlock_IsNull(uint dataSize, uint message, int length)
+    {
+        Assert.Null(ShellTrayData.ParseAppBarMessage(AppBarBlock(dataSize, message, length)));
+    }
 }

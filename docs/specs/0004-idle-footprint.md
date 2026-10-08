@@ -32,16 +32,21 @@ The host learns about shell activity on its own thread: `RegisterShellHookWindow
 (shell hook messages are posted, so no app waits for us) and an out-of-context `EVENT_SYSTEM_FOREGROUND`
 WinEvent hook created on the tray thread (also asynchronous). On activity it checks the front immediately and
 asks the schedule for the faster rate. Nothing new touches the dispatcher. Hooks are removed before the window is
-destroyed, on the tray thread. AppBar messages already re-check the front immediately (unchanged). Pruning dead
-icons stays at 5 s.
+destroyed, on the tray thread. AppBar messages that register, move or reconfigure an AppBar count as activity;
+read-only queries (ABM_QUERYPOS, ABM_GETSTATE, ABM_GETTASKBARPOS, ABM_GETAUTOHIDEBAR(EX)) do not, since some apps
+poll them. `ShellTrayData.ParseAppBarMessage` reads dwMessage right after the APPBARDATA block (whose cbSize is its
+own size); an unreadable block counts as activity. Pruning dead icons stays at 5 s.
 
-**Focused-app icon.** `WinGnome.Core.Collections.LruCache<TKey,TValue>` (bounded, least-recently-used eviction).
-`FocusedAppViewModel` caches icons by `AppIdentity.ForIconCache(aumid, path, pid)` and size, 32 entries.
-`ForIconCache` returns null (do not cache) when the identity does not reliably name one app: an
-ApplicationFrameHost process without an AppUserModelID, or a bare process ID (reused over a day). Missing icons are not cached (a new window may not have
-set its icon yet). The cache holds frozen managed bitmaps only, and is cleared on Dispose.
+**Focused-app icon.** Executable icons were already cached by `IconProvider` per (path, size); the uncached case
+was the window's own icon, used for UWP frames whose app process was not found (suspended or minimised apps) and
+for apps without an exe icon. A window's own icon is per window and may be transient, so it is not cached. Instead,
+`AppIdentity.HostedAppIconId(aumid, path)` names the AppsFolder id of an ApplicationFrameHost window with an
+AppUserModelID, and `FocusedAppViewModel` uses `IconProvider.GetAppIcon(aumid)` for it (stable, cached per app),
+falling back to the window icon. `IconProvider`'s cache becomes a 512-entry `LruCache`
+(`WinGnome.Core.Collections`) instead of being cleared wholesale when full.
 
-**Battery.** `BatteryStatus.NeedsPolling` is false when there is no battery. `BatteryMonitor` stops its timer
+**Battery.** `BatteryStatus.NeedsPolling(batteryFlag)` is false only when Windows reports no system battery
+(flag 128); an unknown state (255) keeps polling. `BatteryMonitor` stops its timer
 then and keeps listening to `PowerModeChanged` (power-status change broadcasts, resume): a battery that appears
 (or a status read that comes back with one) starts the timer again.
 
@@ -51,16 +56,17 @@ dispatcher; the new hooks are asynchronous and owned by the tray thread. `--safe
 before.
 
 ## Footprint
-Tray thread wake-ups at rest drop from 4/s to 1/s. No battery timer on desktops. Fewer cross-process calls and
-bitmap allocations on focus changes.
+Tray thread wake-ups at rest drop from 4/s to 1/s. No battery timer on desktops. No cross-process WM_GETICON or new
+bitmap on focus changes to suspended UWP apps.
 
 ## Acceptance criteria
 1. Schedule: 15 ms after a broadcast for 4 s, 250 ms for 2 s after activity, 1 s at rest; no reschedule when the
    interval is unchanged; activity during the broadcast burst keeps 15 ms. (Unit tests.)
-2. Only the listed shell hook codes count as activity. (Unit tests.)
+2. Only the listed shell hook codes, and AppBar messages other than read-only queries, count as activity; the
+   AppBar message is parsed from the block, malformed blocks give null. (Unit tests.)
 3. LRU cache evicts the least recently used entry, refreshes on read, rejects capacity < 1. (Unit tests.)
-4. `ForIconCache` refuses ApplicationFrameHost without an AUMID and process-ID-only identities. (Unit tests.)
-5. `NeedsPolling` is false for no battery and true otherwise. (Unit tests.)
+4. `HostedAppIconId` returns the AUMID only for ApplicationFrameHost windows that have one. (Unit tests.)
+5. `NeedsPolling` is false only with the no-battery flag, true for unknown. (Unit tests.)
 6. Build clean, tests green, self-test exits 0, idle footprint measured before and after.
 
 ## Risks and open questions
