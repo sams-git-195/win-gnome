@@ -59,7 +59,7 @@ internal sealed class BatteryMonitor : IDisposable
         }
 
         var status = BatteryStatus.FromPowerStatus(raw.ACLineStatus, raw.BatteryFlag, raw.BatteryLifePercent, raw.BatteryLifeTime);
-        _timer.IsEnabled = status.NeedsPolling;
+        _timer.IsEnabled = BatteryStatus.NeedsPolling(raw.BatteryFlag);
         if (status != Status)
         {
             Status = status;
