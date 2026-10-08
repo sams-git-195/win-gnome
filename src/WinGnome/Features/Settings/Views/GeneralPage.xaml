@@ -7,11 +7,34 @@
             <c:SettingsRow Title="Start with Windows" Subtitle="{Binding StartWithWindowsSubtitle}">
                 <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding StartWithWindows.Value}" />
             </c:SettingsRow>
-            <c:SettingsRow Title="Hide Windows taskbar" Subtitle="Restored automatically when WinGnome exits.">
-                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding HideWindowsTaskbar.Value}" />
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Taskbar">
+            <c:SettingsRow Title="Which taskbar do you want?" Subtitle="The Windows taskbar is always restored when WinGnome exits."
+                           IsStacked="True">
+                <ListBox Style="{DynamicResource ChoiceCardListBox}" ItemsSource="{Binding TaskbarMode.Options}"
+                         SelectedItem="{Binding TaskbarMode.Selected}" AutomationProperties.Name="Taskbar mode">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <TextBlock Text="{Binding Label}" Style="{DynamicResource RowTitleText}" />
+                                <TextBlock Text="{Binding Description}" Style="{DynamicResource RowSubtitleText}" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </c:SettingsRow>
+            <c:SettingsRow Title="Auto-hide the taskbar" Subtitle="Restored when WinGnome exits."
+                           Visibility="{Binding IsNativeTaskbar, Converter={x:Static c:Converters.BoolToVisibility}}">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding NativeTaskbarAutoHide.Value}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Style the native taskbar" Subtitle="Hide the search box, Task View or Copilot buttons, or centre the icons."
+                           Visibility="{Binding IsNativeTaskbar, Converter={x:Static c:Converters.BoolToVisibility}}">
+                <Button Content="Style the native taskbar&#x2026;" Style="{DynamicResource SettingsButton}"
+                        Command="{Binding StyleTaskbarCommand}" />
             </c:SettingsRow>
             <c:SettingsRow Title="Restore taskbar now"
-                           Subtitle="Brings the taskbar back immediately. While &quot;Hide Windows taskbar&quot; is on, WinGnome hides it again the next time it starts.">
+                           Subtitle="Brings the taskbar back immediately. In dock mode, WinGnome hides it again the next time it starts.">
                 <StackPanel HorizontalAlignment="Right">
                     <Button Content="Restore taskbar" Style="{DynamicResource SettingsButton}" Command="{Binding RestoreTaskbarCommand}" />
                     <TextBlock Text="{Binding RestoreStatus}" Style="{DynamicResource RowSubtitleText}" Margin="0,6,0,0"

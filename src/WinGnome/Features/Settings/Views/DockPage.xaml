@@ -86,7 +86,7 @@
         </c:SettingsGroup>
 
         <c:SettingsGroup Header="Appearance">
-            <c:SettingsRow Title="Background colour" Subtitle="Follows the theme until you choose a colour.">
+            <c:SettingsRow Title="Background colour" Subtitle="Follows the theme by default.">
                 <c:ColorPickerRow DataContext="{Binding Background}" DefaultLabel="Follow theme"
                                   DefaultBrush="{DynamicResource DockBackgroundBrush}" />
             </c:SettingsRow>
@@ -99,8 +99,8 @@
             <c:SettingsRow Title="Distance from edge" Content="{Binding EdgeMargin}" />
             <c:SettingsRow Title="Corner radius" Content="{Binding CornerRadius}" />
             <c:SettingsRow Title="Magnification" Subtitle="Icons grow under the pointer, as in macOS." Content="{Binding Magnification}" />
-            <c:SettingsRow Title="Indicator colour" Subtitle="Uses the accent colour until you choose a colour.">
-                <c:ColorPickerRow DataContext="{Binding IndicatorColor}" DefaultLabel="Accent colour"
+            <c:SettingsRow Title="Indicator colour" Subtitle="The accent colour by default.">
+                <c:ColorPickerRow DataContext="{Binding IndicatorColor}" DefaultLabel="Accent"
                                   DefaultBrush="{DynamicResource AccentBrush}" />
             </c:SettingsRow>
             <c:SettingsRow Title="Panel mode" Subtitle="Stretch the dock across the whole screen edge instead of floating.">

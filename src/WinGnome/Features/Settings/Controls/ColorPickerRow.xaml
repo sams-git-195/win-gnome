@@ -31,12 +31,13 @@
 
         <Border Width="28" Height="28" CornerRadius="8" Margin="0,0,8,0" BorderThickness="1"
                 BorderBrush="{DynamicResource BorderBrush}" Background="{DynamicResource PreviewBackdropBrush}" ClipToBounds="True">
-            <Border CornerRadius="7" Background="{Binding Swatch}">
+            <Border CornerRadius="7">
                 <Border.Style>
                     <Style TargetType="Border">
+                        <Setter Property="Background" Value="{Binding Swatch}" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsDefault}" Value="True">
-                                <Setter Property="Background" Value="{Binding DefaultBrush, ElementName=Root}" />
+                                <Setter Property="Background" Value="{Binding DefaultBrush, RelativeSource={RelativeSource AncestorType=UserControl}}" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>

@@ -1,3 +1,4 @@
+using WinGnome.Core.Tweaks;
 using WinGnome.Features.Settings.Tweaks;
 using WinGnome.Infrastructure;
 
@@ -13,7 +14,7 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
         var settings = context.Settings;
         Pages =
         [
-            new GeneralPageViewModel(settings, context.IsSafeMode),
+            new GeneralPageViewModel(settings, context.IsSafeMode, ShowTaskbarTweaks),
             new TopBarPageViewModel(settings),
             new DockPageViewModel(settings, context.Theme, context.Icons, dialogs),
             new WindowButtonsPageViewModel(settings),
@@ -36,6 +37,14 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
                 value.OnSelected();
             }
         }
+    }
+
+    /// <summary>Opens the Streamline page scrolled to its Taskbar tweaks.</summary>
+    private void ShowTaskbarTweaks()
+    {
+        var streamline = Pages.OfType<StreamlinePageViewModel>().First();
+        streamline.PendingGroup = TweakCategory.Taskbar;
+        SelectedPage = streamline;
     }
 
     /// <summary>Commits edits still waiting on a debounce timer; call before the window closes.</summary>

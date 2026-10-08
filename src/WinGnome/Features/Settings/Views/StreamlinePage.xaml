@@ -29,10 +29,10 @@
             </TextBlock>
         </Border>
 
-        <ItemsControl ItemsSource="{Binding Groups}" Focusable="False">
+        <ItemsControl x:Name="GroupsHost" ItemsSource="{Binding Groups}" Focusable="False">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                    <c:SettingsGroup Header="{Binding Title}" ItemsSource="{Binding Items}">
+                    <c:SettingsGroup Header="{Binding Title}" Description="{Binding Description}" ItemsSource="{Binding Items}">
                         <c:SettingsGroup.ItemTemplate>
                             <DataTemplate>
                                 <c:SettingsRow Title="{Binding Title}" Subtitle="{Binding Description}">

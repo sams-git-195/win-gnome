@@ -46,8 +46,16 @@ internal sealed class ExcludedAppsViewModel : ObservableObject, IDisposable
     public string? Error
     {
         get => _error;
-        private set => SetProperty(ref _error, value);
+        private set
+        {
+            if (SetProperty(ref _error, value))
+            {
+                OnPropertyChanged(nameof(HasError));
+            }
+        }
     }
+
+    public bool HasError => _error is not null;
 
     public void Dispose() => _settings.Changed -= OnSettingsChanged;
 

@@ -81,7 +81,7 @@
     </Style>
 
     <Style x:Key="SettingsDestructiveButton" TargetType="Button" BasedOn="{StaticResource SettingsButton}">
-        <Setter Property="Foreground" Value="{DynamicResource DestructiveBrush}" />
+        <Setter Property="Background" Value="#33E01B24" />
     </Style>
 
     <!-- Filled red button for the confirming action of a destructive dialog. -->
@@ -418,6 +418,7 @@
                         <ContentPresenter Margin="12,7,32,7" IsHitTestVisible="False" HorizontalAlignment="Left" VerticalAlignment="Center"
                                           Content="{TemplateBinding SelectionBoxItem}"
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                          ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
                                           ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" />
                         <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True" Focusable="False"
                                PopupAnimation="Fade" IsOpen="{TemplateBinding IsDropDownOpen}">
@@ -570,6 +571,50 @@
                 </ItemsPanelTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- Radio cards: a vertical list where each card has a radio mark and a label with a description. -->
+    <Style x:Key="ChoiceCardItem" TargetType="ListBoxItem">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="Root" Background="{DynamicResource HoverBrush}" BorderBrush="Transparent" BorderThickness="2"
+                            CornerRadius="10" Padding="14,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid Width="20" Height="20" Margin="0,2,14,0" VerticalAlignment="Top">
+                                <Ellipse x:Name="Ring" Stroke="{DynamicResource SecondaryForegroundBrush}" StrokeThickness="2" />
+                                <Ellipse x:Name="Dot" Width="10" Height="10" Fill="{DynamicResource AccentBrush}" Visibility="Collapsed" />
+                            </Grid>
+                            <ContentPresenter Grid.Column="1" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource PressedBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="ChoiceCardListBox" TargetType="ListBox" BasedOn="{StaticResource PlainListBox}">
+        <Setter Property="ItemContainerStyle" Value="{StaticResource ChoiceCardItem}" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Disabled" />
     </Style>
 
     <!-- Rows of a searchable list (app picker). -->

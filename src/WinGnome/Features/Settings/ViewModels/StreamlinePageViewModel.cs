@@ -86,7 +86,7 @@ internal sealed class TweakItemViewModel : ObservableObject
 }
 
 /// <summary>The tweaks of one category.</summary>
-internal sealed record TweakGroupViewModel(string Title, IReadOnlyList<TweakItemViewModel> Items);
+internal sealed record TweakGroupViewModel(TweakCategory Category, string Title, string? Description, IReadOnlyList<TweakItemViewModel> Items);
 
 /// <summary>Streamline: reversible registry tweaks grouped by category, with revert-all and an Explorer restart helper.</summary>
 internal sealed class StreamlinePageViewModel : SettingsPageViewModel
@@ -103,7 +103,8 @@ internal sealed class StreamlinePageViewModel : SettingsPageViewModel
         _dialogs = dialogs;
         Groups = TweakCatalog.All
             .GroupBy(t => t.Category)
-            .Select(g => new TweakGroupViewModel(CategoryTitle(g.Key), g.Select(t => new TweakItemViewModel(tweaks, t, RestartExplorer)).ToList()))
+            .Select(g => new TweakGroupViewModel(g.Key, CategoryTitle(g.Key), CategoryDescription(g.Key),
+                g.Select(t => new TweakItemViewModel(tweaks, t, RestartExplorer)).ToList()))
             .ToList();
         RevertAllCommand = new RelayCommand(RevertAll);
         tweaks.StateChanged += OnTweaksChanged;
@@ -137,6 +138,9 @@ internal sealed class StreamlinePageViewModel : SettingsPageViewModel
         get => _messageIsError;
         private set => SetProperty(ref _messageIsError, value);
     }
+
+    /// <summary>A group the view should scroll into sight the next time it is shown (set when another page links here).</summary>
+    public TweakCategory? PendingGroup { get; set; }
 
     public override void OnSelected() => RefreshItems();
 
@@ -189,6 +193,10 @@ internal sealed class StreamlinePageViewModel : SettingsPageViewModel
         TweakCategory.Appearance => "Appearance",
         TweakCategory.Shell => "Start and shell",
         TweakCategory.Privacy => "Privacy",
+        TweakCategory.Taskbar => "Taskbar",
         _ => "Behaviour",
     };
+
+    private static string? CategoryDescription(TweakCategory category) =>
+        category == TweakCategory.Taskbar ? "For native taskbar mode — uses supported Windows settings only." : null;
 }

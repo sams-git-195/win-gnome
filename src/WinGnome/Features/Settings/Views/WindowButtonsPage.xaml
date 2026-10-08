@@ -75,9 +75,9 @@
                         <DataTemplate>
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                    <Ellipse Width="16" Height="16" Margin="2,0" Fill="{Binding Close}" />
-                                    <Ellipse Width="16" Height="16" Margin="2,0" Fill="{Binding Minimize}" />
-                                    <Ellipse Width="16" Height="16" Margin="2,0" Fill="{Binding Maximize}" />
+                                    <Ellipse Width="16" Height="16" Margin="2,0" Fill="{Binding Close}" Stroke="#40808080" />
+                                    <Ellipse Width="16" Height="16" Margin="2,0" Fill="{Binding Minimize}" Stroke="#40808080" />
+                                    <Ellipse Width="16" Height="16" Margin="2,0" Fill="{Binding Maximize}" Stroke="#40808080" />
                                 </StackPanel>
                                 <TextBlock Text="{Binding Name}" FontSize="13" HorizontalAlignment="Center" Margin="0,8,0,0" />
                             </StackPanel>
@@ -160,7 +160,7 @@
                                 Command="{Binding AddCommand}" />
                     </Grid>
                     <TextBlock Text="{Binding Error}" Margin="2,6,0,0" Foreground="{DynamicResource DestructiveBrush}" FontSize="13"
-                               TextWrapping="Wrap" />
+                               TextWrapping="Wrap" Visibility="{Binding HasError, Converter={x:Static c:Converters.BoolToVisibility}}" />
                 </StackPanel>
             </c:SettingsRow>
         </c:SettingsGroup>
