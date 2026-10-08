@@ -20,6 +20,7 @@ internal sealed class BrightnessController : IDisposable
     private WriteCoalescer _writes = new();
     private IReadOnlyList<int> _levels = [];
     private WmiBrightnessPanel? _panel;
+    private int _writeCount;
     private bool _refreshing;
     private bool _unsupported;
     private bool _disposed;
@@ -43,15 +44,22 @@ internal sealed class BrightnessController : IDisposable
         }
 
         _refreshing = true;
+        var writesAtStart = _writeCount;
         try
         {
             var panel = await Task.Run(WmiBrightnessPanel.Open);
-            ApplyPanel(panel);
+            ApplyPanel(panel, writesAtStart);
         }
         catch (Exception ex)
         {
             // A feature boundary: WMI can fail in many COM-specific ways and none may escape an async void.
-            Fail("read the screen brightness", ex);
+            Log.Warn("Could not read the screen brightness", ex);
+
+            // A failed read says nothing about a panel the user has just written to.
+            if (!_disposed && _writeCount == writesAtStart)
+            {
+                Clear();
+            }
         }
         finally
         {
@@ -67,13 +75,14 @@ internal sealed class BrightnessController : IDisposable
             return;
         }
 
-        var level = BrightnessScale.Snap(percent, _levels);
+        var level = BrightnessScale.Resolve(percent, Level, _levels);
         if (level == Level)
         {
             return;
         }
 
         Level = level;
+        _writeCount++;
         Changed?.Invoke(this, EventArgs.Empty);
         if (_writes.Post(level) is { } toWrite)
         {
@@ -108,16 +117,22 @@ internal sealed class BrightnessController : IDisposable
         catch (Exception ex)
         {
             // A feature boundary, as in Refresh.
-            Fail($"set the screen brightness to {current} %", ex);
+            Log.Warn($"Could not set the screen brightness to {current} %; the brightness slider is hidden", ex);
+
+            // Only hide the row for the panel that failed, never for a newer one.
+            if (!_disposed && ReferenceEquals(_panel, panel))
+            {
+                Clear();
+            }
         }
     }
 
-    private void ApplyPanel(WmiBrightnessPanel? panel)
+    private void ApplyPanel(WmiBrightnessPanel? panel, int writesAtStart)
     {
-        // A write started while we were reading: its level is newer than this reading.
+        // While a write is running the current panel is in use and the write's level is newer than this reading.
         if (_disposed || _writes.IsBusy)
         {
-            panel?.Dispose();
+            DisposeInBackground(panel);
             return;
         }
 
@@ -129,32 +144,43 @@ internal sealed class BrightnessController : IDisposable
             return;
         }
 
-        _panel?.Dispose();
+        DisposeInBackground(_panel);
         _panel = panel;
         _levels = panel.Levels;
-        Level = panel.Level;
+
+        // The user changed the level while this read was running: their value is newer than the one read.
+        Level = _writeCount == writesAtStart ? panel.Level : BrightnessScale.Snap(Level, _levels);
         Changed?.Invoke(this, EventArgs.Empty);
-    }
-
-    private void Fail(string what, Exception ex)
-    {
-        // After Dispose the failure is just the COM object having gone away under an in-flight call.
-        if (_disposed)
-        {
-            return;
-        }
-
-        Log.Warn($"Could not {what}; the brightness slider is hidden", ex);
-        Clear();
     }
 
     private void Clear()
     {
         _writes = new WriteCoalescer();
-        _panel?.Dispose();
+        DisposeInBackground(_panel);
         _panel = null;
         _levels = [];
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Disposing waits for a WMI call in flight, so it never happens on the UI thread.</summary>
+    private static void DisposeInBackground(WmiBrightnessPanel? panel)
+    {
+        if (panel is null)
+        {
+            return;
+        }
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                panel.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("Could not release the WMI brightness connection", ex);
+            }
+        });
     }
 
     public void Dispose()
@@ -165,7 +191,7 @@ internal sealed class BrightnessController : IDisposable
         }
 
         _disposed = true;
-        _panel?.Dispose();
+        DisposeInBackground(_panel);
         _panel = null;
     }
 }

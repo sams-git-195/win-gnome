@@ -28,8 +28,10 @@ dim the panel.
 ## Design
 - **Core** (`WinGnome.Core.TopBar`):
   - `BrightnessScale`: `NormalizeLevels` (sort, de-duplicate, drop values outside 0..100), `Snap` (slider
-    percent to the nearest supported level), `Nudge` (wheel step that always reaches the adjacent supported
-    level even on panels with coarse levels, e.g. 0/25/50/75/100).
+    percent to the nearest supported level; clamps non-finite input and tolerates an empty list), `Nudge`
+    (wheel step; a whole notch always reaches the adjacent supported level on panels with coarse levels, e.g.
+    0/25/50/75/100, while sub-notch touchpad deltas stay proportional), `Resolve` (a slider/arrow-key request
+    that snaps back to the current level on a coarse panel steps one level instead).
   - `WriteCoalescer`: coalescing write state machine. At most one write is in flight; values posted while
     it runs replace each other, so a drag produces roughly one WMI call per completed call instead of one per
     mouse-move pixel, and the last value always wins.
@@ -49,7 +51,9 @@ dim the panel.
   - `QuickSettingsCard.xaml(.cs)`: the row and its wheel handler. `TopBarWindow` calls
     `RefreshBrightness` when the card opens.
 - Threading: reads and writes are serialised (one WMI call at a time). A read that finishes while a write
-  is pending or in flight is discarded so it cannot move the slider back under the user's finger. Results
+  is in flight is discarded; one that finishes after the user changed the level (even if the write is done)
+  is adopted but keeps the user's level, so a stale read can never move the slider back. Panels are disposed
+  on a worker thread because disposing waits for a call in flight. Results
   arriving after `Dispose` are ignored.
 - DPI/multi-monitor: no layout beyond the existing card.
 

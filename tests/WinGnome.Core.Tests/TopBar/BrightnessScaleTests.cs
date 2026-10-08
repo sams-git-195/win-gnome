@@ -81,10 +81,80 @@ public class BrightnessScaleTests
     [InlineData(100, 120, 100)]
     [InlineData(50, -120, 25)]
     [InlineData(0, -120, 0)]
-    [InlineData(50, 30, 75)]
-    public void Nudge_CoarseLevels_AlwaysReachesTheNeighbour(int current, int delta, int expected)
+    [InlineData(50, 240, 75)]
+    public void Nudge_CoarseLevels_AWholeNotchAlwaysReachesTheNeighbour(int current, int delta, int expected)
     {
         Assert.Equal(expected, BrightnessScale.Nudge(current, delta, Coarse));
+    }
+
+    [Theory]
+    [InlineData(50, 30)]
+    [InlineData(50, -30)]
+    [InlineData(50, 119)]
+    [InlineData(50, -119)]
+    [InlineData(50, 1)]
+    public void Nudge_CoarseLevels_ASubNotchDeltaDoesNotJumpALevel(int current, int delta)
+    {
+        Assert.Equal(current, BrightnessScale.Nudge(current, delta, Coarse));
+    }
+
+    [Theory]
+    [InlineData(50, 10, 50)]
+    [InlineData(50, 24, 51)]
+    [InlineData(50, -24, 49)]
+    [InlineData(50, 90, 54)]
+    public void Nudge_FullRange_SubNotchDeltasStayProportional(int current, int delta, int expected)
+    {
+        Assert.Equal(expected, BrightnessScale.Nudge(current, delta, Full));
+    }
+
+    [Theory]
+    [InlineData(double.PositiveInfinity, 100)]
+    [InlineData(double.NegativeInfinity, 0)]
+    [InlineData(double.NaN, 0)]
+    public void Snap_NonFiniteInput_ClampsToTheEnds(double percent, int expected)
+    {
+        Assert.Equal(expected, BrightnessScale.Snap(percent, Coarse));
+    }
+
+    [Theory]
+    [InlineData(42.4, 42)]
+    [InlineData(250.0, 100)]
+    [InlineData(double.NaN, 0)]
+    public void Snap_NoLevels_ReturnsTheClampedPercent(double percent, int expected)
+    {
+        Assert.Equal(expected, BrightnessScale.Snap(percent, []));
+    }
+
+    [Theory]
+    [InlineData(52.0, 75)]
+    [InlineData(48.0, 25)]
+    [InlineData(60.0, 75)]
+    [InlineData(40.0, 25)]
+    [InlineData(50.0, 50)]
+    [InlineData(80.0, 75)]
+    [InlineData(10.0, 0)]
+    public void Resolve_CoarseLevels_ASwallowedRequestStepsOneLevel(double requested, int expected)
+    {
+        Assert.Equal(expected, BrightnessScale.Resolve(requested, 50, Coarse));
+    }
+
+    [Theory]
+    [InlineData(102.0, 100)]
+    [InlineData(100.0, 100)]
+    public void Resolve_AtTheTop_StaysPut(double requested, int expected)
+    {
+        Assert.Equal(expected, BrightnessScale.Resolve(requested, 100, Coarse));
+    }
+
+    [Theory]
+    [InlineData(30.4, 30)]
+    [InlineData(29.6, 30)]
+    [InlineData(30.9, 31)]
+    [InlineData(32.0, 32)]
+    public void Resolve_FullRange_SubPercentJitterDoesNotStep(double requested, int expected)
+    {
+        Assert.Equal(expected, BrightnessScale.Resolve(requested, 30, Full));
     }
 
     [Fact]

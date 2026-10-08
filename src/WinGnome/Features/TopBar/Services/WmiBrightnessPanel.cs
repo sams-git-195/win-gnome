@@ -24,14 +24,14 @@ internal sealed class WmiBrightnessPanel : IDisposable
 
     private readonly object _lock = new();
     private readonly object _services;
-    private readonly object _methodsClass;
+    private readonly object _inParameters;
     private readonly string _instancePath;
     private bool _disposed;
 
-    private WmiBrightnessPanel(object services, object methodsClass, string instancePath, IReadOnlyList<int> levels, int level)
+    private WmiBrightnessPanel(object services, object inParameters, string instancePath, IReadOnlyList<int> levels, int level)
     {
         _services = services;
-        _methodsClass = methodsClass;
+        _inParameters = inParameters;
         _instancePath = instancePath;
         Levels = levels;
         Level = level;
@@ -48,7 +48,7 @@ internal sealed class WmiBrightnessPanel : IDisposable
     {
         object? locator = null;
         object? services = null;
-        object? methodsClass = null;
+        object? inParameters = null;
         try
         {
             locator = Activator.CreateInstance(Type.GetTypeFromProgID("WbemScripting.SWbemLocator", throwOnError: true)!);
@@ -59,10 +59,17 @@ internal sealed class WmiBrightnessPanel : IDisposable
             var current = 0;
             foreach (var instance in Instances(services, "SELECT * FROM WmiMonitorBrightness WHERE Active = TRUE"))
             {
-                instanceName = PropertyValue(instance, "InstanceName") as string;
-                levels = BrightnessScale.NormalizeLevels(((IEnumerable)PropertyValue(instance, "Level")!).Cast<object>().Select(level => Convert.ToInt32(level, CultureInfo.InvariantCulture))).ToArray();
-                current = Convert.ToInt32(PropertyValue(instance, "CurrentBrightness"), CultureInfo.InvariantCulture);
-                Release(instance);
+                try
+                {
+                    instanceName = PropertyValue(instance, "InstanceName") as string;
+                    levels = BrightnessScale.NormalizeLevels(((IEnumerable)PropertyValue(instance, "Level")!).Cast<object>().Select(level => Convert.ToInt32(level, CultureInfo.InvariantCulture))).ToArray();
+                    current = Convert.ToInt32(PropertyValue(instance, "CurrentBrightness"), CultureInfo.InvariantCulture);
+                }
+                finally
+                {
+                    Release(instance);
+                }
+
                 break;
             }
 
@@ -71,15 +78,15 @@ internal sealed class WmiBrightnessPanel : IDisposable
                 return null;
             }
 
-            methodsClass = ((dynamic)services).Get(MethodsClass);
-            var panel = new WmiBrightnessPanel(services, methodsClass, InstancePath(instanceName), levels, BrightnessScale.Snap(current, levels));
+            inParameters = SpawnSetBrightnessInParameters(services);
+            var panel = new WmiBrightnessPanel(services, inParameters, InstancePath(instanceName), levels, BrightnessScale.Snap(current, levels));
             services = null;
-            methodsClass = null;
+            inParameters = null;
             return panel;
         }
         finally
         {
-            Release(methodsClass);
+            Release(inParameters);
             Release(services);
             Release(locator);
         }
@@ -92,21 +99,9 @@ internal sealed class WmiBrightnessPanel : IDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            object? method = null;
-            object? inParameters = null;
-            try
-            {
-                method = ((dynamic)_methodsClass).Methods_.Item(SetMethod);
-                inParameters = ((dynamic)method).InParameters.SpawnInstance_();
-                SetProperty(inParameters, "Timeout", 1u);
-                SetProperty(inParameters, "Brightness", (byte)percent);
-                Release(((dynamic)_services).ExecMethod(_instancePath, SetMethod, inParameters));
-            }
-            finally
-            {
-                Release(inParameters);
-                Release(method);
-            }
+            // The in-parameters object is built once in Open and reused; only the level changes per write.
+            SetProperty(_inParameters, "Brightness", (byte)percent);
+            Release(((dynamic)_services).ExecMethod(_instancePath, SetMethod, _inParameters));
         }
     }
 
@@ -120,8 +115,38 @@ internal sealed class WmiBrightnessPanel : IDisposable
             }
 
             _disposed = true;
-            Release(_methodsClass);
+            Release(_inParameters);
             Release(_services);
+        }
+    }
+
+    /// <summary>The in-parameters object for <c>WmiSetBrightness</c>, with its timeout already set.</summary>
+    private static object SpawnSetBrightnessInParameters(object services)
+    {
+        object? methodsClass = null;
+        object? methods = null;
+        object? method = null;
+        object? template = null;
+        object? inParameters = null;
+        try
+        {
+            methodsClass = ((dynamic)services).Get(MethodsClass);
+            methods = ((dynamic)methodsClass).Methods_;
+            method = ((dynamic)methods!).Item(SetMethod);
+            template = ((dynamic)method!).InParameters;
+            inParameters = ((dynamic)template!).SpawnInstance_();
+            SetProperty(inParameters!, "Timeout", 1u);
+            var result = inParameters!;
+            inParameters = null;
+            return result;
+        }
+        finally
+        {
+            Release(inParameters);
+            Release(template);
+            Release(method);
+            Release(methods);
+            Release(methodsClass);
         }
     }
 
