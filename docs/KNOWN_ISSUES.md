@@ -28,6 +28,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-007](#ki-007) | S4 | Window buttons | Apps that draw their own title bars keep their own buttons | By design |
 | [KI-008](#ki-008) | S4 | Taskbar | The native taskbar isn't restyled | By design |
 | [KI-009](#ki-009) | S4 | Repo | No CI workflow, although the README says `--selftest` is used by CI | Open |
+| [KI-010](#ki-010) | S3 | App | Launched from a sandboxed terminal, WinGnome can't save settings or its restore marker | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -92,8 +93,22 @@ There's no `.github/workflows` yet, so nothing builds or tests on push.
 *Fix direction:* a Windows workflow that runs `dotnet build -c Release -warnaserror`, `dotnet test` and
 the self-test, triggered on push to `main` and on pull requests only.
 
+### KI-010
+**Launched from a sandboxed terminal, WinGnome can't save settings or its restore marker** · S3 · App · Open
+
+A WinGnome started from a sandboxed shell (for example an AI coding agent's terminal) may be blocked from
+reading or writing `%APPDATA%\WinGnome`. It then runs on default settings, keeps no log, can't delete its
+taskbar marker on exit, and loses every settings change. On 2026-10-08 this hid the user's pinned apps and
+left the taskbar on auto-hide after quitting. Since 6e07eb0 the Settings window shows a *Changes won't be kept*
+banner when the folder isn't writable. *Workaround:* start WinGnome from Explorer, the Start menu or sign-in;
+`WinGnome.exe --restore-taskbar` fixes a taskbar left on auto-hide.
+*Fix direction:* also warn from the top bar (not only Settings), and refuse to hide the taskbar when the
+settings folder can't be written (the marker check covers new markers, not a stale one it can't delete).
+
 ## Resolved
 
 | ID | Severity | Area | Summary | Fixed in |
 |---|---|---|---|---|
-| — | | | | |
+| KI-011 | S2 | Settings | Non-safe runs with `--settings-dir` rewrote or deleted the shared "Start with Windows" entry | 6aeef5f |
+| KI-012 | S3 | Settings | A settings folder that couldn't be written silently dropped every change | 6e07eb0 (warning banner) |
+| KI-013 | S4 | Top bar | Large hover corner radius drew oval highlights instead of pills | c26e1c8 |

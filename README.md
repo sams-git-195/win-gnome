@@ -86,11 +86,13 @@ dotnet build -c Release
 dotnet run --project src/WinGnome -c Release
 ```
 
-### Publish a single folder
+### Publish a single exe
+Quit WinGnome first: a running copy locks `WinGnome.exe`, and the publish then leaves the old exe in place.
 ```bash
-dotnet publish src/WinGnome -c Release -r win-x64 --self-contained false -o publish
+dotnet publish src/WinGnome -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish
 ```
-Then run `publish\WinGnome.exe`. Turn on **Settings → General → Start with Windows** to launch it at sign-in.
+Then run `publish\WinGnome.exe` from Explorer. Settings live in `%APPDATA%\WinGnome`, so they carry over between
+builds and updates. Turn on **Settings → General → Start with Windows** to launch it at sign-in.
 
 ### Opening settings
 WinGnome has no tray icon. Open settings from the top bar's quick-settings menu (the system indicators at the
