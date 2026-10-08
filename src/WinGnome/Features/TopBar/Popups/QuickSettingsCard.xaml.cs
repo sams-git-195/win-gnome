@@ -6,7 +6,7 @@ using WinGnome.Features.TopBar.ViewModels;
 namespace WinGnome.Features.TopBar.Popups;
 
 /// <summary>
-/// GNOME-style quick settings: volume slider, shortcut tiles, battery state, and the system row with
+/// GNOME-style quick settings: volume and brightness sliders, shortcut tiles, battery state, and the system row with
 /// screenshot, settings, lock and an expandable power menu.
 /// </summary>
 internal sealed partial class QuickSettingsCard : UserControl
@@ -32,6 +32,32 @@ internal sealed partial class QuickSettingsCard : UserControl
     {
         e.Handled = true;
         _status.NudgeVolume(e.Delta);
+    }
+
+    private void OnBrightnessWheel(object sender, MouseWheelEventArgs e)
+    {
+        e.Handled = true;
+        _status.NudgeBrightness(e.Delta);
+    }
+
+    /// <summary>
+    /// Arrow and Page keys step one supported level. The slider's own keys move by 2 % or 10 %, which a panel
+    /// with coarse levels would snap straight back to the current level.
+    /// </summary>
+    private void OnBrightnessKeyDown(object sender, KeyEventArgs e)
+    {
+        var direction = e.Key switch
+        {
+            Key.Right or Key.Up or Key.PageUp => 1,
+            Key.Left or Key.Down or Key.PageDown => -1,
+            _ => 0,
+        };
+
+        if (direction != 0)
+        {
+            e.Handled = true;
+            _status.StepBrightness(direction);
+        }
     }
 
     private void OnPowerClick(object sender, RoutedEventArgs e) =>
