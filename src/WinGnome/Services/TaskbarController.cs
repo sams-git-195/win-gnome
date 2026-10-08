@@ -1,0 +1,172 @@
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+using WinGnome.Infrastructure;
+using WinGnome.Interop;
+
+namespace WinGnome.Services;
+
+/// <summary>
+/// Hides and restores the native Windows taskbar(s).
+/// </summary>
+/// <remarks>
+/// Hiding is two-step: the taskbar is switched to auto-hide (which frees the work area; hiding the
+/// window alone would leave a dead strip) and its windows are hidden. The previous auto-hide state is
+/// written to a marker file before anything changes, so <see cref="RestoreFromMarker"/> can undo the
+/// change after a crash or via <c>WinGnome.exe --restore-taskbar</c>.
+/// </remarks>
+internal static partial class TaskbarController
+{
+    private const string MarkerFileName = "taskbar.state";
+    private const uint ABM_GETSTATE = 0x04;
+    private const uint ABM_SETSTATE = 0x0A;
+    private const int ABS_AUTOHIDE = 0x01;
+    private const int ABS_ALWAYSONTOP = 0x02;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct APPBARDATA
+    {
+        public int cbSize;
+        public nint hWnd;
+        public uint uCallbackMessage;
+        public uint uEdge;
+        public RECT rc;
+        public nint lParam;
+    }
+
+    [LibraryImport("shell32.dll")]
+    private static partial nuint SHAppBarMessage(uint message, ref APPBARDATA data);
+
+    private sealed record Marker(bool WasAutoHide);
+
+    /// <summary>The primary and secondary taskbar window handles currently present.</summary>
+    public static IReadOnlyList<nint> FindTaskbarWindows()
+    {
+        var result = new List<nint>();
+        var primary = NativeMethods.FindWindow("Shell_TrayWnd", null);
+        if (primary != 0)
+        {
+            result.Add(primary);
+        }
+
+        nint secondary = 0;
+        while ((secondary = NativeMethods.FindWindowEx(0, secondary, "Shell_SecondaryTrayWnd", null)) != 0)
+        {
+            result.Add(secondary);
+        }
+
+        return result;
+    }
+
+    public static bool IsTaskbarWindow(nint hwnd) =>
+        NativeMethods.GetClassName(hwnd) is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd";
+
+    /// <summary>Hides the taskbar, recording the original state in <paramref name="settingsDirectory"/> first.</summary>
+    public static void Hide(string settingsDirectory)
+    {
+        if (!File.Exists(MarkerPath(settingsDirectory)))
+        {
+            // Only record the state the user had before WinGnome ever touched it.
+            WriteMarker(settingsDirectory, new Marker(IsAutoHide()));
+        }
+
+        SetAutoHide(true);
+        HideWindows();
+    }
+
+    /// <summary>Hides the taskbar windows again (Explorer re-shows them on some events).</summary>
+    public static void HideWindows()
+    {
+        foreach (var hwnd in FindTaskbarWindows())
+        {
+            if (NativeMethods.IsWindowVisible(hwnd))
+            {
+                NativeMethods.ShowWindow(hwnd, NativeMethods.SW_HIDE);
+            }
+        }
+    }
+
+    /// <summary>Shows the taskbar windows without changing the auto-hide setting.</summary>
+    public static void ShowWindows()
+    {
+        foreach (var hwnd in FindTaskbarWindows())
+        {
+            NativeMethods.ShowWindow(hwnd, NativeMethods.SW_SHOWNA);
+        }
+    }
+
+    /// <summary>
+    /// Restores the taskbar to the state recorded in the marker file (if any) and deletes the marker.
+    /// Safe to call at any time, including from crash handlers. Returns true when a restore happened.
+    /// </summary>
+    public static bool RestoreFromMarker(string settingsDirectory)
+    {
+        var path = MarkerPath(settingsDirectory);
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+
+        var marker = ReadMarker(path);
+        ShowWindows();
+        SetAutoHide(marker?.WasAutoHide ?? false);
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Warn("Could not delete taskbar marker", ex);
+        }
+
+        Log.Info("Taskbar restored");
+        return true;
+    }
+
+    public static bool IsAutoHide()
+    {
+        var data = NewData();
+        return ((int)SHAppBarMessage(ABM_GETSTATE, ref data) & ABS_AUTOHIDE) != 0;
+    }
+
+    private static void SetAutoHide(bool autoHide)
+    {
+        var data = NewData();
+        data.lParam = autoHide ? ABS_AUTOHIDE : ABS_ALWAYSONTOP;
+        SHAppBarMessage(ABM_SETSTATE, ref data);
+    }
+
+    private static APPBARDATA NewData() => new()
+    {
+        cbSize = Marshal.SizeOf<APPBARDATA>(),
+        hWnd = NativeMethods.FindWindow("Shell_TrayWnd", null),
+    };
+
+    private static string MarkerPath(string directory) => Path.Combine(directory, MarkerFileName);
+
+    private static void WriteMarker(string directory, Marker marker)
+    {
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(MarkerPath(directory), JsonSerializer.Serialize(marker));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Error("Could not write taskbar marker", ex);
+        }
+    }
+
+    private static Marker? ReadMarker(string path)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<Marker>(File.ReadAllText(path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            Log.Warn("Taskbar marker unreadable; restoring to always visible", ex);
+            return null;
+        }
+    }
+}

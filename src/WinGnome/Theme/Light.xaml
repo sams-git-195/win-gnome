@@ -1,0 +1,32 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- GNOME Adwaita light palette. Keys must match Dark.xaml exactly. -->
+    <Color x:Key="WindowBackgroundColor">#FAFAFA</Color>
+    <Color x:Key="HeaderBackgroundColor">#EBEBEB</Color>
+    <Color x:Key="CardBackgroundColor">#FFFFFF</Color>
+    <Color x:Key="PopupBackgroundColor">#FFFFFF</Color>
+    <Color x:Key="ForegroundColor">#2E3436</Color>
+    <Color x:Key="SecondaryForegroundColor">#5E5C64</Color>
+    <Color x:Key="AccentColor">#3584E4</Color>
+    <Color x:Key="DestructiveColor">#E01B24</Color>
+    <Color x:Key="SuccessColor">#26A269</Color>
+    <Color x:Key="HoverColor">#12000000</Color>
+    <Color x:Key="PressedColor">#24000000</Color>
+    <Color x:Key="BorderColor">#1F000000</Color>
+    <Color x:Key="DockBackgroundColor">#F0F0F0</Color>
+
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="{StaticResource WindowBackgroundColor}" />
+    <SolidColorBrush x:Key="HeaderBackgroundBrush" Color="{StaticResource HeaderBackgroundColor}" />
+    <SolidColorBrush x:Key="CardBackgroundBrush" Color="{StaticResource CardBackgroundColor}" />
+    <SolidColorBrush x:Key="PopupBackgroundBrush" Color="{StaticResource PopupBackgroundColor}" />
+    <SolidColorBrush x:Key="ForegroundBrush" Color="{StaticResource ForegroundColor}" />
+    <SolidColorBrush x:Key="SecondaryForegroundBrush" Color="{StaticResource SecondaryForegroundColor}" />
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="AccentForegroundBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="DestructiveBrush" Color="{StaticResource DestructiveColor}" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
+    <SolidColorBrush x:Key="HoverBrush" Color="{StaticResource HoverColor}" />
+    <SolidColorBrush x:Key="PressedBrush" Color="{StaticResource PressedColor}" />
+    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}" />
+    <SolidColorBrush x:Key="DockBackgroundBrush" Color="{StaticResource DockBackgroundColor}" />
+</ResourceDictionary>

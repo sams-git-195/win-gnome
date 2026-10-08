@@ -1,0 +1,3 @@
+[*.cs]
+# Test method names use Subject_Behaviour underscores by design.
+dotnet_diagnostic.CA1707.severity = none

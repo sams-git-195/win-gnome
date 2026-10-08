@@ -1,0 +1,283 @@
+using WinGnome.Core.Dock;
+using WinGnome.Core.Settings;
+using WinGnome.Core.Shell;
+using WinGnome.Core.Windows;
+
+namespace WinGnome.Core.Tests.Dock;
+
+public class DockModelBuilderTests
+{
+    private const string TerminalAumid = "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App";
+    private const string FirefoxPath = @"C:\Program Files\Mozilla Firefox\firefox.exe";
+
+    private static PinnedApp Pin(string name, string launchId) => new() { Name = name, LaunchId = launchId };
+
+    private static RunningWindow Win(nint handle, string appName, string? path = null, string? aumid = null, int pid = 1) =>
+        new(handle, AppIdentity.ForWindow(aumid, path, pid), appName + " window", appName, path, aumid);
+
+    private static IReadOnlyList<DockApp> Build(
+        IReadOnlyList<PinnedApp> pinned,
+        IReadOnlyList<RunningWindow> windows,
+        nint foreground = 0,
+        bool includeUnpinned = true,
+        Func<string, string>? resolve = null) =>
+        DockModelBuilder.Build(pinned, windows, foreground, includeUnpinned, resolve);
+
+    [Fact]
+    public void EmptyInputs_GiveEmptyDock()
+    {
+        Assert.Empty(Build([], []));
+    }
+
+    [Fact]
+    public void PinnedAppsComeFirst_InPinnedOrder_EvenWhenNotRunning()
+    {
+        var apps = Build([Pin("B", "b.app"), Pin("A", "a.app")], []);
+
+        Assert.Equal(["B", "A"], apps.Select(a => a.Name));
+        Assert.All(apps, a =>
+        {
+            Assert.True(a.IsPinned);
+            Assert.False(a.IsRunning);
+            Assert.False(a.IsFocused);
+            Assert.Empty(a.Windows);
+            Assert.Null(a.ProcessPath);
+            Assert.Null(a.AppUserModelId);
+        });
+        Assert.Equal(["b.app", "a.app"], apps.Select(a => a.LaunchId));
+    }
+
+    [Fact]
+    public void BlankPinnedLaunchIds_AreSkipped()
+    {
+        var apps = Build([Pin("Blank", "  "), Pin("Real", "real.app")], []);
+        Assert.Equal(["Real"], apps.Select(a => a.Name));
+    }
+
+    [Fact]
+    public void PinnedAumid_MatchesRunningWindow_AndCopiesWindowDetails()
+    {
+        var window = Win(10, "Terminal", @"C:\Program Files\WindowsApps\wt.exe", TerminalAumid);
+
+        var apps = Build([Pin("Terminal", TerminalAumid)], [window]);
+
+        var app = Assert.Single(apps);
+        Assert.True(app.IsPinned);
+        Assert.True(app.IsRunning);
+        Assert.Equal(new nint[] { 10 }, app.Windows.ToArray());
+        Assert.Equal(TerminalAumid, app.LaunchId);
+        Assert.Equal(TerminalAumid, app.AppUserModelId);
+        Assert.Equal(@"C:\Program Files\WindowsApps\wt.exe", app.ProcessPath);
+        Assert.Equal("aumid:" + TerminalAumid.ToLowerInvariant(), app.Identity);
+    }
+
+    [Fact]
+    public void PinnedAumid_MatchIgnoresCase()
+    {
+        var window = Win(10, "Terminal", null, TerminalAumid.ToUpperInvariant());
+        var app = Assert.Single(Build([Pin("Terminal", TerminalAumid)], [window]));
+        Assert.True(app.IsRunning);
+    }
+
+    [Fact]
+    public void PinnedPath_MatchesWindowByIdentity_IgnoringCaseAndSlashes()
+    {
+        var window = Win(5, "Firefox", FirefoxPath.ToUpperInvariant());
+
+        var app = Assert.Single(Build([Pin("Firefox", FirefoxPath.Replace('\\', '/'))], [window]));
+
+        Assert.True(app.IsRunning);
+        Assert.Equal(FirefoxPath.ToUpperInvariant(), app.ProcessPath);
+    }
+
+    [Fact]
+    public void PinnedPath_FallsBackToExeFileName_WhenIdentitiesDiffer()
+    {
+        // The running window reports an AUMID and a different install folder, but the same exe name.
+        var window = Win(5, "Firefox", @"D:\Portable\Firefox.EXE", "Mozilla.Firefox.123");
+
+        var app = Assert.Single(Build([Pin("Firefox", FirefoxPath)], [window]));
+
+        Assert.True(app.IsRunning);
+        Assert.Equal(new nint[] { 5 }, app.Windows.ToArray());
+        Assert.Equal("Mozilla.Firefox.123", app.AppUserModelId);
+    }
+
+    [Fact]
+    public void ExeFallback_DoesNotMatchDifferentExeNames()
+    {
+        var window = Win(5, "Chrome", @"C:\Program Files\Google\Chrome\chrome.exe");
+
+        var apps = Build([Pin("Firefox", FirefoxPath)], [window], includeUnpinned: false);
+
+        Assert.False(Assert.Single(apps).IsRunning);
+    }
+
+    [Fact]
+    public void ExeFallback_NeedsAProcessPath()
+    {
+        var window = Win(5, "Mystery", null, null, 99);
+        var apps = Build([Pin("Firefox", FirefoxPath)], [window], includeUnpinned: false);
+        Assert.False(Assert.Single(apps).IsRunning);
+    }
+
+    [Fact]
+    public void ExeFallback_NotUsedForAumidPins()
+    {
+        var window = Win(5, "Terminal", @"C:\x\" + TerminalAumid, null);
+        var apps = Build([Pin("Terminal", TerminalAumid)], [window], includeUnpinned: false);
+        Assert.False(Assert.Single(apps).IsRunning);
+    }
+
+    [Fact]
+    public void KnownFolderPrefixedPin_IsResolvedBeforeMatching()
+    {
+        var guid = new Guid("6D809377-6AF0-444B-8957-A3773F02200E");
+        string Resolve(string path) => KnownFolderPath.Resolve(path, id => id == guid ? @"C:\Program Files" : null);
+        var window = Win(5, "Firefox", FirefoxPath);
+
+        var app = Assert.Single(Build([Pin("Firefox", @"{6D809377-6AF0-444B-8957-A3773F02200E}\Mozilla Firefox\firefox.exe")], [window], resolve: Resolve));
+
+        Assert.True(app.IsRunning);
+        Assert.Equal(@"{6D809377-6AF0-444B-8957-A3773F02200E}\Mozilla Firefox\firefox.exe", app.LaunchId);
+    }
+
+    [Fact]
+    public void IdentityMatch_WinsOverExeNameMatch_RegardlessOfPinnedOrder()
+    {
+        var byName = Pin("ByName", @"C:\other\notepad.exe");
+        var exact = Pin("Exact", @"C:\Windows\System32\notepad.exe");
+        var window = Win(5, "Notepad", @"C:\Windows\System32\notepad.exe");
+
+        var apps = Build([byName, exact], [window]);
+
+        Assert.False(apps[0].IsRunning);
+        Assert.True(apps[1].IsRunning);
+    }
+
+    [Fact]
+    public void UnpinnedRunning_FollowPinned_GroupedInOrderOfFirstAppearance()
+    {
+        var windows = new[]
+        {
+            Win(1, "Zed", @"C:\z\zed.exe"),
+            Win(2, "Alpha", @"C:\a\alpha.exe"),
+            Win(3, "Zed", @"C:\z\zed.exe"),
+            Win(4, "Pinned", null, "pinned.app"),
+            Win(5, "Alpha", @"C:\a\alpha.exe"),
+        };
+
+        var apps = Build([Pin("Pinned", "pinned.app")], windows);
+
+        Assert.Equal(["Pinned", "Zed", "Alpha"], apps.Select(a => a.Name));
+        Assert.Equal([true, false, false], apps.Select(a => a.IsPinned));
+        Assert.Equal(new nint[] { 1, 3 }, apps[1].Windows.ToArray());
+        Assert.Equal(new nint[] { 2, 5 }, apps[2].Windows.ToArray());
+        Assert.Equal(new nint[] { 4 }, apps[0].Windows.ToArray());
+    }
+
+    [Fact]
+    public void UnpinnedApp_UsesFirstWindowDetails_AndHasNoLaunchId()
+    {
+        var windows = new[]
+        {
+            new RunningWindow(1, "path:c:\\x\\app.exe", "One", "First Name", @"C:\x\app.exe", "aumid.1"),
+            new RunningWindow(2, "path:c:\\x\\app.exe", "Two", "Second Name", @"C:\x\app.exe", "aumid.2"),
+        };
+
+        var app = Assert.Single(Build([], windows));
+
+        Assert.Equal("First Name", app.Name);
+        Assert.Null(app.LaunchId);
+        Assert.False(app.IsPinned);
+        Assert.Equal("aumid.1", app.AppUserModelId);
+        Assert.Equal(@"C:\x\app.exe", app.ProcessPath);
+        Assert.Equal("path:c:\\x\\app.exe", app.Identity);
+    }
+
+    [Fact]
+    public void IncludeUnpinnedRunningFalse_OmitsUnpinnedApps_ButStillFillsPinned()
+    {
+        var windows = new[] { Win(1, "Other", @"C:\o\other.exe"), Win(2, "Term", null, TerminalAumid) };
+
+        var apps = Build([Pin("Terminal", TerminalAumid)], windows, includeUnpinned: false);
+
+        var app = Assert.Single(apps);
+        Assert.Equal(new nint[] { 2 }, app.Windows.ToArray());
+    }
+
+    [Fact]
+    public void WindowsKeepInputOrder_InsideAnApp()
+    {
+        var windows = new[]
+        {
+            Win(30, "Term", null, TerminalAumid),
+            Win(10, "Term", null, TerminalAumid),
+            Win(20, "Term", null, TerminalAumid),
+        };
+
+        var app = Assert.Single(Build([Pin("Terminal", TerminalAumid)], windows));
+
+        Assert.Equal(new nint[] { 30, 10, 20 }, app.Windows.ToArray());
+    }
+
+    [Fact]
+    public void IsFocused_WhenAnyWindowIsTheForeground()
+    {
+        var windows = new[]
+        {
+            Win(1, "Term", null, TerminalAumid),
+            Win(2, "Term", null, TerminalAumid),
+            Win(3, "Other", @"C:\o\other.exe"),
+        };
+
+        var apps = Build([Pin("Terminal", TerminalAumid)], windows, foreground: 2);
+
+        Assert.True(apps[0].IsFocused);
+        Assert.False(apps[1].IsFocused);
+    }
+
+    [Fact]
+    public void IsFocused_ForUnpinnedApp()
+    {
+        var apps = Build([], [Win(1, "A", @"C:\a.exe"), Win(2, "B", @"C:\b.exe")], foreground: 2);
+
+        Assert.False(apps[0].IsFocused);
+        Assert.True(apps[1].IsFocused);
+    }
+
+    [Fact]
+    public void NoForeground_MeansNothingIsFocused()
+    {
+        var apps = Build([], [Win(0, "A", @"C:\a.exe")], foreground: 0);
+        Assert.False(Assert.Single(apps).IsFocused);
+    }
+
+    [Fact]
+    public void ForegroundOfAnUnknownWindow_FocusesNothing()
+    {
+        var apps = Build([Pin("Terminal", TerminalAumid)], [Win(1, "Term", null, TerminalAumid)], foreground: 999);
+        Assert.False(Assert.Single(apps).IsFocused);
+    }
+
+    [Fact]
+    public void PinnedWithBlankName_UsesWindowAppName_ThenLaunchId()
+    {
+        var pinned = new[] { new PinnedApp { Name = "", LaunchId = "no.windows" }, new PinnedApp { Name = "", LaunchId = "has.window" } };
+
+        var apps = Build(pinned, [Win(1, "Friendly", null, "has.window")]);
+
+        Assert.Equal(["no.windows", "Friendly"], apps.Select(a => a.Name));
+    }
+
+    [Fact]
+    public void TwoPinsWithSameIdentity_FirstOneGetsTheWindows()
+    {
+        var pinned = new[] { Pin("One", "Same.App"), Pin("Two", "same.app") };
+
+        var apps = Build(pinned, [Win(1, "Same", null, "same.app")]);
+
+        Assert.True(apps[0].IsRunning);
+        Assert.False(apps[1].IsRunning);
+    }
+}

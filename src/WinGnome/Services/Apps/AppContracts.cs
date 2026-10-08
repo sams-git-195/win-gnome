@@ -1,0 +1,63 @@
+using System.Windows.Media;
+
+namespace WinGnome.Services.Apps;
+
+/// <summary>An installed application as listed in shell:AppsFolder (the Start menu's "All apps").</summary>
+/// <param name="Name">Display name.</param>
+/// <param name="ParsingName">
+/// Shell parsing name inside AppsFolder. For packaged apps this is the AUMID
+/// ("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"); for desktop apps it is an explicit AUMID or a
+/// known-folder path ("{6D809377-...}\app.exe"). Launch with "shell:AppsFolder\&lt;ParsingName&gt;".
+/// </param>
+/// <param name="AppUserModelId">PKEY_AppUserModel_ID of the item, used to match running windows.</param>
+/// <param name="TargetPath">Resolved executable path for desktop apps (PKEY_Link_TargetParsingPath), if any.</param>
+internal sealed record AppEntry(string Name, string ParsingName, string? AppUserModelId, string? TargetPath)
+{
+    /// <summary>Value stored in <c>PinnedApp.LaunchId</c> when this app is pinned.</summary>
+    public string LaunchId => ParsingName;
+}
+
+/// <summary>Catalogue of installed apps. Implementations must be safe to call from the UI thread.</summary>
+internal interface IAppCatalog
+{
+    /// <summary>All apps sorted by name. Empty until the first <see cref="RefreshAsync"/> completes.</summary>
+    IReadOnlyList<AppEntry> Apps { get; }
+
+    /// <summary>Raised on the UI thread after the catalogue has been (re)loaded.</summary>
+    event EventHandler? Changed;
+
+    /// <summary>Re-enumerates installed apps on a background STA thread.</summary>
+    Task RefreshAsync();
+
+    /// <summary>Finds an app by its launch id / parsing name / AUMID (case-insensitive).</summary>
+    AppEntry? FindByLaunchId(string launchId);
+
+    /// <summary>Finds the app a running window belongs to: AUMID match first, then executable path.</summary>
+    AppEntry? FindForWindow(string? appUserModelId, string? processPath);
+
+    /// <summary>
+    /// Best-effort executable path for a launch id (catalogue TargetPath, else known-folder expansion,
+    /// else the input). Used as the <c>resolvePath</c> callback for <c>AppIdentity</c>/<c>DockModelBuilder</c>.
+    /// </summary>
+    string ResolvePath(string launchId);
+}
+
+/// <summary>Icon lookup with caching. Returned images are frozen and safe to share.</summary>
+internal interface IIconProvider
+{
+    /// <summary>Icon for an app launch id, AppsFolder parsing name, or file-system path.</summary>
+    ImageSource? GetAppIcon(string launchIdOrPath, int sizePx);
+
+    /// <summary>Icon for a running window (window icon, else its executable's icon).</summary>
+    ImageSource? GetWindowIcon(nint hwnd, string? processPath, int sizePx);
+}
+
+/// <summary>Starts applications.</summary>
+internal interface IAppLauncher
+{
+    /// <summary>
+    /// Launches a pinned app or catalogue entry: AppsFolder parsing name / AUMID, .exe or .lnk path,
+    /// or a URI (ms-settings:, shell:...). Returns false (and logs) on failure.
+    /// </summary>
+    bool Launch(string launchId, string? arguments = null);
+}
