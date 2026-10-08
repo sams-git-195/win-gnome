@@ -127,6 +127,7 @@ internal static partial class NativeMethods
     public const int DWMWA_BORDER_COLOR = 34;
     public const int DWMWA_CAPTION_COLOR = 35;
     public const int DWMWA_TEXT_COLOR = 36;
+    public const int DWMWA_VISIBLE_FRAME_BORDER_THICKNESS = 37;
     public const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
     public const uint DWMWA_COLOR_DEFAULT = 0xFFFFFFFF;
 

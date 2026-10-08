@@ -11,11 +11,19 @@ namespace WinGnome.Features.WindowButtons;
 /// while a window is dragged.
 /// </summary>
 /// <param name="Frame">The visible frame (DWMWA_EXTENDED_FRAME_BOUNDS), without invisible resize borders.</param>
-/// <param name="Buttons">The visible native minimise/maximise/close buttons, clipped to <paramref name="Frame"/>.</param>
+/// <param name="Buttons">
+/// The visible native minimise/maximise/close buttons, clipped to <paramref name="Frame"/> and kept inside the
+/// window border so an overlay covering them leaves the border visible.
+/// </param>
 /// <param name="Dpi">GetDpiForWindow of the target.</param>
-internal readonly record struct CaptionMetrics(PixelRect Frame, PixelRect Buttons, uint Dpi)
+/// <param name="Border">Visible window border thickness in physical pixels (0 when maximised).</param>
+/// <param name="IsMaximized">IsZoomed of the target, read once so the border and the layout always agree.</param>
+internal readonly record struct CaptionMetrics(PixelRect Frame, PixelRect Buttons, uint Dpi, int Border, bool IsMaximized)
 {
     private static readonly int RectSize = Marshal.SizeOf<RECT>();
+
+    /// <summary>Windows 11's border width, used when DWM cannot report it.</summary>
+    private const int DefaultBorder = 1;
 
     /// <summary>Physical pixels per DIP for the target window.</summary>
     public double Scale => Dpi > 0 ? Dpi / 96.0 : 1.0;
@@ -44,7 +52,20 @@ internal readonly record struct CaptionMetrics(PixelRect Frame, PixelRect Button
             return false;
         }
 
-        metrics = new CaptionMetrics(frame, buttons, NativeMethods.GetDpiForWindow(hwnd));
+        var isMaximized = NativeMethods.IsZoomed(hwnd);
+        var border = isMaximized ? 0 : ReadBorder(hwnd);
+        metrics = new CaptionMetrics(
+            frame, CaptionButtonGeometry.InsideBorder(buttons, frame, border), NativeMethods.GetDpiForWindow(hwnd), border, isMaximized);
         return true;
+    }
+
+    /// <summary>The border DWM draws around a restored window (maximised windows have none).</summary>
+    private static int ReadBorder(nint hwnd)
+    {
+        // DWMWA_VISIBLE_FRAME_BORDER_THICKNESS needs Windows 11; older builds fail and get the 1 px default.
+        return NativeMethods.DwmGetWindowAttribute(hwnd, NativeMethods.DWMWA_VISIBLE_FRAME_BORDER_THICKNESS, out int thickness, sizeof(int)) == 0
+            && thickness >= 0
+            ? thickness
+            : DefaultBorder;
     }
 }

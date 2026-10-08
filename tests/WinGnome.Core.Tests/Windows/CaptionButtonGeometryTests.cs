@@ -98,4 +98,60 @@ public class CaptionButtonGeometryTests
     {
         Assert.Equal(expected, CaptionButtonGeometry.WindowCornerRadiusPixels(scale));
     }
+
+    [Fact]
+    public void InsideBorder_ButtonsInTheTopRightCorner_DropsTheBorderRowAndColumn()
+    {
+        var frame = new PixelRect(300, 200, 1292, 792);
+        var buttons = new PixelRect(1107, 200, 1292, 237);
+
+        Assert.Equal(new PixelRect(1107, 201, 1291, 237), CaptionButtonGeometry.InsideBorder(buttons, frame, 1));
+    }
+
+    [Fact]
+    public void InsideBorder_ThickerBorder_DropsEveryBorderPixel()
+    {
+        var frame = new PixelRect(-1600, -40, -100, 900);
+        var buttons = new PixelRect(-400, -40, -100, 0);
+
+        Assert.Equal(new PixelRect(-400, -38, -102, 0), CaptionButtonGeometry.InsideBorder(buttons, frame, 2));
+    }
+
+    [Fact]
+    public void InsideBorder_ButtonsAwayFromTheFrameEdges_IsUnchanged()
+    {
+        var frame = new PixelRect(0, 0, 1000, 800);
+        var buttons = new PixelRect(800, 6, 990, 40);
+
+        Assert.Equal(buttons, CaptionButtonGeometry.InsideBorder(buttons, frame, 1));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void InsideBorder_NoBorder_IsUnchanged(int border)
+    {
+        var frame = new PixelRect(0, 0, 1000, 800);
+        var buttons = new PixelRect(815, 0, 1000, 37);
+
+        Assert.Equal(buttons, CaptionButtonGeometry.InsideBorder(buttons, frame, border));
+    }
+
+    [Fact]
+    public void InsideBorder_EmptyButtons_IsEmpty()
+    {
+        Assert.True(CaptionButtonGeometry.InsideBorder(default, new PixelRect(0, 0, 1000, 800), 1).IsEmpty);
+    }
+
+    [Theory]
+    [InlineData(10, 1, 9)]
+    [InlineData(8, 0, 8)]
+    [InlineData(16, 2, 14)]
+    [InlineData(1, 1, 0)]
+    [InlineData(1, 3, 0)]
+    [InlineData(10, -1, 10)]
+    public void InnerCornerRadius_SubtractsTheBorder(int outer, int border, int expected)
+    {
+        Assert.Equal(expected, CaptionButtonGeometry.InnerCornerRadius(outer, border));
+    }
 }
