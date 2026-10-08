@@ -62,7 +62,7 @@
         </Border>
 
         <c:SettingsGroup>
-            <c:SettingsRow Title="Round window buttons" Subtitle="Draw circular minimise, maximise and close buttons over window title bars.">
+            <c:SettingsRow Title="Round window buttons" Subtitle="Draw circular minimise, maximise and close buttons over window title bars. Apps that draw their own title bars (Chrome, Edge, VS Code, Electron and WinUI 3 apps) keep their own buttons.">
                 <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding Enabled.Value}" />
             </c:SettingsRow>
         </c:SettingsGroup>
