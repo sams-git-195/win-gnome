@@ -130,6 +130,20 @@ public class WindowFilterTests
     }
 
     [Fact]
+    public void CanDecorate_DrawsOwnButtons_DoesNotNeedASystemMenu()
+    {
+        // Claude desktop (Electron) has WS_CAPTION but no WS_SYSMENU.
+        Assert.True(WindowFilter.CanDecorate(TestWindows.Normal() with { HasSystemMenu = false }, NoExclusions, drawsOwnButtons: true));
+    }
+
+    [Fact]
+    public void CanDecorate_DrawsOwnButtons_StillNeedsACaptionAndAnUnelevatedWindow()
+    {
+        Assert.False(WindowFilter.CanDecorate(TestWindows.Normal() with { HasCaption = false }, NoExclusions, drawsOwnButtons: true));
+        Assert.False(WindowFilter.CanDecorate(TestWindows.Normal() with { IsElevated = true }, NoExclusions, drawsOwnButtons: true));
+    }
+
+    [Fact]
     public void CanDecorate_RejectsMinimised()
     {
         Assert.False(WindowFilter.CanDecorate(TestWindows.Normal() with { IsMinimized = true }, NoExclusions));

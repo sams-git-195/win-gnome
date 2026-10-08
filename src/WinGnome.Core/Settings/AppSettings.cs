@@ -324,6 +324,12 @@ public sealed class WindowButtonSettings
     /// </summary>
     public bool UnifyTitleBarColor { get; set; } = true;
 
+    /// <summary>
+    /// Experimental: also decorate apps that draw their own title bar (Electron, Chromium, WinUI 3) when they
+    /// report where their buttons are through WM_NCHITTEST. Off by default.
+    /// </summary>
+    public bool DecorateCustomTitleBars { get; set; }
+
     /// <summary>Process names (without .exe, case-insensitive) that keep their native buttons.</summary>
     public List<string> ExcludedProcesses { get; set; } = [];
 
