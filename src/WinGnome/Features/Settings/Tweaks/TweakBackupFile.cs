@@ -55,9 +55,44 @@ internal sealed class TweakBackupFile(string directory)
                 _saveBlocked = true;
                 Log.Warn("Tweak backup was damaged and could not be copied; tweaks cannot be changed this session", ex);
             }
+
+            RecoverFromPreviousVersion(backup);
         }
 
         return backup;
+    }
+
+    /// <summary>
+    /// Fills records lost from a damaged file with the ones in the previous version ("*.bak"). Records that did load
+    /// are newer and always win; the .bak only supplies originals that would otherwise be lost for good.
+    /// </summary>
+    private void RecoverFromPreviousVersion(TweakBackup backup)
+    {
+        var previousPath = FilePath + ".bak";
+        if (!File.Exists(previousPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var previous = TweakBackup.FromJson(File.ReadAllText(previousPath), out _);
+            var recovered = 0;
+            foreach (var id in previous.TweakIds.Where(id => !backup.Contains(id)))
+            {
+                backup.Set(id, previous.Get(id)!);
+                recovered++;
+            }
+
+            if (recovered > 0)
+            {
+                Log.Warn($"Recovered {recovered} tweak backup record(s) from {FileName}.bak");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Warn("Could not read the previous tweak backup", ex);
+        }
     }
 
     /// <summary>Writes the backup atomically. Throws <see cref="IOException"/> or <see cref="UnauthorizedAccessException"/> on failure.</summary>
