@@ -4,14 +4,21 @@ using WinGnome.Interop;
 namespace WinGnome.Infrastructure;
 
 /// <summary>
-/// Hidden top-level window that turns a polite close request for the process into a clean shutdown.
+/// Turns a polite close request for the process into a clean shutdown.
 /// </summary>
 /// <remarks>
+/// <para>
 /// <c>taskkill /im WinGnome.exe</c> (without /f), installers and update tools ask an app to quit by posting
-/// WM_CLOSE to its top-level windows. WinGnome's visible surfaces refuse or ignore that, so without this window
-/// the request would only close individual surfaces and leave the process running in a broken state. Those tools
-/// only signal top-level windows that are *visible* (message-only and hidden windows are skipped), so this is a
-/// visible but zero-size, off-screen, non-activating tool window: nothing to see, not in Alt+Tab or the taskbar.
+/// WM_CLOSE to one of its visible top-level windows (taskkill picks the first it finds). WinGnome's shell surfaces
+/// (top bar, dock, backdrops, caption overlays) refuse or ignore WM_CLOSE, so without this the request would be
+/// lost, or close a single surface and leave the process running in a broken state.
+/// </para>
+/// <para>
+/// Two layers handle it. A message filter on the UI thread catches a <em>posted</em> WM_CLOSE aimed at any of our
+/// windows: WinGnome never posts WM_CLOSE itself (closing a window from code or the caption button sends it), so a
+/// posted one always comes from outside. And this zero-size, off-screen, non-activating tool window guarantees there
+/// is always a visible top-level window to receive the request, even with every surface disabled.
+/// </para>
 /// </remarks>
 internal sealed class ControlWindow : IDisposable
 {
@@ -20,6 +27,7 @@ internal sealed class ControlWindow : IDisposable
 
     private readonly HwndSource _source;
     private readonly Action _onCloseRequested;
+    private bool _requested;
 
     public ControlWindow(Action onCloseRequested)
     {
@@ -35,23 +43,45 @@ internal sealed class ControlWindow : IDisposable
         };
         _source = new HwndSource(parameters);
         _source.AddHook(WndProc);
+        ComponentDispatcher.ThreadFilterMessage += OnThreadFilterMessage;
+    }
+
+    private void OnThreadFilterMessage(ref System.Windows.Interop.MSG msg, ref bool handled)
+    {
+        if (msg.message == NativeMethods.WM_CLOSE && !handled)
+        {
+            handled = true;
+            RequestClose();
+        }
     }
 
     private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
         if (msg == NativeMethods.WM_CLOSE)
         {
-            // Never let the window be destroyed here; shut the whole app down instead.
+            // Never let this window be destroyed; shut the whole app down instead.
             handled = true;
-            Log.Info("Close requested from outside (WM_CLOSE); shutting down");
-            _onCloseRequested();
+            RequestClose();
         }
 
         return 0;
     }
 
+    private void RequestClose()
+    {
+        if (_requested)
+        {
+            return;
+        }
+
+        _requested = true;
+        Log.Info("Close requested from outside (WM_CLOSE); shutting down");
+        _onCloseRequested();
+    }
+
     public void Dispose()
     {
+        ComponentDispatcher.ThreadFilterMessage -= OnThreadFilterMessage;
         _source.RemoveHook(WndProc);
         _source.Dispose();
     }
