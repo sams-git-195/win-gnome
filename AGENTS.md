@@ -251,6 +251,13 @@ or something failed, say so with the output.
 - **Review with a different agent than the author.** QA review is done by Opus, especially for code
   written by Sonnet. The reviewer checks the definition of done above, not just whether the diff
   compiles.
+- **Parallel test instances.** Each agent runs WinGnome only with `--safe` and its own `--settings-dir`, and
+  turns off every feature it isn't testing in that profile's `settings.json` (for example
+  `{"Dock":{"Enabled":false},"WindowButtons":{"Enabled":false}}`). Only one instance at a time may have window
+  buttons on: two draw over each other and fight over title-bar colours (KI-015). Quit instances gracefully
+  (`taskkill /PID <pid>`, never `/f`) and never touch another agent's instance.
+- **Launch the everyday WinGnome outside any sandbox.** A copy started from a sandboxed agent shell may be
+  unable to use `%APPDATA%\WinGnome` and silently runs on defaults (KI-010).
 - **Hand-offs are self-contained.** A sub-agent prompt includes the goal, the files it owns, the
   constraints from this file, and what "done" means, because it doesn't see the conversation.
 
