@@ -17,6 +17,7 @@ public enum TweakCategory { Appearance, Shell, Privacy, Behaviour, Taskbar }
 /// When true and the tweak had to create the parent of its first change's key, reverting deletes that whole key tree.
 /// </param>
 /// <param name="BroadcastThemeChange">True when the app should broadcast WM_SETTINGCHANGE "ImmersiveColorSet" after a change.</param>
+/// <param name="RequiresSignOut">True when the change only takes effect after signing out and back in.</param>
 public sealed record TweakDefinition(
     string Id,
     string Title,
@@ -25,4 +26,5 @@ public sealed record TweakDefinition(
     IReadOnlyList<RegistryChange> Changes,
     bool RequiresExplorerRestart,
     bool DeleteKeyOnRevertIfCreated = false,
-    bool BroadcastThemeChange = false);
+    bool BroadcastThemeChange = false,
+    bool RequiresSignOut = false);

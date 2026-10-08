@@ -15,13 +15,13 @@ public enum TweakActivation
 public static class TweakActivationRules
 {
     /// <summary>
-    /// <see cref="TweakActivation.SignOut"/> when the description says the tweak applies after signing out,
-    /// otherwise <see cref="TweakActivation.RestartExplorer"/> when the definition requires it, otherwise immediate.
+    /// <see cref="TweakActivation.SignOut"/> when the definition requires signing out, otherwise
+    /// <see cref="TweakActivation.RestartExplorer"/> when it requires an Explorer restart, otherwise immediate.
     /// </summary>
     public static TweakActivation For(TweakDefinition tweak)
     {
         ArgumentNullException.ThrowIfNull(tweak);
-        if (tweak.Description.Contains("sign out", StringComparison.OrdinalIgnoreCase))
+        if (tweak.RequiresSignOut)
         {
             return TweakActivation.SignOut;
         }

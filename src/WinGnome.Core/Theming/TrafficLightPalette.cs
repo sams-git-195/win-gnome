@@ -18,11 +18,12 @@ public static class TrafficLightPalette
         Border,
         AlwaysShowGlyphs: false);
 
+    // Adwaita-style neutral circles. Light enough to read on both the dark (#303030) and light (#EBEBEB) headers.
     private static readonly TrafficLightColors Gnome = new(
-        HexColor.FromRgb(0x4A, 0x4A, 0x4A),
-        HexColor.FromRgb(0x4A, 0x4A, 0x4A),
-        HexColor.FromRgb(0x4A, 0x4A, 0x4A),
-        HexColor.FromRgb(0x3A, 0x3A, 0x3A),
+        HexColor.FromRgb(0x5E, 0x5E, 0x5E),
+        HexColor.FromRgb(0x5E, 0x5E, 0x5E),
+        HexColor.FromRgb(0x5E, 0x5E, 0x5E),
+        HexColor.FromRgb(0x48, 0x48, 0x48),
         HexColor.FromRgb(0xFF, 0xFF, 0xFF),
         Border,
         AlwaysShowGlyphs: true);
