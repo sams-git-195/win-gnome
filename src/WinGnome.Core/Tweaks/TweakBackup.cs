@@ -70,8 +70,17 @@ public sealed class TweakBackup
     }
 
     /// <summary>Parses JSON produced by <see cref="ToJson"/>. Malformed input yields an empty backup; a damaged tweak record is skipped.</summary>
-    public static TweakBackup FromJson(string? json)
+    public static TweakBackup FromJson(string? json) => FromJson(json, out _);
+
+    /// <summary>Like <see cref="FromJson(string?)"/>, and reports whether anything in <paramref name="json"/> was lost.</summary>
+    /// <param name="json">The saved backup; null or blank means "no backup yet".</param>
+    /// <param name="complete">
+    /// False when the text is not a backup or a record had to be skipped: saving the result over the original would
+    /// then destroy original values, so the caller should keep a copy of the text first.
+    /// </param>
+    public static TweakBackup FromJson(string? json, out bool complete)
     {
+        complete = true;
         var backup = new TweakBackup();
         if (string.IsNullOrWhiteSpace(json))
         {
@@ -85,18 +94,22 @@ public sealed class TweakBackup
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
+            complete = false;
             return backup;
         }
 
         if (file?.Tweaks is null)
         {
+            complete = false;
             return backup;
         }
 
         foreach (var (id, dto) in file.Tweaks)
         {
-            if (string.IsNullOrWhiteSpace(id) || dto?.Entries is null)
+            // Ids differing only in case would overwrite each other.
+            if (string.IsNullOrWhiteSpace(id) || dto?.Entries is null || backup._records.ContainsKey(id))
             {
+                complete = false;
                 continue;
             }
 
@@ -108,6 +121,7 @@ public sealed class TweakBackup
             catch (Exception ex) when (ex is FormatException or OverflowException or ArgumentException or InvalidOperationException)
             {
                 // Skip a damaged record rather than restoring half of a tweak.
+                complete = false;
             }
         }
 

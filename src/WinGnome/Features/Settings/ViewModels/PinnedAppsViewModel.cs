@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 using System.Windows.Media;
+using WinGnome.Core.Dock;
 using WinGnome.Core.Settings;
 using WinGnome.Infrastructure;
 using WinGnome.Services.Apps;
@@ -85,20 +86,17 @@ internal sealed class PinnedAppsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsEmpty));
     }
 
-    private void Edit(Action<List<PinnedApp>> change) =>
-        _settings.Update(s =>
-        {
-            var apps = s.Dock.PinnedApps.ToList();
-            change(apps);
-            s.Dock.PinnedApps = apps;
-        });
+    /// <summary>Replaces the pins with <paramref name="change"/>'s result, computed from the live list.</summary>
+    private void Edit(Func<List<PinnedApp>, List<PinnedApp>> change) =>
+        _settings.Update(s => s.Dock.PinnedApps = change(s.Dock.PinnedApps));
 
+    /// <summary>Moves a pin by <paramref name="offset"/> places; ids rather than row indexes, so a list changed meanwhile by the dock is safe.</summary>
     private void Move(object? parameter, int offset)
     {
         if (parameter is PinnedAppItem item)
         {
-            var index = Items.IndexOf(item);
-            Edit(apps => PinnedAppsEditor.Move(apps, index, offset));
+            Edit(pins => DockPins.Move(pins, item.LaunchId,
+                pins.FindIndex(p => string.Equals(p.LaunchId, item.LaunchId, StringComparison.OrdinalIgnoreCase)) + offset));
         }
     }
 
@@ -106,8 +104,7 @@ internal sealed class PinnedAppsViewModel : ObservableObject, IDisposable
     {
         if (parameter is PinnedAppItem item)
         {
-            var index = Items.IndexOf(item);
-            Edit(apps => apps.RemoveAt(index));
+            Edit(pins => DockPins.Remove(pins, item.LaunchId));
         }
     }
 
@@ -117,7 +114,7 @@ internal sealed class PinnedAppsViewModel : ObservableObject, IDisposable
         var chosen = _dialogs.PickApp(hidden);
         if (chosen is not null)
         {
-            Edit(apps => PinnedAppsEditor.TryAdd(apps, new PinnedApp { Name = chosen.Name, LaunchId = chosen.LaunchId }));
+            Edit(pins => DockPins.Insert(pins, [new PinnedApp { Name = chosen.Name, LaunchId = chosen.LaunchId }], pins.Count));
         }
     }
 
@@ -125,11 +122,7 @@ internal sealed class PinnedAppsViewModel : ObservableObject, IDisposable
     {
         if (_dialogs.Confirm("Reset pinned apps?", "The dock goes back to its default set of pinned apps.", "Reset", isDestructive: true))
         {
-            Edit(apps =>
-            {
-                apps.Clear();
-                apps.AddRange(DockSettings.DefaultPinnedApps());
-            });
+            Edit(_ => DockSettings.DefaultPinnedApps());
         }
     }
 }

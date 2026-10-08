@@ -65,7 +65,8 @@ internal sealed class AboutPageViewModel : SettingsPageViewModel
     {
         if (_dialogs.Confirm("Reset all settings?", "Every WinGnome setting returns to its default. Registry tweaks stay as they are; use Streamline to revert them.", "Reset", isDestructive: true))
         {
-            Settings.Replace(new AppSettings());
+            // EnabledTweaks mirrors the registry, which a reset leaves alone, so it is carried over.
+            Settings.Replace(new AppSettings { EnabledTweaks = [.. Settings.Current.EnabledTweaks] });
         }
     }
 }

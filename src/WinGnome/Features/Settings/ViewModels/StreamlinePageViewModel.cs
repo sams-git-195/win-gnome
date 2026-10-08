@@ -95,6 +95,7 @@ internal sealed class StreamlinePageViewModel : SettingsPageViewModel
     private readonly IDialogService _dialogs;
     private string? _message;
     private bool _messageIsError;
+    private bool _restarting;
 
     public StreamlinePageViewModel(SettingsService settings, TweakService tweaks, IDialogService dialogs)
         : base(settings, "Streamline", "")
@@ -180,12 +181,21 @@ internal sealed class StreamlinePageViewModel : SettingsPageViewModel
 
     private async void RestartExplorer(TweakItemViewModel item)
     {
-        if (!_dialogs.Confirm("Restart Explorer?", $"\"{item.Title}\" takes effect once Explorer restarts. The taskbar, desktop and any open File Explorer windows close and come back in a moment.", "Restart Explorer"))
+        // A second click while Explorer is coming back would end the fresh instance again.
+        if (_restarting || !_dialogs.Confirm("Restart Explorer?", $"\"{item.Title}\" takes effect once Explorer restarts. The taskbar, desktop and any open File Explorer windows close and come back in a moment.", "Restart Explorer"))
         {
             return;
         }
 
-        Show(await _tweaks.RestartExplorerAsync(), "Explorer was restarted.");
+        _restarting = true;
+        try
+        {
+            Show(await _tweaks.RestartExplorerAsync(), "Explorer was restarted.");
+        }
+        finally
+        {
+            _restarting = false;
+        }
     }
 
     private static string CategoryTitle(TweakCategory category) => category switch

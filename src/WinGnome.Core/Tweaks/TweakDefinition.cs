@@ -3,7 +3,6 @@ namespace WinGnome.Core.Tweaks;
 /// <summary>One HKCU value a tweak writes when enabled. A null <see cref="ValueName"/> is the key's default value.</summary>
 public sealed record RegistryChange(string SubKey, string? ValueName, RegistryValue Value);
 
-/// <summary>Where a tweak is listed in the settings UI.</summary>
 /// <summary>UI grouping for tweaks. <see cref="Taskbar"/> tweaks style the native taskbar (useful in native taskbar mode).</summary>
 public enum TweakCategory { Appearance, Shell, Privacy, Behaviour, Taskbar }
 

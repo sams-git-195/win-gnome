@@ -71,6 +71,9 @@
             <c:SettingsRow Title="Battery percentage">
                 <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding ShowBattery.Value}" />
             </c:SettingsRow>
+            <c:SettingsRow Title="Tray icons" Subtitle="Notification-area icons next to the system indicators, like macOS menu bar extras.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding ShowTrayIcons.Value}" />
+            </c:SettingsRow>
         </c:SettingsGroup>
 
         <c:SettingsGroup Header="Clock">

@@ -105,6 +105,47 @@ public class TweakBackupTests
         Assert.Empty(backup.TweakIds);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("   ")]
+    [InlineData("{}")]
+    [InlineData("""{ "Version": 1, "Tweaks": {} }""")]
+    public void FromJson_EmptyBackup_IsComplete(string? json)
+    {
+        TweakBackup.FromJson(json, out var complete);
+
+        Assert.True(complete);
+    }
+
+    [Theory]
+    [InlineData("{ not json")]
+    [InlineData("null")]
+    [InlineData("[]")]
+    [InlineData("""{ "Tweaks": null }""")]
+    [InlineData("""{ "Tweaks": [1, 2] }""")]
+    [InlineData("""{ "Tweaks": { "x": null } }""")]
+    [InlineData("""{ "Tweaks": { "x": { "Entries": [ { "SubKey": "A", "Existed": true, "Kind": "DWord", "Data": "seven" } ] } } }""")]
+    [InlineData("""{ "Tweaks": { "x": { "Entries": [] }, "X": { "Entries": [] } } }""")]
+    public void FromJson_LosingAnything_IsIncomplete(string json)
+    {
+        TweakBackup.FromJson(json, out var complete);
+
+        Assert.False(complete);
+    }
+
+    [Fact]
+    public void FromJson_RoundTrip_IsComplete()
+    {
+        var backup = new TweakBackup();
+        backup.Set("a", new TweakBackupRecord(false, [new TweakBackupEntry("K", "V", true, RegistryValue.Binary([1, 2]))]));
+        backup.Set("b", new TweakBackupRecord(true, [new TweakBackupEntry("K", null, false, null)]));
+
+        var copy = TweakBackup.FromJson(backup.ToJson(), out var complete);
+
+        Assert.True(complete);
+        Assert.Equal(2, copy.TweakIds.Count);
+    }
+
     [Fact]
     public void FromJson_SkipsDamagedRecords_ButKeepsGoodOnes()
     {

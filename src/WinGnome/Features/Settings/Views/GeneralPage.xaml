@@ -33,14 +33,6 @@
                 <Button Content="Style the native taskbar&#x2026;" Style="{DynamicResource SettingsButton}"
                         Command="{Binding StyleTaskbarCommand}" />
             </c:SettingsRow>
-            <c:SettingsRow Title="Restore taskbar now"
-                           Subtitle="Brings the taskbar back immediately. In dock mode, WinGnome hides it again the next time it starts.">
-                <StackPanel HorizontalAlignment="Right">
-                    <Button Content="Restore taskbar" Style="{DynamicResource SettingsButton}" Command="{Binding RestoreTaskbarCommand}" />
-                    <TextBlock Text="{Binding RestoreStatus}" Style="{DynamicResource RowSubtitleText}" Margin="0,6,0,0"
-                               TextAlignment="Right" />
-                </StackPanel>
-            </c:SettingsRow>
         </c:SettingsGroup>
 
         <c:SettingsGroup Header="Appearance">

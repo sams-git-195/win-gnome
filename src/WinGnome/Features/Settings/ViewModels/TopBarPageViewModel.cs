@@ -38,6 +38,7 @@ internal sealed class TopBarPageViewModel : SettingsPageViewModel
         ShowWorkspaces = Toggle(s => s.TopBar.ShowWorkspaceIndicator, (s, v) => s.TopBar.ShowWorkspaceIndicator = v);
         ShowAppName = Toggle(s => s.TopBar.ShowFocusedAppName, (s, v) => s.TopBar.ShowFocusedAppName = v);
         ShowBattery = Toggle(s => s.TopBar.ShowBatteryPercentage, (s, v) => s.TopBar.ShowBatteryPercentage = v);
+        ShowTrayIcons = Toggle(s => s.TopBar.ShowTrayIcons, (s, v) => s.TopBar.ShowTrayIcons = v);
 
         ClockStyle = Choice(s => s.TopBar.ClockStyle, (s, v) => s.TopBar.ClockStyle = v,
             ChoiceOption.Of(Core.Settings.ClockStyle.TwentyFourHour, "24-hour"),
@@ -74,6 +75,8 @@ internal sealed class TopBarPageViewModel : SettingsPageViewModel
     public ToggleSetting ShowAppName { get; }
 
     public ToggleSetting ShowBattery { get; }
+
+    public ToggleSetting ShowTrayIcons { get; }
 
     public ChoiceSetting ClockStyle { get; }
 

@@ -11,7 +11,7 @@ internal sealed class ActivitiesPageViewModel : SettingsPageViewModel
     {
         HotCorner = Toggle(s => s.Activities.HotCorner, (s, v) => s.Activities.HotCorner = v);
         HotCornerDelay = Slider(s => s.Activities.HotCornerDelayMs, (s, v) => s.Activities.HotCornerDelayMs = (int)Math.Round(v),
-            0, 1000, 10, value => string.Create(System.Globalization.CultureInfo.CurrentCulture, $"{value:0} ms"));
+            0, 2000, 10, value => string.Create(System.Globalization.CultureInfo.CurrentCulture, $"{value:0} ms"));
         SuperKey = Toggle(s => s.Activities.SuperKeyOpensOverview, (s, v) => s.Activities.SuperKeyOpensOverview = v);
         SuperNumber = Toggle(s => s.Activities.SuperNumberActivatesDock, (s, v) => s.Activities.SuperNumberActivatesDock = v);
         Hotkey = Track(new ValidatedTextSetting(settings, s => s.Activities.Hotkey, (s, v) => s.Activities.Hotkey = v, ValidateHotkey));

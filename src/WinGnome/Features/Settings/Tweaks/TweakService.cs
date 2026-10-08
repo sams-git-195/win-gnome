@@ -22,19 +22,17 @@ internal sealed class TweakService
     private bool _saveFailureIsFatal = true;
 
     public TweakService(SettingsService settings, bool simulate)
+        : this(settings, simulate ? new InMemoryRegistryStore() : new RegistryStore(), simulate ? null : new TweakBackupFile(settings.Directory))
+    {
+    }
+
+    /// <summary>Creates a service over any registry; a null <paramref name="file"/> means simulated (nothing persisted).</summary>
+    internal TweakService(SettingsService settings, IRegistryStore registry, TweakBackupFile? file)
     {
         _settings = settings;
-        IsSimulated = simulate;
-        if (simulate)
-        {
-            _engine = new TweakEngine(new InMemoryRegistryStore(), new TweakBackup());
-        }
-        else
-        {
-            _file = new TweakBackupFile(settings.Directory);
-            _engine = new TweakEngine(new RegistryStore(), _file.Load());
-        }
-
+        _file = file;
+        IsSimulated = file is null;
+        _engine = new TweakEngine(registry, file?.Load() ?? new TweakBackup());
         _engine.BackupChanged += OnBackupChanged;
     }
 
@@ -110,7 +108,11 @@ internal sealed class TweakService
         return OperationResult.Success;
     }
 
-    /// <summary>Reverts every tweak that has a backup and clears <c>EnabledTweaks</c>. Reports the first failure but tries them all.</summary>
+    /// <summary>
+    /// Reverts every tweak that has a backup (the ones WinGnome changed), then re-syncs <c>EnabledTweaks</c> with the
+    /// registry. Values that already matched a tweak before WinGnome touched them are left alone. Reports the first
+    /// failure but tries them all.
+    /// </summary>
     public OperationResult RevertAll()
     {
         OperationResult result = default;
@@ -130,11 +132,7 @@ internal sealed class TweakService
             }
         }
 
-        if (!IsSimulated)
-        {
-            _settings.Update(s => s.EnabledTweaks = []);
-        }
-
+        SyncEnabledSetting();
         StateChanged?.Invoke(this, EventArgs.Empty);
         return result;
     }
@@ -164,19 +162,40 @@ internal sealed class TweakService
 
     private void Apply(TweakDefinition tweak)
     {
+        var previous = _engine.Backup.Get(tweak.Id);
         try
         {
-            // The engine saves the backup (through BackupChanged) before it writes anything, so a save failure aborts here.
+            // The engine saves the backup (through BackupChanged) before it writes anything.
             _engine.Apply(tweak);
         }
-        catch (Exception ex) when (ex is RegistryAccessException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            RollBack(tweak);
+            // Only the backup file throws these: nothing was written, so just forget the unsaved backup change.
+            if (previous is null)
+            {
+                _engine.Backup.Remove(tweak.Id);
+            }
+            else
+            {
+                _engine.Backup.Set(tweak.Id, previous);
+            }
+
+            throw;
+        }
+        catch (RegistryAccessException)
+        {
+            // Without a backup nothing can have been written (a value could not even be read), and a revert would
+            // delete values the user had set themselves, so only roll back when there is a backup to restore.
+            if (_engine.Backup.Contains(tweak.Id))
+            {
+                RollBack(tweak);
+            }
+
             throw;
         }
     }
 
-    /// <summary>Puts the registry back after a failed apply. Best effort: the original failure is what gets reported.</summary>
+    /// <summary>Restores the backed-up values after a failed apply. Best effort: the original failure is what gets reported.</summary>
     private void RollBack(TweakDefinition tweak)
     {
         try
