@@ -17,7 +17,8 @@ namespace WinGnome.Features.WindowButtons;
 /// </param>
 /// <param name="Dpi">GetDpiForWindow of the target.</param>
 /// <param name="Border">Visible window border thickness in physical pixels (0 when maximised).</param>
-internal readonly record struct CaptionMetrics(PixelRect Frame, PixelRect Buttons, uint Dpi, int Border)
+/// <param name="IsMaximized">IsZoomed of the target, read once so the border and the layout always agree.</param>
+internal readonly record struct CaptionMetrics(PixelRect Frame, PixelRect Buttons, uint Dpi, int Border, bool IsMaximized)
 {
     private static readonly int RectSize = Marshal.SizeOf<RECT>();
 
@@ -51,19 +52,16 @@ internal readonly record struct CaptionMetrics(PixelRect Frame, PixelRect Button
             return false;
         }
 
-        var border = ReadBorder(hwnd);
-        metrics = new CaptionMetrics(frame, CaptionButtonGeometry.InsideBorder(buttons, frame, border), NativeMethods.GetDpiForWindow(hwnd), border);
+        var isMaximized = NativeMethods.IsZoomed(hwnd);
+        var border = isMaximized ? 0 : ReadBorder(hwnd);
+        metrics = new CaptionMetrics(
+            frame, CaptionButtonGeometry.InsideBorder(buttons, frame, border), NativeMethods.GetDpiForWindow(hwnd), border, isMaximized);
         return true;
     }
 
-    /// <summary>The border DWM draws around a restored window; maximised windows have none.</summary>
+    /// <summary>The border DWM draws around a restored window (maximised windows have none).</summary>
     private static int ReadBorder(nint hwnd)
     {
-        if (NativeMethods.IsZoomed(hwnd))
-        {
-            return 0;
-        }
-
         // DWMWA_VISIBLE_FRAME_BORDER_THICKNESS needs Windows 11; older builds fail and get the 1 px default.
         return NativeMethods.DwmGetWindowAttribute(hwnd, NativeMethods.DWMWA_VISIBLE_FRAME_BORDER_THICKNESS, out int thickness, sizeof(int)) == 0
             && thickness >= 0

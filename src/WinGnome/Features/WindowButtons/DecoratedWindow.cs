@@ -128,7 +128,7 @@ internal sealed class DecoratedWindow : IDisposable
             return;
         }
 
-        var key = new LayoutKey(metrics.Buttons.Width, metrics.Buttons.Height, metrics.Frame.Width, metrics.Dpi, NativeMethods.IsZoomed(Target));
+        var key = new LayoutKey(metrics.Buttons.Width, metrics.Buttons.Height, metrics.Frame.Width, metrics.Dpi, metrics.IsMaximized);
         if (key != _layoutKey)
         {
             _layoutKey = key;
