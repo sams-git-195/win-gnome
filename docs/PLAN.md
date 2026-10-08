@@ -42,7 +42,7 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | Settings | `AppSettings`, `SettingsStore`, `SettingsSerializer` | Persisted config, JSON in `%APPDATA%\WinGnome` |
 | Theming | `HexColor`, `TrafficLightPalette` | Colour parsing, presets → `TrafficLightColors` |
 | Input | `Hotkey`, `SuperKeyStateMachine`, `HotCornerDetector` | Hotkey parsing, the "Win alone" detector, corner dwell |
-| Geometry | `PixelRect`, `LayoutRect`, `LayoutSize` | Integer screen rectangles, double layout rectangles |
+| Geometry | `PixelRect`, `LayoutRect`, `LayoutSize`, `BackdropPlacement` | Integer screen rectangles, double layout rectangles, blur backdrop inset under rounded bodies |
 | Windows | `WindowInfo`, `WindowFilter`, `AppIdentity`, `CaptionButtonLayout` | Alt-tab filtering, app grouping keys, traffic-light geometry |
 | Dock | `DockModelBuilder`, `DockApp`, `RunningWindow`, `DockLayout`, `DockClickPlanner` | Dock items, geometry, magnification, click behaviour |
 | Overview | `OverviewLayout` | Arranges window thumbnails in a grid that preserves aspect ratios |
@@ -57,7 +57,7 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | Folder | Owner | Contents |
 |---|---|---|
 | `Infrastructure/` | lead | `Log`, `IFeature`, `SettingsService`, `ObservableObject`, `RelayCommand`, theme resources |
-| `Interop/` | shared | `NativeMethods.*.cs` partials, `WinEventHook`, `AppBar` |
+| `Interop/` | shared | `NativeMethods.*.cs` partials, `WinEventHook`, `AppBar`, `BlurBackdrop` (blur window under the dock and top bar bodies) |
 | `Services/WindowTracker.cs` | lead | Enumerates alt-tab windows, raises `WindowsChanged` and `ForegroundChanged`, plus raw location events |
 | `Services/Apps/` | dock agent | `AppCatalog` (shell:AppsFolder), `IconProvider`, `AppLauncher` |
 | `Features/Dock/` | dock agent | Dock window, intellihide, trigger strip, context menu, `TaskbarController` |

@@ -2,20 +2,17 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using WinGnome.Core.Settings;
-using WinGnome.Core.Theming;
 using WinGnome.Infrastructure;
 
 namespace WinGnome.Interop;
 
 /// <summary>
-/// Blur / acrylic backgrounds for shell surfaces (top bar, dock) via SetWindowCompositionAttribute.
+/// Blur / acrylic material for a window via SetWindowCompositionAttribute (the accent API).
 /// </summary>
 /// <remarks>
-/// The accent API is undocumented, but it has been stable since Windows 10 1803 and works with WPF
-/// windows that use <c>AllowsTransparency="True"</c>. The blur fills the whole window rectangle, so
-/// a surface with rounded corners or transparent headroom must clip the effect with
-/// <see cref="ClipToRoundedRect"/>. Draw the WPF background with a transparent brush (or a very
-/// faint one) when blur is on, because the tint is supplied through the accent colour.
+/// The accent API is undocumented, but it has been stable since Windows 10 1803. The material fills the whole
+/// window rectangle and DWM ignores window regions for it, so shell surfaces do not apply it to themselves:
+/// they use a <see cref="BlurBackdrop"/>, which is the only caller.
 /// </remarks>
 internal static partial class WindowBlur
 {
@@ -48,25 +45,12 @@ internal static partial class WindowBlur
     [LibraryImport("user32.dll")]
     private static partial int SetWindowCompositionAttribute(nint hwnd, ref WindowCompositionAttributeData data);
 
-    [LibraryImport("gdi32.dll")]
-    private static partial nint CreateRoundRectRgn(int left, int top, int right, int bottom, int widthEllipse, int heightEllipse);
-
-    [LibraryImport("gdi32.dll")]
-    private static partial nint CreateRectRgn(int left, int top, int right, int bottom);
-
-    [LibraryImport("gdi32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool DeleteObject(nint handle);
-
-    [LibraryImport("user32.dll")]
-    private static partial int SetWindowRgn(nint hwnd, nint region, [MarshalAs(UnmanagedType.Bool)] bool redraw);
-
     /// <summary>
-    /// Applies <paramref name="effect"/> to the window, tinted with <paramref name="tint"/> at
-    /// <paramref name="opacity"/> (0..1). <see cref="BlurEffect.None"/> removes any accent.
-    /// Returns false if the system refused (the caller should then fall back to a plain colour).
+    /// Applies an untinted <paramref name="effect"/> to the window (the surface above draws the tint);
+    /// <see cref="BlurEffect.None"/> removes any accent. Returns false if the window has no handle yet or
+    /// the system refused (the caller should then fall back to a plain colour).
     /// </summary>
-    public static bool Apply(Window window, BlurEffect effect, HexColor tint, double opacity)
+    public static bool Apply(Window window, BlurEffect effect)
     {
         var hwnd = new WindowInteropHelper(window).Handle;
         if (hwnd == 0)
@@ -74,7 +58,6 @@ internal static partial class WindowBlur
             return false;
         }
 
-        var alpha = (uint)Math.Round(Math.Clamp(opacity, 0, 1) * 255);
         var policy = new AccentPolicy
         {
             AccentState = effect switch
@@ -83,8 +66,9 @@ internal static partial class WindowBlur
                 BlurEffect.Acrylic => AccentState.AcrylicBlurBehind,
                 _ => AccentState.Disabled,
             },
-            // Acrylic misrenders with a fully transparent tint on some builds, so keep a minimum alpha.
-            GradientColor = (Math.Max(alpha, effect == BlurEffect.Acrylic ? 1u : 0u) << 24) | ((uint)tint.B << 16) | ((uint)tint.G << 8) | tint.R,
+
+            // Acrylic misrenders with a fully transparent tint on some builds, so keep a minimum alpha (1/255).
+            GradientColor = effect == BlurEffect.Acrylic ? 1u << 24 : 0,
         };
 
         var size = Marshal.SizeOf<AccentPolicy>();
@@ -109,45 +93,6 @@ internal static partial class WindowBlur
         finally
         {
             Marshal.FreeHGlobal(buffer);
-        }
-    }
-
-    /// <summary>
-    /// Restricts the window's visible and hit-testable area (and therefore the blur) to a rounded
-    /// rectangle given in physical pixels relative to the window's top-left corner.
-    /// Pass a radius of 0 for square corners.
-    /// </summary>
-    public static void ClipToRoundedRect(Window window, int left, int top, int right, int bottom, int radiusPx)
-    {
-        var hwnd = new WindowInteropHelper(window).Handle;
-        if (hwnd == 0)
-        {
-            return;
-        }
-
-        // CreateRoundRectRgn takes the ellipse diameter; regions exclude the right/bottom edge, hence +1.
-        var region = radiusPx > 0
-            ? CreateRoundRectRgn(left, top, right + 1, bottom + 1, radiusPx * 2, radiusPx * 2)
-            : CreateRectRgn(left, top, right, bottom);
-        if (region == 0)
-        {
-            return;
-        }
-
-        // On success the system owns the region; only delete it if SetWindowRgn fails.
-        if (SetWindowRgn(hwnd, region, true) == 0)
-        {
-            DeleteObject(region);
-        }
-    }
-
-    /// <summary>Removes a clip region set by <see cref="ClipToRoundedRect"/>.</summary>
-    public static void ClearClip(Window window)
-    {
-        var hwnd = new WindowInteropHelper(window).Handle;
-        if (hwnd != 0)
-        {
-            SetWindowRgn(hwnd, 0, true);
         }
     }
 }

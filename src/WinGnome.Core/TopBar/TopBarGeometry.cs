@@ -23,9 +23,6 @@ public readonly record struct TopBarGeometry(int ThicknessPx, int InsetPx, int B
         return new TopBarGeometry(body + (2 * inset), inset, body, radius);
     }
 
-    /// <summary>True when the body does not fill the whole window (floating margin or rounded corners).</summary>
-    public bool IsInset => InsetPx > 0 || CornerRadiusPx > 0;
-
     /// <summary>The visible bar body relative to the window's top-left corner, for a window this wide.</summary>
     public PixelRect BodyRect(int windowWidthPx) =>
         new(InsetPx, InsetPx, Math.Max(InsetPx, windowWidthPx - InsetPx), InsetPx + BodyHeightPx);

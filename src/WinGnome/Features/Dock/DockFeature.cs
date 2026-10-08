@@ -38,7 +38,7 @@ internal sealed class DockFeature : IFeature, IEmergencyRestore
 
     private ExternalForeground? _foreground;
     private DockViewModel? _viewModel;
-    private DockBackdropWindow? _backdrop;
+    private BlurBackdrop? _backdrop;
     private DockWindow? _window;
     private DockActions? _actions;
     private DockMenuPresenter? _menu;
@@ -112,7 +112,7 @@ internal sealed class DockFeature : IFeature, IEmergencyRestore
         _foreground = new ExternalForeground(_context.Windows);
         _foreground.Changed += OnModelInputChanged;
         _viewModel = new DockViewModel(_context.Icons, _context.Apps);
-        _backdrop = new DockBackdropWindow();
+        _backdrop = new BlurBackdrop("WinGnome Dock Backdrop");
         _window = new DockWindow(_viewModel, _backdrop);
         _actions = new DockActions(_context, _foreground, _window.PlayLaunchFeedback);
         _menu = new DockMenuPresenter(_context.Dispatcher);
@@ -400,7 +400,7 @@ internal sealed class DockFeature : IFeature, IEmergencyRestore
 
         // The dock is owned by the backdrop; close it first so WPF tears it down rather than Win32.
         _window?.Close();
-        _backdrop?.Close();
+        _backdrop?.Dispose();
         _window = null;
         _backdrop = null;
     }

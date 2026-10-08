@@ -130,6 +130,14 @@ internal static partial class NativeMethods
     public const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
     public const uint DWMWA_COLOR_DEFAULT = 0xFFFFFFFF;
 
+    /// <summary>DWMWA_BORDER_COLOR value that suppresses the Windows 11 window border.</summary>
+    public const uint DWMWA_COLOR_NONE = 0xFFFFFFFE;
+
+    // DWMWA_WINDOW_CORNER_PREFERENCE values.
+    public const int DWMWCP_DONOTROUND = 1;
+    public const int DWMWCP_ROUND = 2;
+    public const int DWMWCP_ROUNDSMALL = 3;
+
     // ---- Processes --------------------------------------------------------------------------
     public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
     public const uint TOKEN_QUERY = 0x0008;

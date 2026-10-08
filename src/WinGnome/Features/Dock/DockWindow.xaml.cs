@@ -28,10 +28,9 @@ internal sealed partial class DockWindow : Window
     private static readonly Duration SlideDuration = new(TimeSpan.FromMilliseconds(200));
     private static readonly Duration EngageDuration = new(TimeSpan.FromMilliseconds(120));
     private static readonly Duration ReleaseDuration = new(TimeSpan.FromMilliseconds(180));
-    private static readonly Color DefaultDockColor = Color.FromRgb(0x24, 0x24, 0x24);
 
     private readonly DockViewModel _viewModel;
-    private readonly DockBackdropWindow _backdrop;
+    private readonly BlurBackdrop _backdrop;
     private DockItemsPanel? _panel;
     private DockViewLayout? _layout;
     private double _bodyRadius;
@@ -45,15 +44,15 @@ internal sealed partial class DockWindow : Window
     private DockAppEntry? _dragEntry;
     private bool _dropCommitted;
 
-    public DockWindow(DockViewModel viewModel, DockBackdropWindow backdrop)
+    public DockWindow(DockViewModel viewModel, BlurBackdrop backdrop)
     {
         _viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         _backdrop = backdrop ?? throw new ArgumentNullException(nameof(backdrop));
         InitializeComponent();
         DataContext = viewModel;
 
-        // Owned windows always stay above their owner, which keeps the dock above its blur backdrop.
-        new WindowInteropHelper(this).Owner = backdrop.Handle;
+        // The dock becomes an owned window of its backdrop, which keeps it directly above the blur.
+        backdrop.Attach(this);
         SourceInitialized += (_, _) => ShellSurface.MakeNonActivating(this, topmost: true);
         new WindowInteropHelper(this).EnsureHandle();
 
@@ -149,16 +148,10 @@ internal sealed partial class DockWindow : Window
     public void ApplyStyle(DockStyle style)
     {
         ArgumentNullException.ThrowIfNull(style);
-        var tint = style.Background ?? ToHex(TryFindResource("DockBackgroundColor") as Color? ?? DefaultDockColor);
-
         // The body is always tinted here rather than through the accent colour: DWM's blur cannot follow the
-        // body's corner radius exactly (see DockBackdropWindow), and the WPF tint keeps the edge seamless. The
+        // body's corner radius exactly (see BlurBackdrop), and the WPF tint keeps the edge seamless. The
         // backdrop only adds the blur underneath, so the same opacity looks the same with or without it.
-        _blurActive = style.Blur != BlurEffect.None && _backdrop.ApplyEffect(style.Blur, tint, 0);
-        if (!_blurActive)
-        {
-            _backdrop.ClearEffect();
-        }
+        _blurActive = _backdrop.SetEffect(style.Blur);
 
         if (style.Background is { } color)
         {
@@ -543,11 +536,7 @@ internal sealed partial class DockWindow : Window
     {
         if (!_blurActive || !IsVisible || _layout is null || Body.RenderSize.IsEmpty)
         {
-            if (_backdrop.IsVisible)
-            {
-                _backdrop.Hide();
-            }
-
+            _backdrop.Hide();
             return;
         }
 
@@ -573,11 +562,8 @@ internal sealed partial class DockWindow : Window
             };
         }
 
-        _backdrop.PlaceOver(rect, _bodyRadius, scale);
-        if (!_backdrop.IsVisible)
-        {
-            _backdrop.Show();
-        }
+        _backdrop.SetBounds(rect, _bodyRadius * scale, scale);
+        _backdrop.Show();
     }
 
     /// <summary>
@@ -586,8 +572,7 @@ internal sealed partial class DockWindow : Window
     /// </summary>
     private void RaiseToTop()
     {
-        NativeMethods.SetWindowPos(_backdrop.Handle, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
-            NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
+        _backdrop.RaiseToTop();
         if (_layout is not null)
         {
             ShellSurface.SetBounds(this, _layout.WindowBounds, topmost: true);
@@ -637,8 +622,6 @@ internal sealed partial class DockWindow : Window
         brush.Freeze();
         return brush;
     }
-
-    private static HexColor ToHex(Color color) => new(color.A, color.R, color.G, color.B);
 
     private static int Px(double value) => (int)Math.Round(value, MidpointRounding.AwayFromZero);
 

@@ -14,12 +14,6 @@ internal static partial class NativeMethods
     /// <summary>GetPixel's failure value (outside the clipping region, or the DC cannot be read).</summary>
     public const uint CLR_INVALID = 0xFFFFFFFF;
 
-    /// <summary>DWMWA_BORDER_COLOR value that suppresses the Windows 11 window border.</summary>
-    public const uint DWMWA_COLOR_NONE = 0xFFFFFFFE;
-
-    // ---- DWM corner preferences -------------------------------------------------------------
-    public const int DWMWCP_DONOTROUND = 1;
-
     [LibraryImport("user32.dll")]
     public static partial nint WindowFromPoint(POINT point);
 
