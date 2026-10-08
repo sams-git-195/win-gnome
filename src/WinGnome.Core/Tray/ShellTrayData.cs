@@ -64,6 +64,33 @@ public static class ShellTrayData
     private const int RectGuidOffset = 24;
     private const int RectQuerySize = RectGuidOffset + 16;
 
+    // APPBARMSGDATA: the caller's APPBARDATA, whose first DWORD (cbSize) is its own size, then DWORD dwMessage, the
+    // shared-memory handle and the caller's process ID. Only the two layouts shell32 has used are accepted.
+    private const uint AppBarData32Size = 36;
+    private const uint AppBarData3264Size = 40;
+    private const uint AppBarLastMessage = 0x0C;
+
+    /// <summary>
+    /// The ABM_* message of an SHAppBarMessage block, or null when the block does not have one of the known shapes
+    /// (callers then treat it as unknown, which is the safe reading).
+    /// </summary>
+    public static uint? ParseAppBarMessage(ReadOnlySpan<byte> data)
+    {
+        if (data.Length < 4)
+        {
+            return null;
+        }
+
+        var dataSize = ReadUInt32(data, 0);
+        if (dataSize is not (AppBarData32Size or AppBarData3264Size) || data.Length < dataSize + 4)
+        {
+            return null;
+        }
+
+        var message = ReadUInt32(data, (int)dataSize);
+        return message <= AppBarLastMessage ? message : null;
+    }
+
     /// <summary>Parses a Shell_NotifyIcon request, or returns null when the block is malformed.</summary>
     public static NotifyIconCommand? ParseNotifyIcon(ReadOnlySpan<byte> data)
     {

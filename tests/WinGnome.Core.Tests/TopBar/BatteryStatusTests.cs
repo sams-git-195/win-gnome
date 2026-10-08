@@ -6,6 +6,17 @@ public class BatteryStatusTests
 {
     private const uint UnknownTime = uint.MaxValue;
 
+    [Theory]
+    [InlineData((byte)128, false)] // no system battery
+    [InlineData((byte)(128 | 8), false)] // no system battery, whatever else is set
+    [InlineData((byte)255, true)] // unknown: may become known without a broadcast
+    [InlineData((byte)8, true)] // charging
+    [InlineData((byte)0, true)] // discharging, no level flags
+    public void NeedsPolling_StopsOnlyWhenWindowsReportsNoBattery(byte flag, bool expected)
+    {
+        Assert.Equal(expected, BatteryStatus.NeedsPolling(flag));
+    }
+
     [Fact]
     public void NoSystemBattery_IsNone()
     {

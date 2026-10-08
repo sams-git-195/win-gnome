@@ -38,6 +38,13 @@ public readonly record struct BatteryStatus(bool HasBattery, int? Percent, bool 
         return new BatteryStatus(true, percent, charging, pluggedIn, remaining);
     }
 
+    /// <summary>
+    /// Whether the charge level needs polling, from the raw <c>BatteryFlag</c>. Only Windows saying there is no system
+    /// battery stops it (a battery that appears later is announced by a power-status broadcast, which reads the
+    /// status again); an unknown state keeps polling, since it may become known without a broadcast.
+    /// </summary>
+    public static bool NeedsPolling(byte batteryFlag) => batteryFlag == Unknown || (batteryFlag & FlagNoBattery) == 0;
+
     /// <summary>Icon fill level 0..10 (tenths of a full battery), or null when the charge is unknown.</summary>
     public int? GlyphLevel => Percent is { } p ? Math.Clamp((int)Math.Round(p / 10.0, MidpointRounding.AwayFromZero), 0, 10) : null;
 

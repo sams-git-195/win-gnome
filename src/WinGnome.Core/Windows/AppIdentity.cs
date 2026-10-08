@@ -25,6 +25,17 @@ public static class AppIdentity
     }
 
     /// <summary>
+    /// The AppsFolder id whose icon stands for a window hosted by ApplicationFrameHost (a UWP frame whose app process
+    /// was not found, for instance while it is suspended), or null when the executable's or window's own icon applies.
+    /// The frame's own icon is ApplicationFrameHost's, or whatever the frame shows at that moment.
+    /// </summary>
+    public static string? HostedAppIconId(string? appUserModelId, string? processPath) =>
+        !string.IsNullOrWhiteSpace(appUserModelId)
+        && PathText.FileNameWithoutExtension(processPath).Equals("ApplicationFrameHost", StringComparison.OrdinalIgnoreCase)
+            ? appUserModelId.Trim()
+            : null;
+
+    /// <summary>
     /// Identity of a pinned launcher. File-system launch ids become "path:" keys (after
     /// <paramref name="resolvePath"/> has expanded known-folder prefixes); anything else is an AppUserModelID.
     /// </summary>

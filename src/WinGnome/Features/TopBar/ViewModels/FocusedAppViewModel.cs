@@ -92,7 +92,24 @@ internal sealed class FocusedAppViewModel : ObservableObject, IDisposable
 
         _window = hwnd;
         Name = _apps.FindForWindow(info.AppUserModelId, info.ProcessPath)?.Name ?? _windows.GetAppName(info);
-        Icon = _icons.GetWindowIcon(hwnd, info.ProcessPath, _iconSizePx);
+        Icon = GetIcon(info);
+    }
+
+    /// <summary>
+    /// Executable and AppsFolder icons come from IconProvider's cache (keyed per app). A UWP frame whose app process
+    /// was not found uses its app's AppsFolder icon rather than a fresh, uncached and possibly transient frame icon.
+    /// Only windows with neither fall back to the window's own icon, which is per window and may change, so it is
+    /// not cached.
+    /// </summary>
+    private ImageSource? GetIcon(WindowInfo info)
+    {
+        if (AppIdentity.HostedAppIconId(info.AppUserModelId, info.ProcessPath) is { } appId
+            && _icons.GetAppIcon(appId, _iconSizePx) is { } appIcon)
+        {
+            return appIcon;
+        }
+
+        return _icons.GetWindowIcon(info.Handle, info.ProcessPath, _iconSizePx);
     }
 
     public void Dispose()

@@ -28,6 +28,24 @@ public class AppIdentityTests
         Assert.Equal("pid:7", AppIdentity.ForWindow("", "  ", 7));
     }
 
+    [Theory]
+    [InlineData(" Microsoft.WindowsCalculator_8wekyb3d8bbwe!App ", @"C:\Windows\System32\ApplicationFrameHost.exe")]
+    [InlineData("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", @"c:\windows\system32\applicationframehost.EXE")]
+    public void HostedAppIconId_FrameHostWithAumid_IsTheAumid(string aumid, string path)
+    {
+        Assert.Equal("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", AppIdentity.HostedAppIconId(aumid, path));
+    }
+
+    [Theory]
+    [InlineData(null, @"C:\Windows\System32\ApplicationFrameHost.exe")]
+    [InlineData("  ", @"C:\Windows\System32\ApplicationFrameHost.exe")]
+    [InlineData("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", @"C:\Program Files\WindowsApps\Calc\CalculatorApp.exe")]
+    [InlineData("Microsoft.WindowsTerminal_8wekyb3d8bbwe!App", null)]
+    public void HostedAppIconId_OtherWindows_IsNull(string? aumid, string? path)
+    {
+        Assert.Null(AppIdentity.HostedAppIconId(aumid, path));
+    }
+
     [Fact]
     public void ForLaunchId_AumidIsLowercased()
     {

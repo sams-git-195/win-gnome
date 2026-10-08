@@ -142,4 +142,50 @@ public class ShellTrayDataTests
         Assert.Null(ShellTrayData.ParseIconRectQuery(data));
         Assert.Null(ShellTrayData.ParseIconRectQuery(new byte[39]));
     }
+
+    /// <summary>An APPBARMSGDATA block: cbSize, the rest of the APPBARDATA, then dwMessage, and nothing after it.</summary>
+    private static byte[] AppBarBlock(uint dataSize, uint message)
+    {
+        var data = new byte[dataSize + 4];
+        BinaryPrimitives.WriteUInt32LittleEndian(data, dataSize);
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan((int)dataSize), message);
+        return data;
+    }
+
+    [Theory]
+    [InlineData(36u, 0x05u)] // 32-bit APPBARDATA layout
+    [InlineData(40u, 0x0Au)] // current APPBARDATA3264 layout
+    public void ParseAppBarMessage_RealAppBarDataSizes_ReadTheMessage(uint dataSize, uint message)
+    {
+        Assert.Equal(message, ShellTrayData.ParseAppBarMessage(AppBarBlock(dataSize, message)));
+    }
+
+    [Theory]
+    [InlineData(32u)]
+    [InlineData(44u)]
+    [InlineData(48u)]
+    public void ParseAppBarMessage_OtherAppBarDataSizes_IsNull(uint dataSize)
+    {
+        Assert.Null(ShellTrayData.ParseAppBarMessage(AppBarBlock(dataSize, 0x05)));
+    }
+
+    [Fact]
+    public void ParseAppBarMessage_UnknownMessage_IsNull()
+    {
+        Assert.Null(ShellTrayData.ParseAppBarMessage(AppBarBlock(40, 0x0D)));
+    }
+
+    [Theory]
+    [InlineData(36u)]
+    [InlineData(40u)]
+    public void ParseAppBarMessage_TruncatedBeforeTheMessageEnds_IsNull(uint dataSize)
+    {
+        Assert.Null(ShellTrayData.ParseAppBarMessage(AppBarBlock(dataSize, 0x05).AsSpan(0, (int)dataSize + 3)));
+    }
+
+    [Fact]
+    public void ParseAppBarMessage_NoSize_IsNull()
+    {
+        Assert.Null(ShellTrayData.ParseAppBarMessage(new byte[3]));
+    }
 }

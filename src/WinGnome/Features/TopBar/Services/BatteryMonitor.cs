@@ -8,8 +8,9 @@ using WinGnome.Interop;
 namespace WinGnome.Features.TopBar.Services;
 
 /// <summary>
-/// Polls <c>GetSystemPowerStatus</c>. Windows broadcasts power-source changes (PowerModeChanged) but not
-/// percentage changes, so a slow timer keeps the charge level current.
+/// Polls <c>GetSystemPowerStatus</c>. Windows broadcasts power-status changes (PowerModeChanged) but not
+/// percentage changes, so a slow timer keeps the charge level current. Without a battery the timer stops; the
+/// broadcast sent when a battery appears (or after resume) reads the status again and restarts it.
 /// </summary>
 internal sealed class BatteryMonitor : IDisposable
 {
@@ -18,11 +19,13 @@ internal sealed class BatteryMonitor : IDisposable
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _timer;
     private bool _warned;
+    private bool _disposed;
 
     public BatteryMonitor(Dispatcher dispatcher)
     {
         _dispatcher = dispatcher;
-        _timer = new DispatcherTimer(PollInterval, DispatcherPriority.Background, (_, _) => Refresh(), dispatcher);
+        _timer = new DispatcherTimer(DispatcherPriority.Background, dispatcher) { Interval = PollInterval };
+        _timer.Tick += OnTick;
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
         Refresh();
     }
@@ -34,8 +37,17 @@ internal sealed class BatteryMonitor : IDisposable
 
     public void Refresh()
     {
+        // A power broadcast queued before Dispose must not restart the timer.
+        if (_disposed)
+        {
+            return;
+        }
+
         if (!NativeMethods.GetSystemPowerStatus(out var raw))
         {
+            // Keep trying: a failed read says nothing about whether there is a battery.
+            _timer.Start();
+
             // Logged once: this would otherwise repeat every poll.
             if (!_warned)
             {
@@ -47,6 +59,7 @@ internal sealed class BatteryMonitor : IDisposable
         }
 
         var status = BatteryStatus.FromPowerStatus(raw.ACLineStatus, raw.BatteryFlag, raw.BatteryLifePercent, raw.BatteryLifeTime);
+        _timer.IsEnabled = BatteryStatus.NeedsPolling(raw.BatteryFlag);
         if (status != Status)
         {
             Status = status;
@@ -54,12 +67,16 @@ internal sealed class BatteryMonitor : IDisposable
         }
     }
 
+    private void OnTick(object? sender, EventArgs e) => Refresh();
+
     private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e) => _dispatcher.BeginInvoke(Refresh);
 
     public void Dispose()
     {
+        _disposed = true;
         // SystemEvents is static: an un-removed handler would keep this object (and the bar) alive forever.
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         _timer.Stop();
+        _timer.Tick -= OnTick;
     }
 }

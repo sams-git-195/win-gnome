@@ -4,8 +4,9 @@ using WinGnome.Infrastructure;
 namespace WinGnome.Interop;
 
 /// <summary>
-/// Out-of-context SetWinEventHook wrapper. Callbacks arrive on the thread that created the hook
-/// (the WPF UI thread), filtered to top-level window objects (OBJID_WINDOW, CHILDID_SELF).
+/// Out-of-context SetWinEventHook wrapper. Callbacks arrive on the thread that created the hook, which must pump
+/// messages: the WPF UI thread for most owners, the tray host's own thread for its foreground hook. Filtered to
+/// top-level window objects (OBJID_WINDOW, CHILDID_SELF). Create and dispose it on the same thread.
 /// </summary>
 internal sealed partial class WinEventHook : IDisposable
 {
