@@ -42,8 +42,12 @@ internal sealed class SuperKeyHook : IDisposable
 
     // Kept in a field so the GC cannot collect the delegate while user32 still calls it.
     private NativeMethods.LowLevelKeyboardProc? _callback;
-    private Dispatcher? _hookDispatcher;
     private nint _hook;
+
+    // Hand-over between Dispose (UI thread) and Run (hook thread), guarded by _lifetimeLock.
+    private readonly object _lifetimeLock = new();
+    private Dispatcher? _hookDispatcher;
+    private bool _stopRequested;
 
     private SuperKeyHook(Dispatcher ui)
     {
@@ -65,7 +69,9 @@ internal sealed class SuperKeyHook : IDisposable
     public static SuperKeyHook? TryStart(Dispatcher ui)
     {
         var hook = new SuperKeyHook(ui);
-        using var installed = new ManualResetEventSlim();
+
+        // Deliberately not disposed: after a timeout the hook thread may still call Set() on it.
+        var installed = new ManualResetEventSlim();
         hook._thread.Start(installed);
         if (!installed.Wait(TimeSpan.FromSeconds(5)) || hook._hook == 0)
         {
@@ -96,11 +102,21 @@ internal sealed class SuperKeyHook : IDisposable
             return;
         }
 
-        _hookDispatcher = Dispatcher.CurrentDispatcher;
+        bool stopRequested;
+        lock (_lifetimeLock)
+        {
+            _hookDispatcher = Dispatcher.CurrentDispatcher;
+            stopRequested = _stopRequested;
+        }
+
         installed.Set();
 
-        // Low-level hook callbacks are delivered through this thread's message loop.
-        Dispatcher.Run();
+        // Low-level hook callbacks are delivered through this thread's message loop. Skipped when Dispose
+        // already ran (TryStart gave up waiting): the hook must not outlive its owner.
+        if (!stopRequested)
+        {
+            Dispatcher.Run();
+        }
 
         if (!NativeMethods.UnhookWindowsHookEx(_hook))
         {
@@ -112,9 +128,17 @@ internal sealed class SuperKeyHook : IDisposable
 
     private nint HookProc(int code, nint wParam, nint lParam)
     {
-        if (code == NativeMethods.HC_ACTION && ShouldSwallow((int)wParam, lParam))
+        try
         {
-            return 1;
+            if (code == NativeMethods.HC_ACTION && ShouldSwallow((int)wParam, lParam))
+            {
+                return 1;
+            }
+        }
+        catch (Exception ex)
+        {
+            // An exception escaping into user32 would tear down the process; when in doubt, let the key through.
+            Log.Error("Keyboard hook callback failed", ex);
         }
 
         return NativeMethods.CallNextHookEx(_hook, code, wParam, lParam);
@@ -152,17 +176,25 @@ internal sealed class SuperKeyHook : IDisposable
         // Any non-Windows key while Windows is held makes this a combination (Win+E, Win+1, ...).
         _stateMachine.OnKeyDown(vk);
 
-        if (vk is < FirstDigitVk or > LastDigitVk
-            || !_superNumberActivatesDock
-            || !winWasDown
-            || NativeMethods.IsKeyDown(NativeMethods.VK_SHIFT)
-            || NativeMethods.IsKeyDown(NativeMethods.VK_CONTROL)
-            || NativeMethods.IsKeyDown(NativeMethods.VK_MENU))
+        if (vk is < FirstDigitVk or > LastDigitVk)
         {
             return false;
         }
 
         var slot = vk - FirstDigitVk;
+        if (!_superNumberActivatesDock
+            || !winWasDown
+            || NativeMethods.IsKeyDown(NativeMethods.VK_SHIFT)
+            || NativeMethods.IsKeyDown(NativeMethods.VK_CONTROL)
+            || NativeMethods.IsKeyDown(NativeMethods.VK_MENU))
+        {
+            // This press reaches the system, so its release must too. Forgetting a stale "swallowed" mark
+            // (its release was never seen, e.g. Win+L switched to the secure desktop first) keeps a later
+            // plain digit from getting stuck down.
+            _swallowedDigits[slot] = false;
+            return false;
+        }
+
         if (!_swallowedDigits[slot])
         {
             // Auto-repeat sends more key-downs while the digit is held; activate only once.
@@ -217,16 +249,24 @@ internal sealed class SuperKeyHook : IDisposable
 
     public void Dispose()
     {
-        if (_hookDispatcher is { } dispatcher)
+        Dispatcher? dispatcher;
+        lock (_lifetimeLock)
         {
-            // Asynchronous on purpose: a synchronous shutdown would block forever if the loop had already died.
-            dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
-            if (!_thread.Join(TimeSpan.FromSeconds(2)))
+            if (_stopRequested)
             {
-                Log.Warn("The keyboard hook thread did not stop in time");
+                return;
             }
 
-            _hookDispatcher = null;
+            // If the hook thread has not published its dispatcher yet, it sees this flag and unhooks at once.
+            _stopRequested = true;
+            dispatcher = _hookDispatcher;
+        }
+
+        // Asynchronous on purpose: a synchronous shutdown would block forever if the loop had already died.
+        dispatcher?.BeginInvokeShutdown(DispatcherPriority.Send);
+        if (_thread.IsAlive && !_thread.Join(TimeSpan.FromSeconds(2)))
+        {
+            Log.Warn("The keyboard hook thread did not stop in time");
         }
     }
 }

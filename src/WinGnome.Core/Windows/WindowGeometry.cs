@@ -30,4 +30,12 @@ public static class WindowGeometry
         && windowBounds.Top <= monitor.Top
         && windowBounds.Right >= monitor.Right
         && windowBounds.Bottom >= monitor.Bottom;
+
+    /// <summary>
+    /// Like <see cref="IsFullScreen(PixelRect, PixelRect)"/>, but a maximised window with a title bar never
+    /// counts: when the work area fills the whole monitor (taskbar hidden or auto-hidden, no top bar) such a
+    /// window covers the monitor too, invisible borders included, yet it is an ordinary window.
+    /// </summary>
+    public static bool IsFullScreenApp(PixelRect windowBounds, PixelRect monitor, bool isMaximized, bool hasCaption) =>
+        !(isMaximized && hasCaption) && IsFullScreen(windowBounds, monitor);
 }

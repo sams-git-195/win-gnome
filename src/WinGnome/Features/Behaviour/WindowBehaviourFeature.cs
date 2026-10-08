@@ -12,21 +12,30 @@ namespace WinGnome.Features.Behaviour;
 internal sealed class WindowBehaviourFeature : IFeature, IEmergencyRestore
 {
     private readonly ShellContext _context;
-    private readonly FocusFollowsMouse _focusFollowsMouse = new();
+    private readonly FocusFollowsMouse _focusFollowsMouse;
     private NewWindowCenterer? _centerer;
 
     public WindowBehaviourFeature(ShellContext context)
     {
         _context = context;
+        _focusFollowsMouse = new FocusFollowsMouse(context.Settings.Directory);
     }
 
     public string Name => "Window behaviour";
 
     public void Start(AppSettings settings)
     {
-        if (_context.IsSafeMode && settings.General.FocusFollowsMouse)
+        if (_context.IsSafeMode)
         {
-            Log.Info("Focus follows mouse is skipped in safe mode");
+            if (settings.General.FocusFollowsMouse)
+            {
+                Log.Info("Focus follows mouse is skipped in safe mode");
+            }
+        }
+        else if (!settings.General.FocusFollowsMouse)
+        {
+            // A previous run that was killed may have left focus-follows-mouse on.
+            _focusFollowsMouse.RestoreAfterUncleanExit();
         }
 
         ApplySettings(settings);

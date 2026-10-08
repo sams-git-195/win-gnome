@@ -67,12 +67,16 @@ internal sealed class HotCornerWatcher : IDisposable
     }
 
     /// <summary>
-    /// Stays quiet while the user is dragging something into the corner, or when a full-screen app
-    /// (game, video, presentation) is in front: there the corner is part of the app.
+    /// Stays quiet while the user is dragging something into the corner, when a full-screen app
+    /// (game, video, presentation) is in front (there the corner is part of the app), and when another
+    /// monitor continues past the corner: the pointer only passes through such a "corner" on its way to
+    /// the other screen (GNOME disables those hot corners too).
     /// </summary>
     private bool ShouldTrigger(PixelRect monitor)
     {
-        if (NativeMethods.IsKeyDown(NativeMethods.VK_LBUTTON))
+        if (NativeMethods.IsKeyDown(NativeMethods.VK_LBUTTON)
+            || IsOnAnyMonitor(monitor.Left - 1, monitor.Top)
+            || IsOnAnyMonitor(monitor.Left, monitor.Top - 1))
         {
             return false;
         }
@@ -90,8 +94,13 @@ internal sealed class HotCornerWatcher : IDisposable
             return true;
         }
 
-        return !WindowGeometry.IsFullScreen(NativeMethods.GetWindowBounds(foreground), monitor);
+        var hasCaption = (NativeMethods.GetStyle(foreground) & NativeMethods.WS_CAPTION) == NativeMethods.WS_CAPTION;
+        return !WindowGeometry.IsFullScreenApp(
+            NativeMethods.GetWindowBounds(foreground), monitor, NativeMethods.IsZoomed(foreground), hasCaption);
     }
+
+    private static bool IsOnAnyMonitor(int x, int y) =>
+        NativeMethods.MonitorFromPoint(new POINT { X = x, Y = y }, NativeMethods.MONITOR_DEFAULTTONULL) != 0;
 
     public void Dispose() => _timer.Stop();
 }

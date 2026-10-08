@@ -112,8 +112,8 @@ internal sealed class ThumbnailLayer
             var slot = _slots[i];
             if (current.Remove(slot.Window.Handle, out var info))
             {
+                // The new title is shown by Arrange below.
                 slot.Window = info;
-                slot.View.SetContent(info.Title, slot.Icon, 0);
             }
             else
             {

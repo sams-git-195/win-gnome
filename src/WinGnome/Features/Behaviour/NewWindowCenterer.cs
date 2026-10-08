@@ -88,11 +88,13 @@ internal sealed class NewWindowCenterer : IDisposable
 
     private void TryCenter(nint hwnd)
     {
-        // Inspect returns null for windows that are gone or belong to WinGnome itself. Owned dialogs are
-        // excluded by the task-switcher rule: they position themselves relative to their owner.
+        // Inspect returns null for windows that are gone or belong to WinGnome itself. Owned windows (dialogs,
+        // palettes) position themselves relative to their owner; the task-switcher rule alone would still let
+        // through owned windows that ask for a taskbar button (WS_EX_APPWINDOW).
         var info = _tracker.Inspect(hwnd);
         if (info is null
             || !WindowFilter.IsTaskSwitcherWindow(info)
+            || info.HasOwner
             || info.IsMinimized
             || info.IsMaximized
             || !info.HasCaption

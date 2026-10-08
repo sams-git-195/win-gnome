@@ -76,4 +76,34 @@ public class WindowGeometryTests
     {
         Assert.False(WindowGeometry.IsFullScreen(new PixelRect(0, 0, 10, 10), default));
     }
+
+    [Fact]
+    public void IsFullScreenApp_MaximisedCaptionedWindowOverWholeMonitor_IsNotFullScreen()
+    {
+        // Taskbar hidden and no top bar: the work area is the whole monitor, and a maximised window's
+        // rectangle (invisible borders included) spills past it on every side.
+        var monitor = new PixelRect(0, 0, 1920, 1080);
+        var maximised = new PixelRect(-8, -8, 1928, 1088);
+
+        Assert.False(WindowGeometry.IsFullScreenApp(maximised, monitor, isMaximized: true, hasCaption: true));
+    }
+
+    [Theory]
+    [InlineData(false, false)] // borderless full-screen game or video player
+    [InlineData(false, true)]  // captioned window sized to the monitor (not maximised)
+    [InlineData(true, false)]  // captionless window maximised to emulate full screen
+    public void IsFullScreenApp_CoveringWindowsThatAreNotMaximisedAndCaptioned_AreFullScreen(bool isMaximized, bool hasCaption)
+    {
+        var monitor = new PixelRect(0, 0, 1920, 1080);
+
+        Assert.True(WindowGeometry.IsFullScreenApp(monitor, monitor, isMaximized, hasCaption));
+    }
+
+    [Fact]
+    public void IsFullScreenApp_FalseWhenTheMonitorIsNotCovered()
+    {
+        var monitor = new PixelRect(0, 0, 1920, 1080);
+
+        Assert.False(WindowGeometry.IsFullScreenApp(PixelRect.FromSize(100, 100, 800, 600), monitor, isMaximized: false, hasCaption: false));
+    }
 }

@@ -16,6 +16,7 @@ internal sealed class GlobalHotkey : IDisposable
 
     private readonly HwndSource _window;
     private Hotkey? _registered;
+    private Hotkey? _failed;
 
     public GlobalHotkey()
     {
@@ -55,10 +56,18 @@ internal sealed class GlobalHotkey : IDisposable
         var modifiers = (uint)hotkey.Modifiers | NativeMethods.MOD_NOREPEAT;
         if (!NativeMethods.RegisterHotKey(_window.Handle, HotkeyId, modifiers, (uint)hotkey.VirtualKey))
         {
-            Log.Warn($"Could not register the overview hotkey {hotkey} (error {Marshal.GetLastPInvokeError()}); another program may already use it");
+            // Every settings change retries (the other program may have let go), but only the first failure
+            // for a given hotkey is worth a warning.
+            if (_failed != hotkey)
+            {
+                _failed = hotkey;
+                Log.Warn($"Could not register the overview hotkey {hotkey} (error {Marshal.GetLastPInvokeError()}); another program may already use it");
+            }
+
             return;
         }
 
+        _failed = null;
         _registered = hotkey;
         Log.Info($"Overview hotkey {hotkey} registered");
     }

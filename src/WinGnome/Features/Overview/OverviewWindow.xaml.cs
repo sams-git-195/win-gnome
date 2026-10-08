@@ -112,8 +112,40 @@ internal sealed partial class OverviewWindow : Window
             return;
         }
 
+        var previous = _previousForeground;
+        DismissAndFocus(restoreFocus && previous != 0 && NativeMethods.IsWindow(previous) ? previous : 0);
+    }
+
+    /// <summary>
+    /// Hides the overview and gives the foreground to <paramref name="focusTarget"/> (0: leave it to Windows).
+    /// </summary>
+    /// <remarks>
+    /// The target is activated before the overview hides: while the overview is still the foreground window,
+    /// Windows lets us hand the foreground on. Hiding first would let Windows activate whatever window is next
+    /// in z-order, briefly flashing it to the front and leaving us to fight the foreground lock.
+    /// <see cref="IsOpen"/> is cleared first, so the deactivation this causes is not treated as a dismissal.
+    /// </remarks>
+    private void DismissAndFocus(nint focusTarget)
+    {
+        if (!IsOpen)
+        {
+            if (focusTarget != 0)
+            {
+                WindowActivator.Activate(focusTarget);
+            }
+
+            return;
+        }
+
         IsOpen = false;
+        _previousForeground = 0;
         _context.Windows.WindowsChanged -= OnWindowsChanged;
+
+        if (focusTarget != 0)
+        {
+            WindowActivator.Activate(focusTarget);
+        }
+
         if (!_closed)
         {
             Hide();
@@ -124,13 +156,6 @@ internal sealed partial class OverviewWindow : Window
         ClearQuery();
         SetResults([], []);
         SelectGridItem(-1);
-
-        var previous = _previousForeground;
-        _previousForeground = 0;
-        if (restoreFocus && previous != 0 && NativeMethods.IsWindow(previous))
-        {
-            WindowActivator.Activate(previous);
-        }
     }
 
     /// <summary>Closes the window for good (shutdown).</summary>
@@ -158,8 +183,14 @@ internal sealed partial class OverviewWindow : Window
         try
         {
             // Topmost again on every open: the top bar and dock are topmost too, and the last one wins.
-            NativeMethods.SetWindowPos(_hwnd, NativeMethods.HWND_TOPMOST, monitor.Left, monitor.Top, monitor.Width, monitor.Height,
-                NativeMethods.SWP_NOACTIVATE);
+            PlaceOn(monitor);
+            if (NativeMethods.GetWindowBounds(_hwnd) != monitor)
+            {
+                // Moving onto a monitor with another DPI makes WPF resize the window to keep its DIP size
+                // (WM_DPICHANGED); now that the DPI matches, the second move sticks.
+                PlaceOn(monitor);
+            }
+
             _scale = NativeMethods.GetWindowScale(_hwnd);
             UpdateGridColumns();
 
@@ -184,6 +215,10 @@ internal sealed partial class OverviewWindow : Window
 
         _context.Windows.WindowsChanged += OnWindowsChanged;
     }
+
+    private void PlaceOn(PixelRect monitor) =>
+        NativeMethods.SetWindowPos(_hwnd, NativeMethods.HWND_TOPMOST, monitor.Left, monitor.Top, monitor.Width, monitor.Height,
+            NativeMethods.SWP_NOACTIVATE);
 
     private void UpdateGridColumns()
     {
@@ -255,6 +290,13 @@ internal sealed partial class OverviewWindow : Window
 
     private void OnAppsChanged(object? sender, EventArgs e)
     {
+        // Tiles survive a catalogue refresh, so the old highlight must be cleared by hand: _gridIndex now
+        // points into the new list.
+        foreach (var tile in _apps.Tiles)
+        {
+            tile.IsSelected = false;
+        }
+
         AppGrid.ItemsSource = _apps.Tiles;
         _gridIndex = -1;
         if (IsOpen && ResultsScroller.Visibility == Visibility.Visible)
@@ -378,16 +420,14 @@ internal sealed partial class OverviewWindow : Window
 
     // ---- Actions --------------------------------------------------------------------------------
 
-    private void ActivateWindow(nint hwnd)
-    {
-        Dismiss(restoreFocus: false);
-        WindowActivator.Activate(hwnd);
-    }
+    private void ActivateWindow(nint hwnd) => DismissAndFocus(hwnd);
 
     private void Launch(AppTile tile)
     {
-        Dismiss(restoreFocus: false);
+        // Launch while the overview still owns the foreground, so the new app is allowed to take it
+        // (AllowSetForegroundWindow only works for the foreground process).
         _context.Launcher.Launch(tile.LaunchId);
+        Dismiss(restoreFocus: false);
     }
 
     private bool IsPinned(AppTile tile) =>

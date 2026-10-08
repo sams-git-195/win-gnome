@@ -49,6 +49,10 @@ internal static partial class NativeMethods
     /// <summary>DWMSBT_TRANSIENTWINDOW: the acrylic backdrop used by flyouts (Windows 11 22H2+).</summary>
     public const int DWMSBT_TRANSIENTWINDOW = 3;
 
+    // ---- Monitors ---------------------------------------------------------------------------
+    /// <summary>MonitorFromPoint flag: return 0 when the point is on no monitor.</summary>
+    public const uint MONITOR_DEFAULTTONULL = 0;
+
     // ---- Hotkeys ----------------------------------------------------------------------------
     public const uint MOD_NOREPEAT = 0x4000;
 
