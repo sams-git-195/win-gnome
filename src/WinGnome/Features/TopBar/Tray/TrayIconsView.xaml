@@ -1,7 +1,8 @@
 <UserControl x:Class="WinGnome.Features.TopBar.Tray.TrayIconsView"
              x:ClassModifier="internal"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:WinGnome.Features.TopBar.Controls">
     <!--
         Tray icons in the order apps added them. Uses the bar window's Bar* resources (DynamicResource), so icons
         follow the bar's icon size, hover colour and item corner radius live.
@@ -18,7 +19,7 @@
         <ItemsControl.ItemTemplate>
             <DataTemplate>
                 <Border x:Name="Item" Margin="{DynamicResource BarPillMargin}" Padding="7,0" Background="Transparent"
-                        CornerRadius="{DynamicResource TopBarItemCornerRadius}"
+                        controls:PillCorners.Radius="{DynamicResource TopBarItemCornerRadius}"
                         Visibility="{Binding IsVisible, Converter={StaticResource VisibleWhen}}"
                         ToolTip="{Binding ToolTip}" ToolTipService.InitialShowDelay="400"
                         AutomationProperties.Name="{Binding State.Tip}"

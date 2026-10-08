@@ -36,12 +36,12 @@ internal sealed class TopBarPreviewViewModel : ObservableObject
 
     public Thickness Margin { get; private set; }
 
-    public CornerRadius CornerRadius { get; private set; }
+    public double CornerRadius { get; private set; }
 
     /// <summary>Hover highlight of bar items (the preview shows Activities hovered).</summary>
     public Brush ItemHover { get; private set; }
 
-    public CornerRadius ItemCornerRadius { get; private set; }
+    public double ItemCornerRadius { get; private set; }
 
     public string ClockText { get; private set; }
 
@@ -64,9 +64,9 @@ internal sealed class TopBarPreviewViewModel : ObservableObject
         Height = bar.Height;
         FontSize = bar.FontSize;
         Margin = new Thickness(bar.Margin);
-        CornerRadius = new CornerRadius(bar.CornerRadius);
+        CornerRadius = bar.CornerRadius;
         ItemHover = ColorConversion.ToBrush(bar.ForegroundColor, HexColor.FromRgb(255, 255, 255), HoverOpacity);
-        ItemCornerRadius = new CornerRadius(bar.ItemCornerRadius);
+        ItemCornerRadius = bar.ItemCornerRadius;
         ClockText = ClockFormatter.Format(SampleTime, bar, CultureInfo.CurrentCulture);
         ShowLogo = bar.ShowLogoMenu;
         ShowActivities = bar.ShowActivitiesButton;

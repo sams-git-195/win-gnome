@@ -31,7 +31,7 @@
         <SolidColorBrush x:Key="BarPressed" Color="#40FFFFFF" />
         <Thickness x:Key="BarPillMargin">2,3</Thickness>
         <!-- Hover/pressed highlight of every bar item (TopBarSettings.ItemCornerRadius): 0 = square, large = pill. -->
-        <CornerRadius x:Key="TopBarItemCornerRadius">0</CornerRadius>
+        <sys:Double x:Key="TopBarItemCornerRadius">0</sys:Double>
         <sys:Double x:Key="BarFontSize">13.5</sys:Double>
         <sys:Double x:Key="BarIconSize">16</sys:Double>
         <BooleanToVisibilityConverter x:Key="VisibleWhen" />
@@ -46,7 +46,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Root" Margin="{DynamicResource BarPillMargin}" Padding="{TemplateBinding Padding}"
-                                Background="{TemplateBinding Background}" CornerRadius="{DynamicResource TopBarItemCornerRadius}">
+                                Background="{TemplateBinding Background}" controls:PillCorners.Radius="{DynamicResource TopBarItemCornerRadius}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
@@ -65,7 +65,7 @@
         <Style x:Key="BarPill" TargetType="Border">
             <Setter Property="Margin" Value="{DynamicResource BarPillMargin}" />
             <Setter Property="Padding" Value="10,0" />
-            <Setter Property="CornerRadius" Value="{DynamicResource TopBarItemCornerRadius}" />
+            <Setter Property="controls:PillCorners.Radius" Value="{DynamicResource TopBarItemCornerRadius}" />
             <Setter Property="Background" Value="Transparent" />
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">

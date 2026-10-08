@@ -144,7 +144,7 @@ internal sealed partial class TopBarWindow : Window
     {
         Resources["BarFontSize"] = _settings.FontSize;
         Resources["BarIconSize"] = IconSize;
-        Resources["TopBarItemCornerRadius"] = new CornerRadius(_settings.ItemCornerRadius);
+        Resources["TopBarItemCornerRadius"] = _settings.ItemCornerRadius;
         Logo.Size = Math.Round(IconSize * LogoToIconRatio);
         WorkspaceDots.DotSize = Math.Max(4, Math.Round(_settings.FontSize * DotToFontRatio));
     }

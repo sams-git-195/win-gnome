@@ -8,7 +8,7 @@
         <Border CornerRadius="12" Margin="0,0,0,24" Padding="16" MinHeight="120" ClipToBounds="True"
                 Background="{DynamicResource PreviewBackdropBrush}">
             <Border DataContext="{Binding Preview}" VerticalAlignment="Top" Height="{Binding Height}"
-                    Margin="{Binding Margin}" CornerRadius="{Binding CornerRadius}" Background="{Binding Background}"
+                    Margin="{Binding Margin}" tb:PillCorners.Radius="{Binding CornerRadius}" Background="{Binding Background}"
                     TextElement.Foreground="{Binding Foreground}" TextElement.FontSize="{Binding FontSize}"
                     AutomationProperties.Name="Top bar preview">
                 <Grid Margin="12,0">
@@ -16,7 +16,7 @@
                         <tb:WindowsLogo Size="13" Fill="{Binding Foreground}" Margin="0,0,16,0" VerticalAlignment="Center"
                                         Visibility="{Binding ShowLogo, Converter={x:Static c:Converters.BoolToVisibility}}" />
                         <!-- Shown hovered, so the hover corner radius is visible. -->
-                        <Border Background="{Binding ItemHover}" CornerRadius="{Binding ItemCornerRadius}" Padding="8,3" Margin="-8,0,4,0"
+                        <Border Background="{Binding ItemHover}" tb:PillCorners.Radius="{Binding ItemCornerRadius}" Padding="8,3" Margin="-8,0,4,0"
                                 Visibility="{Binding ShowActivities, Converter={x:Static c:Converters.BoolToVisibility}}">
                             <TextBlock Text="Activities" />
                         </Border>
