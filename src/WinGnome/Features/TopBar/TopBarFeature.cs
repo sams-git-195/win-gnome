@@ -1,0 +1,203 @@
+using System.Windows.Interop;
+using System.Windows.Threading;
+using Microsoft.Win32;
+using WinGnome.Core.Settings;
+using WinGnome.Core.TopBar;
+using WinGnome.Features.TopBar.Popups;
+using WinGnome.Features.TopBar.ViewModels;
+using WinGnome.Infrastructure;
+using WinGnome.Interop;
+
+namespace WinGnome.Features.TopBar;
+
+/// <summary>
+/// The GNOME top bar: a full-width AppBar on the primary monitor's top edge with Activities, workspace dots,
+/// focused app, clock/calendar and the system status menu. Disabling the bar tears everything down (window,
+/// AppBar reservation, timers, audio and registry callbacks); enabling it builds it again.
+/// </summary>
+[FeatureOrder(20)]
+internal sealed class TopBarFeature : IFeature
+{
+    private readonly ShellContext _context;
+
+    // Broadcast by Explorer when it (re)starts; a restarted Explorer has forgotten every AppBar registration.
+    private readonly uint _taskbarCreatedMessage = NativeMethods.RegisterWindowMessage("TaskbarCreated");
+
+    private TopBarSettings _settings = new();
+    private TopBarViewModel? _viewModel;
+    private PopupHost? _popups;
+    private TopBarWindow? _window;
+    private AppBar? _appBar;
+    private HwndSource? _source;
+    private bool _fullScreen;
+
+    public TopBarFeature(ShellContext context)
+    {
+        _context = context;
+    }
+
+    public string Name => "Top bar";
+
+    public void Start(AppSettings settings) => ApplySettings(settings);
+
+    public void ApplySettings(AppSettings settings)
+    {
+        _settings = settings.TopBar;
+        if (!_settings.Enabled)
+        {
+            TearDown();
+            return;
+        }
+
+        if (_window is null)
+        {
+            Build();
+            return;
+        }
+
+        _viewModel!.ApplySettings(_settings);
+        _window.ApplySettings(_settings);
+        Dock();
+    }
+
+    private void Build()
+    {
+        _viewModel = new TopBarViewModel(_context, _settings);
+        _popups = new PopupHost(_context.Windows);
+        _window = new TopBarWindow(_context, _viewModel, _settings, _popups);
+
+        // Creates the handle: the bar must be a no-activate tool window before it is ever shown.
+        ShellSurface.MakeNonActivating(_window, topmost: true);
+        _appBar = new AppBar(_window);
+        _appBar.FullScreenChanged += OnFullScreenChanged;
+        _source = HwndSource.FromHwnd(new WindowInteropHelper(_window).Handle);
+        _source?.AddHook(WndProc);
+
+        _window.ApplySettings(_settings);
+        Dock();
+        _window.Show();
+
+        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        SystemEvents.PowerModeChanged += OnPowerModeChanged;
+    }
+
+    /// <summary>(Re)registers the AppBar on the primary monitor and lays the bar out for that monitor's DPI.</summary>
+    private void Dock()
+    {
+        if (_window is null || _appBar is null)
+        {
+            return;
+        }
+
+        var monitor = NativeMethods.MonitorFromPoint(default, NativeMethods.MONITOR_DEFAULTTOPRIMARY);
+        var (bounds, _) = NativeMethods.GetMonitorRects(monitor);
+        if (bounds.IsEmpty)
+        {
+            Log.Warn("Could not read the primary monitor's bounds; the top bar was not docked");
+            return;
+        }
+
+        var scale = NativeMethods.GetMonitorScale(monitor);
+        var geometry = TopBarGeometry.Compute(_settings.Height, _settings.Margin, _settings.CornerRadius, scale);
+        var granted = _appBar.Dock(AppBarEdge.Top, geometry.ThicknessPx, bounds);
+        _window.ApplyGeometry(geometry, granted.Width, scale);
+        Log.Info($"Top bar docked at {granted.Left},{granted.Top} {granted.Width}x{granted.Height} px (DPI scale {scale:0.##})");
+    }
+
+    private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
+    {
+        if (msg == NativeMethods.WM_DPICHANGED)
+        {
+            // WPF rescales the window to Windows' suggested rectangle first; then restore our exact strip.
+            _context.Dispatcher.BeginInvoke(Dock, DispatcherPriority.Background);
+        }
+        else if (_taskbarCreatedMessage != 0 && msg == (int)_taskbarCreatedMessage)
+        {
+            _context.Dispatcher.BeginInvoke(() =>
+            {
+                _appBar?.Undock();
+                Dock();
+            }, DispatcherPriority.Background);
+        }
+
+        return 0;
+    }
+
+    private void OnFullScreenChanged(object? sender, bool fullScreen)
+    {
+        if (_window is null)
+        {
+            return;
+        }
+
+        // Some Explorer builds report the desktop itself as a full-screen app when it gets focus; the bar must stay.
+        if (fullScreen && NativeMethods.GetClassName(NativeMethods.GetForegroundWindow()) is "Progman" or "WorkerW")
+        {
+            return;
+        }
+
+        if (fullScreen == _fullScreen)
+        {
+            return;
+        }
+
+        _fullScreen = fullScreen;
+        if (fullScreen)
+        {
+            _window.ClosePopups();
+            _window.Hide();
+        }
+        else
+        {
+            _window.Show();
+
+            // The full-screen app may have pushed itself above us in the topmost band.
+            NativeMethods.SetWindowPos(new WindowInteropHelper(_window).Handle, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
+                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
+        }
+    }
+
+    // SystemEvents may raise on its own thread; always hop to the dispatcher.
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e) =>
+        _context.Dispatcher.BeginInvoke(Dock, DispatcherPriority.Background);
+
+    private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+    {
+        // Monitors may have been rearranged (docking station) while the machine slept.
+        if (e.Mode == PowerModes.Resume)
+        {
+            _context.Dispatcher.BeginInvoke(Dock, DispatcherPriority.Background);
+        }
+    }
+
+    private void TearDown()
+    {
+        if (_window is null)
+        {
+            return;
+        }
+
+        // SystemEvents is static: forgotten handlers would keep the whole bar alive and keep firing.
+        SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        _source?.RemoveHook(WndProc);
+        _source = null;
+
+        if (_appBar is not null)
+        {
+            _appBar.FullScreenChanged -= OnFullScreenChanged;
+            _appBar.Dispose();
+            _appBar = null;
+        }
+
+        _window.Shutdown();
+        _window = null;
+        _popups?.Dispose();
+        _popups = null;
+        _viewModel?.Dispose();
+        _viewModel = null;
+        _fullScreen = false;
+    }
+
+    public void Dispose() => TearDown();
+}
