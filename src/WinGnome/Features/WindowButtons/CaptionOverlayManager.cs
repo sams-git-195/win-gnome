@@ -256,9 +256,18 @@ internal sealed class CaptionOverlayManager : IDisposable
         if (!CaptionMetrics.TryReadFrame(hwnd, out var frame) || frame.Width != probedFrame.Width
             || frame.Height != probedFrame.Height || NativeMethods.GetDpiForWindow(hwnd) != probedDpi)
         {
-            // Resized while probing (e.g. mid-drag): the answer may be for the old size. Probe again at the size
-            // it settles on; a decorated window asks on its next location change.
-            window?.AllowReprobe();
+            // Resized while probing (e.g. mid-drag): the answer may be for the old size. Probe again right away at
+            // the current size rather than waiting for another event, which may never come once the drag has
+            // ended; this repeats, one probe at a time, until the size holds still for a whole probe.
+            if (!frame.IsEmpty)
+            {
+                StartProbe(hwnd, frame, NativeMethods.GetDpiForWindow(hwnd));
+            }
+            else
+            {
+                window?.AllowReprobe();
+            }
+
             return;
         }
 
