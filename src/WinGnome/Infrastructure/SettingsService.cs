@@ -15,11 +15,22 @@ internal sealed class SettingsService
     {
         _store = store;
         Current = store.Load();
+        StorageProblem = store.ProbeWritable();
+        if (StorageProblem is not null)
+        {
+            Log.Error(StorageProblem);
+        }
     }
 
     public AppSettings Current { get; private set; }
 
     public string Directory => _store.Directory;
+
+    /// <summary>
+    /// Why settings can't be saved (the folder isn't writable, or the last save failed), or null when they can.
+    /// Checked at start-up and after every save; <see cref="Changed"/> fires after it is updated.
+    /// </summary>
+    public string? StorageProblem { get; private set; }
 
     /// <summary>Raised on the UI thread after settings change and have been saved.</summary>
     public event EventHandler<AppSettings>? Changed;
@@ -45,9 +56,11 @@ internal sealed class SettingsService
         try
         {
             _store.Save(Current);
+            StorageProblem = null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            StorageProblem = $"Settings can't be saved in {Directory}: {ex.Message}";
             Log.Error("Failed to save settings", ex);
         }
 

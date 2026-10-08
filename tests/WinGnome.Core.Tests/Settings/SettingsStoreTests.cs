@@ -152,4 +152,26 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(DockPosition.Bottom, store.Load().Dock.Position);
         Assert.Equal("garbage", File.ReadAllText(store.FilePath + ".corrupt"));
     }
+
+    [Fact]
+    public void ProbeWritable_WritableDirectory_ReturnsNullAndLeavesNoFile()
+    {
+        var store = new SettingsStore(_directory);
+
+        Assert.Null(store.ProbeWritable());
+        Assert.Empty(Directory.GetFiles(_directory));
+    }
+
+    [Fact]
+    public void ProbeWritable_DirectoryIsAFile_ReturnsTheError()
+    {
+        Directory.CreateDirectory(_directory);
+        var blocked = Path.Combine(_directory, "not-a-folder");
+        File.WriteAllText(blocked, "");
+
+        var problem = new SettingsStore(blocked).ProbeWritable();
+
+        Assert.NotNull(problem);
+        Assert.Contains(blocked, problem);
+    }
 }

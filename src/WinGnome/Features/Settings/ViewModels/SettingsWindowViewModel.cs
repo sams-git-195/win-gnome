@@ -1,3 +1,4 @@
+using WinGnome.Core.Settings;
 using WinGnome.Core.Tweaks;
 using WinGnome.Features.Settings.Tweaks;
 using WinGnome.Infrastructure;
@@ -7,11 +8,16 @@ namespace WinGnome.Features.Settings.ViewModels;
 /// <summary>The settings window: the list of pages and which one is showing.</summary>
 internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
 {
+    private readonly SettingsService _settings;
     private SettingsPageViewModel _selectedPage;
+    private string? _storageProblem;
 
     public SettingsWindowViewModel(ShellContext context, TweakService tweaks, IDialogService dialogs)
     {
         var settings = context.Settings;
+        _settings = settings;
+        _storageProblem = settings.StorageProblem;
+        settings.Changed += OnSettingsChanged;
         Pages =
         [
             new GeneralPageViewModel(settings, context.IsSafeMode, context.ManagesStartupEntry, ShowTaskbarTweaks),
@@ -26,6 +32,13 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
     }
 
     public IReadOnlyList<SettingsPageViewModel> Pages { get; }
+
+    /// <summary>Shown as a warning above every page while settings can't be saved.</summary>
+    public string? StorageProblem
+    {
+        get => _storageProblem;
+        private set => SetProperty(ref _storageProblem, value);
+    }
 
     public SettingsPageViewModel SelectedPage
     {
@@ -56,8 +69,11 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void OnSettingsChanged(object? sender, AppSettings e) => StorageProblem = _settings.StorageProblem;
+
     public void Dispose()
     {
+        _settings.Changed -= OnSettingsChanged;
         foreach (var page in Pages)
         {
             page.Dispose();

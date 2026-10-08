@@ -56,6 +56,27 @@ public sealed class SettingsStore
         File.Move(temp, FilePath, overwrite: true);
     }
 
+    /// <summary>
+    /// Checks that settings can be saved by writing and deleting a small probe file. Returns null when they can,
+    /// otherwise a message naming the folder and the error, so the app can warn instead of silently running on
+    /// settings it will never keep.
+    /// </summary>
+    public string? ProbeWritable()
+    {
+        var probe = Path.Combine(Directory, ".write-probe");
+        try
+        {
+            System.IO.Directory.CreateDirectory(Directory);
+            File.WriteAllText(probe, "");
+            File.Delete(probe);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"Settings can't be saved in {Directory}: {ex.Message}";
+        }
+    }
+
     private void PreserveCorruptFile()
     {
         try
