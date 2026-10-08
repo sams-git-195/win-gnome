@@ -26,7 +26,6 @@ internal static partial class WindowActivator
 
     private const uint INPUT_KEYBOARD = 1;
     private const uint KEYEVENTF_KEYUP = 0x0002;
-    private const ushort VK_MENU = 0x12;
 
     /// <summary>Marker placed in dwExtraInfo of keystrokes WinGnome injects, so its own hooks can ignore them.</summary>
     public const nint InjectedMarker = 0x574E47; // "WNG"
@@ -55,7 +54,7 @@ internal static partial class WindowActivator
         // Windows only lets the process that received the last input event change the foreground.
         // A synthetic Alt tap satisfies that rule. It is not entirely free of side effects: the window that was
         // in front may see a lone Alt press and highlight its menu bar.
-        TapKey(VK_MENU);
+        TapKey(NativeMethods.VK_MENU);
         if (!NativeMethods.SetForegroundWindow(hwnd))
         {
             Log.Warn($"SetForegroundWindow failed for 0x{hwnd:X}");
