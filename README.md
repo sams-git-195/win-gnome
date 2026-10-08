@@ -109,7 +109,8 @@ top right), or run `WinGnome.exe` again: a second launch opens the running insta
 WinGnome changes as little as possible, and it undoes everything it changes:
 
 - **Taskbar**: the original auto-hide state is saved to `%APPDATA%\WinGnome\taskbar.state` *before* the taskbar is hidden. It is restored on exit, on crash, and on the next start if WinGnome was killed. As a last resort, run `WinGnome.exe --restore-taskbar`, or restart Explorer from Task Manager.
-- **Title-bar colours and focus-follows-mouse** are session-only and are restored on exit or crash.
+- **Title-bar colours and focus-follows-mouse** last for the session only. They are restored on exit or crash. If WinGnome is force-killed, they are restored on its next start, because WinGnome records what it changed before changing it.
+- **Quitting**: use *Quit WinGnome* in quick settings or Settings → About. `taskkill /im WinGnome.exe` (without `/f`) also quits cleanly.
 - **Registry tweaks** only touch `HKEY_CURRENT_USER`. The original values (including "value did not exist") are stored in `tweaks-backup.json`, and **Settings → Streamline → Revert all** restores them.
 - WinGnome never touches elevated (administrator) windows.
 - Log file: `%APPDATA%\WinGnome\wingnome.log`.
