@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo/wingnome.svg" width="128" alt="WinGnome logo"></p>
+
 # WinGnome
 
 **Make Windows 11 feel like GNOME (with a dash of macOS).**
@@ -162,6 +164,9 @@ src/WinGnome               WPF app (net8.0-windows): interop, services and featu
   Theme/                   Adwaita light and dark palettes and shared control styles
 tests/WinGnome.Core.Tests  xUnit tests for Core
 docs/PLAN.md               Engineering plan and conventions
+docs/KNOWN_ISSUES.md       Known bugs, risks and limitations, by severity
+assets/logo/               App logo (SVG source for all icon sizes)
+AGENTS.md                  How to work on WinGnome: planning, code, tests, QA, git
 ```
 
 Each feature implements `IFeature` and is discovered automatically. Features never reference each other:
@@ -174,5 +179,5 @@ dotnet test
 
 ## Contributing
 
-Issues and pull requests are welcome. Please keep platform calls in `src/WinGnome` and logic in
+Issues and pull requests are welcome. Read [AGENTS.md](AGENTS.md) first. Please keep platform calls in `src/WinGnome` and logic in
 `WinGnome.Core` with tests, and run `dotnet build -warnaserror` and `dotnet test` before submitting.

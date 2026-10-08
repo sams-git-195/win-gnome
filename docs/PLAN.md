@@ -30,9 +30,11 @@ All Win32 work lives in the app project, and every decision that can be expresse
 - Every Win32 failure is non-fatal: log through `Log.Warn(...)` and degrade gracefully. WinGnome must never
   crash explorer or leave the taskbar hidden.
 - UI threading: all windows live on the WPF dispatcher thread. WinEvent hooks are out-of-context and arrive on that thread.
+  The exception is `TrayHost`, whose hidden tray window runs its own Win32 message loop on a dedicated thread.
 - DPI: the process is Per-Monitor-V2 aware. Screen geometry from Win32 is in **physical pixels** (`PixelRect`).
   Convert with `VisualTreeHelper.GetDpi(visual).DpiScaleX` or `NativeMethods.GetDpiForWindow`/`GetDpiForMonitor`.
-- Features implement `IFeature` (`Start()`, `ApplySettings(AppSettings)`, `Dispose()`) and are composed in `App.xaml.cs`.
+- Features implement `IFeature` (`Start(AppSettings)`, `ApplySettings(AppSettings)`, `Dispose()`) and are discovered
+  automatically, ordered by `[FeatureOrder]`.
 - Settings are read from `SettingsService.Current` and changes arrive through `SettingsService.Changed`.
 - Footprint: WinGnome runs all day, so idle cost matters most. WPF renders in software process-wide (no Direct3D
   device; see `App.OnStartup`). Create per-window WPF surfaces only when they will be shown, size hidden windows
