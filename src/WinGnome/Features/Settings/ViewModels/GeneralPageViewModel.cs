@@ -9,9 +9,10 @@ namespace WinGnome.Features.Settings.ViewModels;
 internal sealed class GeneralPageViewModel : SettingsPageViewModel
 {
     /// <param name="settings">The live settings.</param>
-    /// <param name="isSafeMode">True in safe mode, where the sign-in entry is not touched.</param>
+    /// <param name="isSafeMode">True in safe mode.</param>
+    /// <param name="managesStartupEntry">False in safe mode and in non-default profiles, where the sign-in entry is not touched.</param>
     /// <param name="showTaskbarTweaks">Navigates to the Taskbar tweaks on the Streamline page.</param>
-    public GeneralPageViewModel(SettingsService settings, bool isSafeMode, Action showTaskbarTweaks)
+    public GeneralPageViewModel(SettingsService settings, bool isSafeMode, bool managesStartupEntry, Action showTaskbarTweaks)
         : base(settings, "General", "")
     {
         StartWithWindows = Toggle(s => s.General.StartWithWindows, (s, v) => s.General.StartWithWindows = v);
@@ -25,9 +26,11 @@ internal sealed class GeneralPageViewModel : SettingsPageViewModel
             ChoiceOption.Of(ThemeMode.Dark, "Dark"));
         CenterNewWindows = Toggle(s => s.General.CenterNewWindows, (s, v) => s.General.CenterNewWindows = v);
         FocusFollowsMouse = Toggle(s => s.General.FocusFollowsMouse, (s, v) => s.General.FocusFollowsMouse = v);
-        StartWithWindowsSubtitle = isSafeMode
-            ? "Safe mode: the sign-in entry is not changed while this session runs."
-            : "Launch WinGnome automatically when you sign in.";
+        StartWithWindowsSubtitle = managesStartupEntry
+            ? "Launch WinGnome automatically when you sign in."
+            : isSafeMode
+                ? "Safe mode: the sign-in entry is not changed while this session runs."
+                : "Separate profile (--settings-dir): the sign-in entry belongs to the default profile and is not changed.";
         StyleTaskbarCommand = new RelayCommand(showTaskbarTweaks);
     }
 

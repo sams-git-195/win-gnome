@@ -46,4 +46,16 @@ public static class StartupEntry
             ? new(StartupAction.None, null)
             : new(StartupAction.Write, desired);
     }
+
+    /// <summary>
+    /// True when a WinGnome using <paramref name="settingsDirectory"/> owns the Run value. The value is shared by
+    /// every profile, so only the default profile manages it: a test or second profile started with
+    /// --settings-dir must not rewrite or delete the entry the user's everyday WinGnome relies on.
+    /// </summary>
+    public static bool IsOwnedBy(string settingsDirectory, string defaultDirectory) =>
+        !string.IsNullOrWhiteSpace(settingsDirectory)
+        && string.Equals(
+            Path.TrimEndingDirectorySeparator(settingsDirectory),
+            Path.TrimEndingDirectorySeparator(defaultDirectory),
+            StringComparison.OrdinalIgnoreCase);
 }

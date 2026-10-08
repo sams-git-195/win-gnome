@@ -22,7 +22,7 @@ internal sealed class SettingsFeature : IFeature
     public SettingsFeature(ShellContext context)
     {
         _context = context;
-        _startup = new StartupRegistration(simulate: context.IsSafeMode);
+        _startup = new StartupRegistration(simulate: !context.ManagesStartupEntry);
         _tweaks = new TweakService(context.Settings, simulate: context.IsSafeMode);
     }
 

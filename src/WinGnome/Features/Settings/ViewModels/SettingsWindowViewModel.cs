@@ -14,7 +14,7 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
         var settings = context.Settings;
         Pages =
         [
-            new GeneralPageViewModel(settings, context.IsSafeMode, ShowTaskbarTweaks),
+            new GeneralPageViewModel(settings, context.IsSafeMode, context.ManagesStartupEntry, ShowTaskbarTweaks),
             new TopBarPageViewModel(settings),
             new DockPageViewModel(settings, context.Theme, context.Icons, dialogs),
             new WindowButtonsPageViewModel(settings),

@@ -47,4 +47,24 @@ public class StartupEntryTests
     [Fact]
     public void Plan_DisabledAndAbsent_DoesNothing() =>
         Assert.Equal(StartupAction.None, StartupEntry.Plan(false, Exe, null).Action);
+
+    private const string DefaultProfile = @"C:\Users\a\AppData\Roaming\WinGnome";
+
+    [Fact]
+    public void IsOwnedBy_DefaultProfile_IsTrue() =>
+        Assert.True(StartupEntry.IsOwnedBy(DefaultProfile, DefaultProfile));
+
+    [Theory]
+    [InlineData(@"C:\Users\a\AppData\Roaming\WinGnome\")]
+    [InlineData(@"c:\users\A\appdata\roaming\wingnome")]
+    public void IsOwnedBy_DefaultProfileSpelledDifferently_IsTrue(string directory) =>
+        Assert.True(StartupEntry.IsOwnedBy(directory, DefaultProfile));
+
+    [Theory]
+    [InlineData(@"C:\Users\a\AppData\Local\Temp\wingnome-smoke")]
+    [InlineData(@"C:\Users\a\AppData\Roaming\WinGnomeQA")]
+    [InlineData(@"C:\Users\a\AppData\Roaming\WinGnome\profile2")]
+    [InlineData("")]
+    public void IsOwnedBy_OtherProfile_IsFalse(string directory) =>
+        Assert.False(StartupEntry.IsOwnedBy(directory, DefaultProfile));
 }

@@ -23,6 +23,13 @@ internal sealed record ShellContext(
     /// unattended (CI, QA), so it must never change the user's system state even when --safe is omitted.
     /// </summary>
     public bool IsSafeMode => Options.Safe || Options.SelfTest;
+
+    /// <summary>
+    /// True when this instance may change the shared "start with Windows" entry: not in safe mode, and only
+    /// for the default profile (see <see cref="StartupEntry.IsOwnedBy"/>).
+    /// </summary>
+    public bool ManagesStartupEntry =>
+        !IsSafeMode && StartupEntry.IsOwnedBy(Settings.Directory, SettingsStore.DefaultDirectory);
 }
 
 internal enum OverviewMode

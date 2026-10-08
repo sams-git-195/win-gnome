@@ -7,7 +7,7 @@ using WinGnome.Infrastructure;
 namespace WinGnome.Features.Settings.Startup;
 
 /// <summary>Keeps the HKCU Run-key entry that starts WinGnome at sign-in in step with the "Start with Windows" setting.</summary>
-/// <param name="simulate">True in safe mode and self-test: the registry is never touched.</param>
+/// <param name="simulate">True in safe mode, self-test and non-default profiles: the registry is never touched.</param>
 internal sealed class StartupRegistration(bool simulate)
 {
     private readonly string? _executablePath = Environment.ProcessPath;
