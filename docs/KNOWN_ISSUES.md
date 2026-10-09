@@ -36,7 +36,6 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-022](#ki-022) | S4 | Tray | A `WM_CLOSE` posted to "the taskbar" quits WinGnome while it hosts tray icons | Open |
 | [KI-023](#ki-023) | S4 | Dock | Two pins with the same target group the app's windows into the first one | Open |
 | [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
-| [KI-051](#ki-051) | S3 | Accessibility | The round window buttons aren't exposed to screen readers or keyboard | Open |
 | [KI-030](#ki-030) | S4 | Overview | The first overview open after start takes about half a second | Open |
 | [KI-031](#ki-031) | S4 | Overview | Overview animation details not verified on every path | Open |
 | [KI-032](#ki-032) | S4 | Overview | The overview's close glide gets 8–13 frames | Open |
@@ -205,15 +204,6 @@ everyday one) overlays its circles on top of the header bar's own ones. One inst
 with KI-015, turn window buttons off in test profiles; capture header bars with `PrintWindow` to see only
 the window's own drawing.
 
-### KI-051
-**The round window buttons aren't exposed to screen readers or keyboard** · S3 · Accessibility · Open
-
-`TrafficLightButtonsView` draws all three circles in one element with no `AutomationPeer`, so Narrator and UI
-Automation see no Close, Minimise or Maximise buttons in the settings header bar or the overlay, and the circles
-can't be focused. The settings window still closes with Alt+F4 and its system menu (Alt+Space) has Minimise,
-Maximise and Close. *Fix direction:* an `AutomationPeer` for the view with one child peer per circle
-(`IInvokeProvider`), named from `CaptionButtonKind`.
-
 ### KI-030
 **The first overview open after start takes about half a second** · S4 · Overview · Open
 
@@ -279,6 +269,7 @@ decorates windows" once while the previous thread releases the mutex.
 
 | ID | Severity | Area | Summary | Fixed in |
 |---|---|---|---|---|
+| KI-051 | S3 | Accessibility | The round window buttons weren't exposed to screen readers or the keyboard | fea478b |
 | KI-011 | S2 | Settings | Non-safe runs with `--settings-dir` rewrote or deleted the shared "Start with Windows" entry | 6aeef5f |
 | KI-012 | S3 | Settings | A settings folder that couldn't be written silently dropped every change | 6e07eb0 (warning banner) |
 | KI-013 | S4 | Top bar | Large hover corner radius drew oval highlights instead of pills | c26e1c8 |
