@@ -1,4 +1,4 @@
-﻿using WinGnome.Core.ControlCenter;
+using WinGnome.Core.ControlCenter;
 using WinGnome.Core.Geometry;
 
 namespace WinGnome.Core.Tests.ControlCenter;
@@ -36,7 +36,7 @@ public class DisplayArrangementTests
     {
         var displays = new[] { D("A", 0, 0, 1920, 1080), D("B", 1920, 0, 1920, 1080), D("C", 3840, 0, 1920, 1080) };
 
-        var result = DisplayArrangement.Resize(displays, "A", 2560, 1440);
+        var result = DisplayArrangement.Resize(displays, "A", "A", 2560, 1440);
 
         Assert.Equal([D("A", 0, 0, 2560, 1440), D("B", 2560, 0, 1920, 1080), D("C", 4480, 0, 1920, 1080)], result);
     }
@@ -46,7 +46,7 @@ public class DisplayArrangementTests
     {
         var displays = new[] { D("A", 0, 0, 1920, 1080), D("B", 1920, 0, 1920, 1080) };
 
-        var result = DisplayArrangement.Resize(displays, "A", 1280, 720);
+        var result = DisplayArrangement.Resize(displays, "A", "A", 1280, 720);
 
         Assert.Equal([D("A", 0, 0, 1280, 720), D("B", 1280, 0, 1920, 1080)], result);
     }
@@ -56,7 +56,7 @@ public class DisplayArrangementTests
     {
         var displays = new[] { D("A", 0, 0, 1920, 1080), D("B", 0, 1080, 1920, 1080) };
 
-        var result = DisplayArrangement.Resize(displays, "A", 1920, 1200);
+        var result = DisplayArrangement.Resize(displays, "A", "A", 1920, 1200);
 
         Assert.Equal([D("A", 0, 0, 1920, 1200), D("B", 0, 1200, 1920, 1080)], result);
     }
@@ -66,9 +66,20 @@ public class DisplayArrangementTests
     {
         var displays = new[] { D("L", -1280, 0, 1280, 1024), D("A", 0, 0, 1920, 1080) };
 
-        var result = DisplayArrangement.Resize(displays, "A", 2560, 1440);
+        var result = DisplayArrangement.Resize(displays, "A", "A", 2560, 1440);
 
         Assert.Equal([D("L", -1280, 0, 1280, 1024), D("A", 0, 0, 2560, 1440)], result);
+    }
+
+    [Fact]
+    public void Resize_DisplayLeftOfPrimary_KeepsPrimaryAtOrigin()
+    {
+        var displays = new[] { D("L", -1280, 0, 1280, 1024), D("A", 0, 0, 1920, 1080) };
+
+        // L grows by 640 px to the right, which pushes A; the whole arrangement then shifts back so A stays at (0, 0).
+        var result = DisplayArrangement.Resize(displays, "L", "A", 1920, 1080);
+
+        Assert.Equal([D("L", -1920, 0, 1920, 1080), D("A", 0, 0, 1920, 1080)], result);
     }
 
     [Fact]

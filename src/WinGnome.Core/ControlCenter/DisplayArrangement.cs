@@ -25,13 +25,14 @@ public static class DisplayArrangement
     /// <summary>
     /// Gives display <paramref name="id"/> a new size, keeping its top-left corner. Displays entirely to its right
     /// shift by the change in width and displays entirely below it by the change in height, so neighbours stay flush.
+    /// The result is translated so <paramref name="primaryId"/> stays at the origin, as Windows requires.
     /// </summary>
-    public static IReadOnlyList<DisplayPlacement> Resize(IReadOnlyList<DisplayPlacement> displays, string id, int width, int height)
+    public static IReadOnlyList<DisplayPlacement> Resize(IReadOnlyList<DisplayPlacement> displays, string id, string primaryId, int width, int height)
     {
         var old = Get(displays, id).Bounds;
         var dx = width - old.Width;
         var dy = height - old.Height;
-        return displays.Select(d =>
+        var resized = displays.Select(d =>
         {
             if (d.Id == id)
             {
@@ -42,6 +43,7 @@ public static class DisplayArrangement
             var shiftY = d.Bounds.Top >= old.Bottom ? dy : 0;
             return d with { Bounds = d.Bounds.Offset(shiftX, shiftY) };
         }).ToList();
+        return MakePrimary(resized, primaryId);
     }
 
     /// <summary>
