@@ -383,6 +383,11 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
         }
 
         _pending = pending;
+        if (outcome.Result == DisplayApplyResult.AppliedAdjusted)
+        {
+            Problem = "Windows adjusted the new settings; keeping them keeps what is showing now.";
+        }
+
         _countdown.Start(DateTime.UtcNow);
         if (!_open)
         {
@@ -415,10 +420,7 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
         OnPropertyChanged(nameof(CountdownText));
     }
 
-    /// <summary>
-    /// Keep Changes: the record is deleted here, on the UI thread, before anything is saved, so a crash in between
-    /// can't revert a kept change; a change that already went away is not saved.
-    /// </summary>
+    /// <summary>Keep Changes: stops the countdown and saves the change on the display queue (if it is still showing).</summary>
     private void Keep()
     {
         if (!_countdown.Keep() || _pending is not { } pending)
@@ -430,24 +432,29 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
         _pending = null;
         OnPropertyChanged(nameof(IsWaiting));
         CommandManager.InvalidateRequerySuggested();
-        if (!_flow.BeginKeep(pending))
-        {
-            Log.Info("Display change was no longer showing when kept; nothing to save");
-            Load();
-            return;
-        }
-
         Log.Info("Display change kept");
+
+        // On the display queue, BeginKeep deletes the record before Persist saves: a crash in between can't revert it.
         DisplayWork.Enqueue("save the kept display settings", () =>
         {
-            if (!_flow.Persist(pending))
+            if (!_flow.BeginKeep(pending))
+            {
+                Log.Info("Display change was no longer showing when kept; nothing to save");
+                Context.Dispatcher.BeginInvoke(() =>
+                {
+                    if (_open)
+                    {
+                        Load();
+                    }
+                });
+            }
+            else if (!_flow.Persist(pending))
             {
                 Context.Dispatcher.BeginInvoke(() => Problem =
                     "The new display settings are showing, but Windows didn't save them; they'll be undone when you sign out.");
             }
         });
     }
-
     private void Revert()
     {
         if (_countdown.Revert())

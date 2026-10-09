@@ -346,6 +346,9 @@ effective scale (documented `GetDpiForMonitor`) read-only with a *Change in Wind
 mirroring, HDR, and enabling or disabling a display aren't offered in this MVP; *More in Windows Settings* opens
 the page. Modes are listed at the current colour depth; a display rotated to portrait reports its modes as Windows
 gives them.
+Cloned (mirrored) displays share one source mode: changing either one's resolution changes both, and the panel
+lists them as separate displays. Making or breaking a clone, like turning displays on or off, is left to Windows
+Settings.
 
 ### KI-063
 **The Settings panels' writes are verified by code review and tests, not yet on a live machine** · S3 · Settings · Open
@@ -356,8 +359,9 @@ default device, power plan value, power mode, time zone, wallpaper, accent, styl
 written during development. The write paths follow the documented APIs, run off the UI thread, log Win32 errors and
 show the problem banner; Displays tests every mode before applying, records the previous and new settings first,
 applies the whole configuration atomically for the session only (`SetDisplayConfig` without `SDC_SAVE_TO_DATABASE`
-until *Keep Changes*) and always counts down to a revert. The refresh-rate rewrite (path refresh rate with the target
-mode left for Windows to choose) is the part most worth checking live. Multi-display arrangement was exercised only through `DisplayArrangement` tests.
+until *Keep Changes*) and always counts down to a revert. The refresh-rate rewrite (GDI's whole rates mapped to the path's
+fraction, 59 to 60000/1001, with the target timing left for Windows to choose) is the part most worth checking live;
+if Windows adjusts the configuration, the panel records and keeps what is really showing. Multi-display arrangement was exercised only through `DisplayArrangement` tests.
 *Next step:* a manual pass per panel on a test machine (acceptance criteria 2 of spec 0015): change, confirm it
 shows in Windows Settings, change back; for Displays, let the countdown revert, kill WinGnome during a countdown
 and restart it.

@@ -29,6 +29,9 @@ public class DisplayChangeFlowTests
 
         public bool WriteResult { get; set; } = true;
 
+        /// <summary>What a successful apply really shows; the target when null.</summary>
+        public IReadOnlyList<DisplaySetting>? Shows { get; set; }
+
         public DisplayRevert? Written { get; private set; }
 
         public DisplayChangeFlow Flow() => new(
@@ -39,7 +42,7 @@ public class DisplayChangeFlowTests
                 Calls.Add("apply");
                 if (ApplyResult)
                 {
-                    Current = target;
+                    Current = Shows ?? target;
                 }
 
                 return ApplyResult;
@@ -68,7 +71,44 @@ public class DisplayChangeFlowTests
 
         Assert.Equal(DisplayApplyResult.Applied, outcome.Result);
         Assert.Equal(new DisplayRevert(Original, Target), outcome.Pending);
-        Assert.Equal(["read", "test", "write", "apply"], system.Calls);
+        Assert.Equal(["read", "test", "write", "apply", "read"], system.Calls);
+    }
+
+    [Fact]
+    public void Apply_WindowsShowsSomethingElse_RecordsWhatIsShowingAsTheTarget()
+    {
+        // Windows may adjust a supplied configuration (SDC_ALLOW_CHANGES); Keep must then save what is really showing.
+        var shown = new[] { ASmaller with { RefreshHz = 50 }, BMoved };
+        var system = new FakeSystem { Shows = shown };
+
+        var outcome = system.Flow().Apply(Target);
+
+        Assert.Equal(DisplayApplyResult.AppliedAdjusted, outcome.Result);
+        Assert.NotNull(outcome.Pending);
+        Assert.Equal(Original, outcome.Pending.Original);
+        Assert.Equal(shown, outcome.Pending.Target);
+        Assert.Same(outcome.Pending, system.Written);
+        Assert.Equal(["read", "test", "write", "apply", "read", "write"], system.Calls);
+    }
+
+    [Fact]
+    public void Apply_AdjustedButTheRecordCannotBeUpdated_Reverts()
+    {
+        var system = new FakeSystem { Shows = [ASmaller with { RefreshHz = 50 }, BMoved] };
+        var writes = 0;
+        var flow = new DisplayChangeFlow(
+            () => system.Current,
+            _ => true,
+            target => { system.Current = system.Shows!; return true; },
+            original => { system.Current = original; return true; },
+            _ => true,
+            _ => ++writes == 1,
+            () => system.Calls.Add("delete"));
+
+        var outcome = flow.Apply(Target);
+
+        Assert.Equal(DisplayApplyResult.NotRecorded, outcome.Result);
+        Assert.Equal(Original, system.Current);
     }
 
     [Fact]

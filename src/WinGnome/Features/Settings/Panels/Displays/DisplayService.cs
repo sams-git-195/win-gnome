@@ -60,24 +60,38 @@ internal static class DisplayService
 
     /// <summary>
     /// Puts the displays back to <paramref name="original"/>: first by applying the database's configuration (an
-    /// unconfirmed change never reached it), then, if the displays still differ, the original explicitly. Returns true
-    /// only when every attached display of <paramref name="original"/> shows its original mode and position again.
+    /// unconfirmed change never reached it); if any display that was on before doesn't show its original settings
+    /// afterwards (one went dark, or the database differs), by re-applying the active configuration from just before
+    /// the revert (so the same displays are on) with the original modes and positions. Returns true only when every
+    /// display of <paramref name="original"/> that was attached before the revert shows its original settings again.
     /// </summary>
     public static bool Revert(IReadOnlyList<DisplaySetting> original)
     {
+        var before = QueryActive();
+        var expected = DisplayPathPlan.ExpectedAfterRevert(original, Current().Select(d => d.DeviceName).ToList());
+        if (expected.Count == 0)
+        {
+            Log.Warn("None of the displays to restore is attached");
+            return false;
+        }
+
         var result = NativeMethods.SetDisplayConfig(0, null, 0, null, NativeMethods.SDC_APPLY | NativeMethods.SDC_USE_DATABASE_CURRENT);
         if (result != 0)
         {
             Log.Warn($"SetDisplayConfig could not reapply the saved display configuration (error {result})");
         }
 
-        if (Matches(original))
+        if (Shows(expected))
         {
             return true;
         }
 
-        ApplySupplied(original, NativeMethods.SDC_APPLY | NativeMethods.SDC_ALLOW_CHANGES, "restore");
-        var restored = Matches(original);
+        if (before is { } topology)
+        {
+            ApplySupplied(expected, NativeMethods.SDC_APPLY | NativeMethods.SDC_ALLOW_CHANGES, "restore", topology);
+        }
+
+        var restored = Shows(expected);
         if (!restored)
         {
             Log.Warn("The displays could not be put back to their previous settings");
@@ -86,30 +100,27 @@ internal static class DisplayService
         return restored;
     }
 
-    /// <summary>True when the attached displays of <paramref name="expected"/> show those modes and positions.</summary>
-    private static bool Matches(IReadOnlyList<DisplaySetting> expected)
-    {
-        var current = Current();
-        var present = expected
-            .Where(e => current.Any(c => string.Equals(c.DeviceName, e.DeviceName, StringComparison.OrdinalIgnoreCase)))
-            .ToList();
-        return present.Count > 0 && DisplayRevertRecord.IsStillApplied(new DisplayRevert(present, present), current);
-    }
+    /// <summary>True when every display of <paramref name="expected"/> is attached and shows that mode and position.</summary>
+    private static bool Shows(IReadOnlyList<DisplaySetting> expected) =>
+        DisplayRevertRecord.IsStillApplied(new DisplayRevert(expected, expected), Current());
 
     /// <summary>
-    /// Queries the active configuration, rewrites each named display's source mode (size and position) and, when the
-    /// refresh rate changes, its path's refresh rate (letting Windows pick the matching target timing), then calls
-    /// SetDisplayConfig with the supplied configuration. Displays not named keep their settings.
+    /// Rewrites each named display's source mode (size and position) and, as <see cref="DisplayPathPlan"/> decides, its
+    /// path's refresh rate and target mode, in the active configuration (or <paramref name="baseConfig"/>), then calls
+    /// SetDisplayConfig with it. Displays not named keep their settings.
     /// </summary>
-    private static bool ApplySupplied(IReadOnlyList<DisplaySetting> settings, uint flags, string what)
+    private static bool ApplySupplied(IReadOnlyList<DisplaySetting> settings, uint flags, string what,
+        (DISPLAYCONFIG_PATH_INFO[] Paths, DISPLAYCONFIG_MODE_INFO[] Modes)? baseConfig = null)
     {
-        if (QueryActive() is not { } config)
+        if ((baseConfig ?? QueryActive()) is not { } config)
         {
             return false;
         }
 
-        var (paths, modes) = config;
-
+        // Work on copies: a base configuration may be used again.
+        var paths = (DISPLAYCONFIG_PATH_INFO[])config.Paths.Clone();
+        var modes = (DISPLAYCONFIG_MODE_INFO[])config.Modes.Clone();
+        var current = Current();
         foreach (var setting in settings)
         {
             var index = Array.FindIndex(paths, p => string.Equals(SourceName(p), setting.DeviceName, StringComparison.OrdinalIgnoreCase));
@@ -121,19 +132,23 @@ internal static class DisplayService
             }
 
             ref var source = ref modes[paths[index].sourceModeInfoIdx];
+            var now = current.FirstOrDefault(c => string.Equals(c.DeviceName, setting.DeviceName, StringComparison.OrdinalIgnoreCase))
+                ?? setting with { Width = (int)source.sourceWidth, Height = (int)source.sourceHeight };
             source.sourceWidth = (uint)setting.Width;
             source.sourceHeight = (uint)setting.Height;
             source.sourcePositionX = setting.X;
             source.sourcePositionY = setting.Y;
 
             ref var path = ref paths[index];
-            var currentHz = path.refreshRateDenominator == 0 ? 0 : (double)path.refreshRateNumerator / path.refreshRateDenominator;
-
-            // GDI reports 59.94 Hz as 59 and the path as 60000/1001: within a hertz is the same rate.
-            if (Math.Abs(currentHz - setting.RefreshHz) >= 1)
+            var edit = DisplayPathPlan.Plan(new RefreshRate(path.refreshRateNumerator, path.refreshRateDenominator), now, setting);
+            if (edit.WriteRefresh)
             {
-                path.refreshRateNumerator = (uint)setting.RefreshHz;
-                path.refreshRateDenominator = 1;
+                path.refreshRateNumerator = edit.Refresh.Numerator;
+                path.refreshRateDenominator = edit.Refresh.Denominator;
+            }
+
+            if (edit.InvalidateTargetMode)
+            {
                 path.targetModeInfoIdx = NativeMethods.DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
             }
         }
@@ -148,7 +163,6 @@ internal static class DisplayService
         Log.Warn($"SetDisplayConfig could not {what} the display configuration (error {result})");
         return false;
     }
-
     private static (DISPLAYCONFIG_PATH_INFO[] Paths, DISPLAYCONFIG_MODE_INFO[] Modes)? QueryActive()
     {
         var error = NativeMethods.GetDisplayConfigBufferSizes(NativeMethods.QDC_ONLY_ACTIVE_PATHS, out var pathCount, out var modeCount);
