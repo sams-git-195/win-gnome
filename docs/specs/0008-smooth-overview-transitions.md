@@ -1,6 +1,6 @@
 # 0008 — Smooth overview open and close
 
-Status: Implemented (branch worktree-agent-a24f212757295470e, b792738, e4d8ed1 and f7357f6)
+Status: Implemented (branch worktree-agent-a24f212757295470e, b792738, e4d8ed1, f7357f6 and 1e4522f)
 
 ## Problem
 Pressing Super shows a flash and then a very rapid jump into the overview. Causes found in the code:
@@ -52,8 +52,12 @@ Pressing Super shows a flash and then a very rapid jump into the overview. Cause
   just shorter. The dim stays in the brush alpha; no layered dim window (KI-032).
 - Thumbnails are registered bottom-up in z-order so the first frame matches the desktop, and the picked window's
   thumbnail is re-registered on close so it lands on top.
-- Closing from search results or the app grid is instant. See KI-030 (slow first open), KI-031 (paths not yet
-  verified live) and KI-032.
+- First open (KI-030, resolved in 1e4522f): WPF's first full-screen software frame made it appear 230–540 ms after
+  the key. Three seconds after start, at `ApplicationIdle`, the overview is shown once cloaked and not activated,
+  with window icons laid out in place of thumbnails (no DWM registration), rendered for three frames and hidden and
+  shrunk again. First opens now appear 66–113 ms after the key, like later ones. An open during the warm-up takes
+  the window over.
+- Closing from search results or the app grid is instant. See KI-031 (paths not yet verified live) and KI-032.
 
 ## Safety and recovery
 No system state changes. If the uncloak never happens (no frame rendered within 250 ms), uncloak anyway so the
@@ -61,6 +65,10 @@ overview can't get stuck invisible while holding focus.
 
 ## Footprint
 Per-frame work only during the 200–250 ms animations. Nothing new at idle; the hidden window is still shrunk.
+The one-time warm-up costs 100–210 ms of UI-thread time 3 s after start and raises private memory from ~56 MB to
+~86 MB (WPF's software renderer and caches). That is what the first open allocates anyway: with or without the
+warm-up the process sits at 87–88 MB after one open and close. It is only an extra cost for someone who never
+opens the overview.
 
 ## Acceptance criteria
 1. Core tests: easing at 0, 0.5, 1, clamping and NaN; progress with zero duration and negative elapsed; rect

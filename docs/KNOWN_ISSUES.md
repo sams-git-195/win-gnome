@@ -36,8 +36,6 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-022](#ki-022) | S4 | Tray | A `WM_CLOSE` posted to "the taskbar" quits WinGnome while it hosts tray icons | Open |
 | [KI-023](#ki-023) | S4 | Dock | Two pins with the same target group the app's windows into the first one | Open |
 | [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
-| [KI-051](#ki-051) | S3 | Accessibility | The round window buttons aren't exposed to screen readers or keyboard | Open |
-| [KI-030](#ki-030) | S4 | Overview | The first overview open after start takes about half a second | Open |
 | [KI-031](#ki-031) | S4 | Overview | Overview animation details not verified on every path | Open |
 | [KI-032](#ki-032) | S4 | Overview | The overview's close glide gets 8–13 frames | Open |
 | [KI-033](#ki-033) | S4 | Overview | A dock request for some windows doesn't narrow an open overview | Open |
@@ -209,24 +207,6 @@ instance whose header bar is shown, e.g. a QA profile's settings window while th
 role. A pre-role build (KI-042) still decorates regardless and overlays every other instance's header bars. One
 instance alone is unaffected. Capture header bars with `PrintWindow` to see only the window's own drawing.
 
-### KI-051
-**The round window buttons aren't exposed to screen readers or keyboard** · S3 · Accessibility · Open
-
-`TrafficLightButtonsView` draws all three circles in one element with no `AutomationPeer`, so Narrator and UI
-Automation see no Close, Minimise or Maximise buttons in the settings header bar or the overlay, and the circles
-can't be focused. The settings window still closes with Alt+F4 and its system menu (Alt+Space) has Minimise,
-Maximise and Close. *Fix direction:* an `AutomationPeer` for the view with one child peer per circle
-(`IInvokeProvider`), named from `CaptionButtonKind`.
-
-### KI-030
-**The first overview open after start takes about half a second** · S4 · Overview · Open
-
-The first time the overview opens, WPF's first full-screen software-rendered frame takes ~430 ms (JIT, glyph and
-layout caches). Since spec 0008 the window stays cloaked until that frame is presented, so nothing appears for
-~470 ms instead of a bare backdrop flashing up; later opens appear 60–120 ms after the key. The 250 ms reveal
-timeout can't help while the UI thread is busy rendering. *Fix direction:* render the overview once, cloaked
-and inactive, shortly after start-up, then hide and shrink it again.
-
 ### KI-031
 **Overview animation details not verified on every path** · S4 · Overview · Open
 
@@ -296,6 +276,7 @@ buttons; two instances may then both draw.
 
 | ID | Severity | Area | Summary | Fixed in |
 |---|---|---|---|---|
+| KI-051 | S3 | Accessibility | The round window buttons weren't exposed to screen readers or the keyboard | fea478b |
 | KI-011 | S2 | Settings | Non-safe runs with `--settings-dir` rewrote or deleted the shared "Start with Windows" entry | 6aeef5f |
 | KI-012 | S3 | Settings | A settings folder that couldn't be written silently dropped every change | 6e07eb0 (warning banner) |
 | KI-013 | S4 | Top bar | Large hover corner radius drew oval highlights instead of pills | c26e1c8 |
@@ -303,3 +284,4 @@ buttons; two instances may then both draw.
 | KI-017 | S3 | Window buttons | The patch behind the circles didn't match Mica title bars and hid the window border | 45ae75a |
 | KI-002 | S4 | App | The executable had no app icon | 2f7c44b |
 | KI-020 | S3 | App | A graceful `taskkill` that reached the tray host window was ignored, so WinGnome didn't quit | 085fa14 |
+| KI-030 | S4 | Overview | The first overview open after start took about half a second (WPF's first full-screen frame) | 1e4522f (cloaked warm-up 3 s after start) |

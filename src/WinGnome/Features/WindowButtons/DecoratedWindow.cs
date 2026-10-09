@@ -319,6 +319,7 @@ internal sealed class DecoratedWindow : IDisposable
 
         _anchor = metrics;
         _view.SetLayout(_layout, metrics.Scale, canMinimize, canMaximize);
+        _view.IsTargetMaximized = isMaximized;
         _view.SetSurfaceScale(_buttons!.SurfaceScale);
 
         // Only surfaces touching the window's top-right corner need its rounding; maximised windows are square.

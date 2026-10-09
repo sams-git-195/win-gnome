@@ -11,7 +11,8 @@ public static class DockModelBuilder
     /// Builds the dock model. Pinned apps come first in pinned order; unpinned running apps (when
     /// <paramref name="includeUnpinnedRunning"/> is true) follow in order of first appearance in
     /// <paramref name="windows"/>. A window belongs to a pinned app when identities match; failing that when the
-    /// pin's target is the same install as the window's process (<see cref="AppPathMatch.IsSameInstall"/>); and
+    /// pin's target is the same install as the process of a window with no AUMID of its own
+    /// (<see cref="AppPathMatch.IsSameInstall"/>); and
     /// failing that, for file-system pins, when the pinned file name equals the window's process file name.
     /// Named-AUMID pins get their target from <paramref name="resolvePath"/>; generated AUMIDs never match by path.
     /// </summary>
@@ -119,11 +120,16 @@ public static class DockModelBuilder
             }
         }
 
-        foreach (var slot in slots)
+        // Only windows without an AUMID of their own: a browser web app runs the browser's exe but reports its own
+        // AUMID, and must keep its own icon rather than join the browser's pin.
+        if (string.IsNullOrWhiteSpace(window.AppUserModelId))
         {
-            if (AppPathMatch.IsSameInstall(slot.TargetPath, window.ProcessPath))
+            foreach (var slot in slots)
             {
-                return slot;
+                if (AppPathMatch.IsSameInstall(slot.TargetPath, window.ProcessPath))
+                {
+                    return slot;
+                }
             }
         }
 

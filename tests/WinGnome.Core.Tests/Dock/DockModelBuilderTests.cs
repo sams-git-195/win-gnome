@@ -362,6 +362,20 @@ public class DockModelBuilderTests
     }
 
     [Fact]
+    public void NamedAumidPin_WindowWithItsOwnAumid_StaysUnpinned()
+    {
+        // An Edge web app runs msedge.exe but reports its own AUMID, so it keeps its own dock icon.
+        const string edgePath = @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe";
+        var webApp = Win(5, "Outlook", edgePath, aumid: "MSEdge._crx_faolnafnngnfdaknnbpnkhgohbobgegn");
+
+        var apps = Build([Pin("Edge", "MSEdge")], [webApp], resolve: id => id == "MSEdge" ? edgePath : id);
+
+        Assert.Equal(2, apps.Count);
+        Assert.False(apps[0].IsRunning);
+        Assert.Equal(new nint[] { 5 }, apps[1].Windows.ToArray());
+    }
+
+    [Fact]
     public void GeneratedAumidPin_DoesNotTakeWindowsOfItsTarget()
     {
         var apps = Build([Pin("Developer Prompt", GeneratedCmdAumid)], [Win(5, "cmd", CmdPath)], includeUnpinned: false, resolve: CatalogResolve);

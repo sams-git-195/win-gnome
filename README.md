@@ -81,7 +81,7 @@ the way it was when it exits.
 
 ### Requirements
 - Windows 11 (x64)
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) to build, or the .NET 8 Desktop Runtime to run a build
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) 8.0.400 or a later 8.0 SDK to build (pinned in `global.json`), or the .NET 8 Desktop Runtime to run a build
 
 ### Build and run
 ```bash

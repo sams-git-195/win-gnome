@@ -69,6 +69,26 @@ internal sealed class ThumbnailLayer
     public bool IsVisible => _visible;
 
     /// <summary>
+    /// Lays out the grid for <paramref name="windows"/> with their icons in place of live thumbnails (no DWM
+    /// registration): used to warm WPF up before the first real open. <see cref="Clear"/> removes it again.
+    /// </summary>
+    public void ShowPlaceholders(PixelRect hostBounds, double scale, LayoutRect area, IReadOnlyList<WindowInfo> windows)
+    {
+        Clear();
+        _hostBounds = hostBounds;
+        _scale = scale;
+        _area = area;
+        _visible = true;
+        foreach (var window in windows.DistinctBy(w => w.Handle))
+        {
+            AddSlot(window, null);
+        }
+
+        Arrange();
+        Settle(fadeCaptions: false);
+    }
+
+    /// <summary>
     /// Replaces all thumbnails with <paramref name="windows"/>. With <paramref name="fromWindows"/> each one is
     /// put where its window really is, ready to glide into the grid through <see cref="SetProgress"/>.
     /// </summary>

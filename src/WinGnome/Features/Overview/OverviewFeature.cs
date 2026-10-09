@@ -1,4 +1,5 @@
-﻿using WinGnome.Core.Settings;
+﻿using System.Windows.Threading;
+using WinGnome.Core.Settings;
 using WinGnome.Infrastructure;
 
 namespace WinGnome.Features.Overview;
@@ -13,6 +14,9 @@ namespace WinGnome.Features.Overview;
 [FeatureOrder(50)]
 internal sealed class OverviewFeature : IFeature
 {
+    /// <summary>Long enough for start-up work (app catalogue, icons) to settle first.</summary>
+    private static readonly TimeSpan WarmUpDelay = TimeSpan.FromSeconds(3);
+
     private readonly ShellContext _context;
     private AppTileCatalog? _apps;
     private OverviewWindow? _window;
@@ -20,6 +24,7 @@ internal sealed class OverviewFeature : IFeature
     private GlobalHotkey? _hotkey;
     private SuperKeyHook? _superKeys;
     private ActivitiesSettings _settings = new();
+    private DispatcherTimer? _warmUpTimer;
 
     public OverviewFeature(ShellContext context)
     {
@@ -43,6 +48,26 @@ internal sealed class OverviewFeature : IFeature
         _context.Commands.OverviewHideRequested += OnOverviewHideRequested;
 
         ApplySettings(settings);
+        ScheduleWarmUp();
+    }
+
+    /// <summary>
+    /// Renders the overview once, a few seconds after start-up when the app is idle, so the first open is as quick
+    /// as the rest (KI-030). One-shot: the timer is stopped and dropped when it fires.
+    /// </summary>
+    private void ScheduleWarmUp()
+    {
+        _warmUpTimer = new DispatcherTimer(WarmUpDelay, DispatcherPriority.Background, (_, _) =>
+        {
+            StopWarmUpTimer();
+            _context.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => _window?.WarmUp());
+        }, _context.Dispatcher);
+    }
+
+    private void StopWarmUpTimer()
+    {
+        _warmUpTimer?.Stop();
+        _warmUpTimer = null;
     }
 
     public void ApplySettings(AppSettings settings)
@@ -117,6 +142,7 @@ internal sealed class OverviewFeature : IFeature
 
     public void Dispose()
     {
+        StopWarmUpTimer();
         _context.Commands.OverviewRequested -= OnOverviewRequested;
         _context.Commands.OverviewHideRequested -= OnOverviewHideRequested;
         _superKeys?.Dispose();
