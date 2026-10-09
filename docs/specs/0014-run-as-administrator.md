@@ -9,12 +9,19 @@ target (see spec 0013). Separately, `AppLauncher.StartViaAppsFolder` launches ap
 shell:AppsFolder\…`, which ties launching to Explorer and may start Explorer as a shell in shell mode.
 
 ## Behaviour
-- Dock icon context menu: **Run as administrator** for apps that can be elevated, matching Start: desktop apps,
+- Dock icon context menu: **Run as administrator** for apps that can be elevated, matching Start: Win32 apps
+  (AppsFolder items whose host is Win32, except File Explorer, which has no elevated mode),
   `.exe`/`.lnk`/`.bat`/`.cmd`/`.msc` files, and full-trust packaged apps (Windows Terminal, the new Notepad,
-  PowerShell 7 from the Store). Hidden for UWP apps (Calculator, Store), which can't be elevated.
+  PowerShell 7 from the Store). Hidden for UWP apps (Calculator, Store), File Explorer, and apps the catalogue
+  can't classify.
 - The dock's launch animation plays only once the app has started: for an elevated launch, after UAC is accepted.
+- The UAC prompt opens in front: the window the user clicked (the dock, or the overview) is brought to the front
+  and passed to `ShellExecuteEx` as the owner. For an elevated launch the overview stays open until the app has
+  started; if the prompt is cancelled it stays open.
 - Overview app grid and search results: **Ctrl+Shift+Enter** or **Ctrl+Shift+click** launches elevated (as in Start),
   plus the same menu item on right-click if the grid has a context menu.
+- Launching a pinned app from the overview now uses the pin's arguments and its *Always run as administrator*
+  flag, the same as clicking it in the dock (before, the overview ignored the pin's arguments).
 - Per pinned app: **Always run as administrator** (checkbox in the dock menu). Persisted on the pin as
   `PinnedApp.RunAsAdministrator` (bool, default false); old settings files load with it false.
 - Every elevated launch shows the normal UAC prompt; cancelling it is silent (no error toast), logged at Info.
@@ -36,9 +43,11 @@ shell:AppsFolder\…`, which ties launching to Explorer and may start Explorer a
   reads are needed.
 - App: `AppLauncher.Launch(LaunchRequest, started)`: AppsFolder items resolved to an ID list
   (`SHParseDisplayName("shell:AppsFolder\\<id>")`) and launched with `ShellExecuteEx` + `SEE_MASK_INVOKEIDLIST`.
-  Elevated launches use verb `runas` (on the file, or on the ID list for desktop and full-trust packaged apps) on
-  their own STA thread, since the call blocks until UAC is answered; `started` is posted back to the UI thread
-  only on success. `ERROR_CANCELLED` (1223) = user said no. Normal packaged launches keep
+  ID-list launches (normal and elevated) run on their own STA thread, never on the dispatcher: the call goes
+  through the item's context-menu handler, can take seconds and pumps messages, and an elevated one blocks until
+  UAC is answered. Elevated launches use verb `runas` (on the file, or on the ID list for desktop and full-trust
+  packaged apps) with the clicked window as `hwnd`, after `SetForegroundWindow` on it. `started` is posted back to
+  the UI thread only on success. `ERROR_CANCELLED` (1223) = user said no. Normal packaged launches keep
   `IApplicationActivationManager`.
 - Dock menu (`DockMenuBuilder`) and overview input handling.
 

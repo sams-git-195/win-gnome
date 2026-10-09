@@ -125,8 +125,9 @@ public static class DockPins
         var index = IndexOf(result, launchId);
         if (index >= 0)
         {
-            var pin = result[index];
-            result[index] = new PinnedApp { Name = pin.Name, LaunchId = pin.LaunchId, Arguments = pin.Arguments, RunAsAdministrator = value };
+            var pin = result[index].Clone();
+            pin.RunAsAdministrator = value;
+            result[index] = pin;
         }
 
         return result;

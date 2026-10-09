@@ -57,6 +57,8 @@ public static class LaunchPlanner
     /// <summary>Holding both of these elevates, as in Start.</summary>
     public const LaunchModifiers ElevateModifiers = LaunchModifiers.Control | LaunchModifiers.Shift;
 
+    private const string FileExplorerAppUserModelId = "Microsoft.Windows.Explorer";
+
     /// <summary>File types Explorer offers "Run as administrator" for.</summary>
     private static readonly string[] ElevatableFileExtensions = [".exe", ".lnk", ".bat", ".cmd", ".msc"];
 
@@ -85,7 +87,11 @@ public static class LaunchPlanner
         var id = launchId.Trim();
         return Classify(id, host) switch
         {
-            LaunchTargetKind.DesktopApp or LaunchTargetKind.FullTrustPackagedApp => true,
+            // A desktop AUMID is only offered when the catalogue says it is a Win32 app; File Explorer is the shell
+            // process and has no elevated mode, as in Start.
+            LaunchTargetKind.DesktopApp => host == AppHost.Desktop
+                && !string.Equals(id, FileExplorerAppUserModelId, StringComparison.OrdinalIgnoreCase),
+            LaunchTargetKind.FullTrustPackagedApp => true,
             LaunchTargetKind.File => ElevatableFileExtensions.Any(ext => id.EndsWith(ext, StringComparison.OrdinalIgnoreCase)),
             _ => false,
         };

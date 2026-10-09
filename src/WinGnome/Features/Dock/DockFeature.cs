@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using WinGnome.Core.Dock;
@@ -114,7 +115,8 @@ internal sealed class DockFeature : IFeature, IEmergencyRestore
         _viewModel = new DockViewModel(_context.Icons, _context.Apps);
         _backdrop = new BlurBackdrop("WinGnome Dock Backdrop");
         _window = new DockWindow(_viewModel, _backdrop);
-        _actions = new DockActions(_context, _foreground, _window.PlayLaunchFeedback);
+        var window = _window;
+        _actions = new DockActions(_context, _foreground, window.PlayLaunchFeedback, () => new WindowInteropHelper(window).Handle);
         _menu = new DockMenuPresenter(_context.Dispatcher);
         _visibility = new DockVisibilityController(_context, _window, _foreground);
         _reservation = new DockReservation();

@@ -290,6 +290,9 @@ public sealed class PinnedApp
     /// elevated this way. Files written before this field existed load as false.
     /// </summary>
     public bool RunAsAdministrator { get; set; }
+
+    /// <summary>A shallow copy with every field (all are immutable values), so fields added later are kept too.</summary>
+    public PinnedApp Clone() => (PinnedApp)MemberwiseClone();
 }
 
 public enum TrafficLightPreset { MacOS, Gnome, Graphite, Pastel, Custom }

@@ -13,16 +13,19 @@ internal sealed class DockActions
     private readonly ShellContext _context;
     private readonly ExternalForeground _foreground;
     private readonly Action<DockEntry> _launchFeedback;
+    private readonly Func<nint> _dockWindow;
     private nint _lastActivated;
 
     /// <param name="context">Shell services.</param>
     /// <param name="foreground">The user's (non-WinGnome) foreground window.</param>
     /// <param name="launchFeedback">Plays the "launching" animation on an entry.</param>
-    public DockActions(ShellContext context, ExternalForeground foreground, Action<DockEntry> launchFeedback)
+    /// <param name="dockWindow">The dock's HWND, which owns UAC prompts for elevated launches.</param>
+    public DockActions(ShellContext context, ExternalForeground foreground, Action<DockEntry> launchFeedback, Func<nint> dockWindow)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _foreground = foreground ?? throw new ArgumentNullException(nameof(foreground));
         _launchFeedback = launchFeedback ?? throw new ArgumentNullException(nameof(launchFeedback));
+        _dockWindow = dockWindow ?? throw new ArgumentNullException(nameof(dockWindow));
     }
 
     /// <summary>Left click (or Super+N) and middle click on any entry.</summary>
@@ -182,7 +185,7 @@ internal sealed class DockActions
         }
 
         // The feedback runs once the app has started: for an elevated launch, only after UAC is accepted.
-        _context.Launcher.Launch(plan(target), () => _launchFeedback(entry));
+        _context.Launcher.Launch(plan(target), () => _launchFeedback(entry), _dockWindow());
     }
 
     /// <summary>Whether a packaged app is full trust (elevatable) or UWP, from the app catalogue.</summary>

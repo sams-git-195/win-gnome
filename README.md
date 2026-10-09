@@ -33,7 +33,7 @@ the way it was when it exits.
 - **Click** focuses an app (restoring it if minimised), or minimises it if it's already focused. Other click actions: *cycle windows* or *show previews*.
 - Running windows join their pinned icon, including Electron apps such as VS Code and Squirrel-installed apps such as GitHub Desktop and Discord.
 - **Middle-click** opens a new window. **Right-click** lists the app's windows plus *New window*, *Pin/Unpin* and *Quit*.
-- **Run as administrator** (right-click) starts an app elevated after the UAC prompt; pinned apps also get an *Always run as administrator* checkbox. As in Start, this works for desktop apps and full-trust Store apps such as Windows Terminal, but not for UWP apps such as Calculator, which don't offer it. WinGnome itself never runs elevated.
+- **Run as administrator** (right-click) starts an app elevated after the UAC prompt; pinned apps also get an *Always run as administrator* checkbox. As in Start, this works for desktop apps and full-trust Store apps such as Windows Terminal, but not for UWP apps such as Calculator or for File Explorer, which don't offer it. WinGnome itself never runs elevated.
 - **Super+1…9** activates the n-th dock item.
 - **Visibility modes**: *Always visible* (reserves screen space), *Intellihide* (hides only when a window overlaps it, the Ubuntu default) and *Autohide*.
 - Optional macOS-style **hover magnification**, panel mode (stretch to the screen edges), a *Show Applications* button and a recycle bin.

@@ -131,6 +131,19 @@ public class DockPinsTests
     }
 
     [Fact]
+    public void Clone_CopiesEveryField_IntoANewPin()
+    {
+        var pin = new PinnedApp { Name = "Tool", LaunchId = @"C:\Tools\tool.exe", Arguments = "--dev", RunAsAdministrator = true };
+
+        var copy = pin.Clone();
+
+        Assert.NotSame(pin, copy);
+        Assert.Equal(
+            (pin.Name, pin.LaunchId, pin.Arguments, pin.RunAsAdministrator),
+            (copy.Name, copy.LaunchId, copy.Arguments, copy.RunAsAdministrator));
+    }
+
+    [Fact]
     public void SetRunAsAdministrator_DoesNotModifyTheInput()
     {
         var pins = Pins("a");
