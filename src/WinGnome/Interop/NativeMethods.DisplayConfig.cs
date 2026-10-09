@@ -177,7 +177,7 @@ internal static partial class NativeMethods
     [DllImport("user32.dll", EntryPoint = "ChangeDisplaySettingsExW", CharSet = CharSet.Unicode)]
     public static extern int ChangeDisplaySettingsEx(string device, ref DEVMODE devMode, nint hwnd, uint flags, nint param);
 
-    /// <summary>With every argument null/zero, applies the settings staged with CDS_NORESET to all displays at once.</summary>
+    /// <summary>With every argument null/zero, applies the registry's settings (including any staged with CDS_NORESET) to all displays.</summary>
     [DllImport("user32.dll", EntryPoint = "ChangeDisplaySettingsExW", CharSet = CharSet.Unicode)]
     public static extern int ChangeDisplaySettingsExApplyStaged(string? device, nint devMode, nint hwnd, uint flags, nint param);
 

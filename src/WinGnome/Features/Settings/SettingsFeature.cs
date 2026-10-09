@@ -61,7 +61,11 @@ internal sealed class SettingsFeature : IFeature
             return;
         }
 
-        DisplayRevertFile.RecoverIfPending(_context.Settings.Directory);
+        // Off the UI thread: changing display modes waits on every top-level window.
+        var directory = _context.Settings.Directory;
+        Task.Run(() => DisplayRevertFile.RecoverIfPending(directory)).ContinueWith(
+            task => Log.Warn("Could not recover an unconfirmed display change", task.Exception),
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
     }
 
     private void OnSettingsRequested(object? sender, string? panelId)

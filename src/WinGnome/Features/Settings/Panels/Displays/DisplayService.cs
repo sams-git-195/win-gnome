@@ -15,9 +15,10 @@ namespace WinGnome.Features.Settings.Panels.Displays;
 internal sealed record DisplayInfo(string DeviceName, string Name, DisplaySetting Current, IReadOnlyList<DisplayMode> Modes, int ScalePercent);
 
 /// <summary>
-/// Reads displays and applies mode, position and primary changes with the documented ChangeDisplaySettingsEx: every
-/// display's new mode is first tested (CDS_TEST), then all are staged in the registry (CDS_NORESET) and applied at
-/// once, so a multi-display change lands as one. Reverting applies a snapshot the same way.
+/// Reads displays and changes their mode, position and primary with the documented ChangeDisplaySettingsEx. A change
+/// is first tested (CDS_TEST) and then applied for this session only, without writing the registry, so until the user
+/// keeps it a reboot or sign-out drops it; keeping it writes it to the registry. Reverting reapplies the registry's
+/// settings (which still hold the original) and checks the result.
 /// </summary>
 internal static class DisplayService
 {
@@ -50,62 +51,96 @@ internal static class DisplayService
         return displays;
     }
 
+    /// <summary>The current setting of every attached display.</summary>
+    public static IReadOnlyList<DisplaySetting> Current() => Read().Select(d => d.Current).ToList();
+
     /// <summary>True when Windows accepts each display's new mode. Nothing changes.</summary>
     public static bool Test(IReadOnlyList<DisplaySetting> target) =>
         target.All(setting => Change(setting, NativeMethods.CDS_TEST, "test"));
 
     /// <summary>
-    /// Applies <paramref name="target"/> to every display at once. When staging fails half way, the displays already
-    /// staged are put back to <paramref name="original"/> before anything is applied. Runs on a worker thread:
-    /// Windows waits on every top-level window while it applies.
+    /// Applies <paramref name="target"/> for this session only (no registry write), the primary first. Any failure,
+    /// including a mode that needs a restart, puts every display back to <paramref name="original"/>; the result says
+    /// whether the change is showing and, if not, whether the original was restored. Runs on a worker thread: Windows
+    /// waits on every top-level window while it changes modes.
     /// </summary>
-    public static bool Apply(IReadOnlyList<DisplaySetting> target, IReadOnlyList<DisplaySetting> original)
+    public static (bool Applied, bool Restored) ApplyTemporarily(IReadOnlyList<DisplaySetting> target, IReadOnlyList<DisplaySetting> original)
     {
-        if (!Stage(target))
+        foreach (var setting in target.OrderByDescending(s => s.IsPrimary))
         {
-            Stage(original);
-            return false;
+            if (!Change(setting, setting.IsPrimary ? NativeMethods.CDS_SET_PRIMARY : 0, "apply"))
+            {
+                return (false, Revert(original));
+            }
         }
 
-        var result = NativeMethods.ChangeDisplaySettingsExApplyStaged(null, 0, 0, 0, 0);
-        if (result != NativeMethods.DISP_CHANGE_SUCCESSFUL)
-        {
-            Log.Warn($"ChangeDisplaySettingsEx could not apply the staged display settings (result {result})");
-            return false;
-        }
-
-        return true;
+        return (true, false);
     }
 
-    /// <summary>Puts the displays back to <paramref name="snapshot"/>; displays that are gone are skipped.</summary>
-    public static bool Restore(IReadOnlyList<DisplaySetting> snapshot)
-    {
-        var present = Read().Select(d => d.DeviceName).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var target = snapshot.Where(s => present.Contains(s.DeviceName)).ToList();
-        if (target.Count == 0)
-        {
-            Log.Warn("None of the displays to restore are attached any more");
-            return false;
-        }
-
-        return Apply(target, target);
-    }
-
-    private static bool Stage(IReadOnlyList<DisplaySetting> settings)
+    /// <summary>Writes the kept settings to the registry so they survive sign-out and reboot.</summary>
+    public static bool Persist(IReadOnlyList<DisplaySetting> target)
     {
         // The primary first: CDS_SET_PRIMARY moves the origin, and the others are positioned relative to it.
-        foreach (var setting in settings.OrderByDescending(s => s.IsPrimary))
+        foreach (var setting in target.OrderByDescending(s => s.IsPrimary))
         {
             var flags = NativeMethods.CDS_UPDATEREGISTRY | NativeMethods.CDS_NORESET | (setting.IsPrimary ? NativeMethods.CDS_SET_PRIMARY : 0);
-            if (!Change(setting, flags, "stage"))
+            if (!Change(setting, flags, "save"))
             {
                 return false;
             }
         }
 
-        return true;
+        return ApplyRegistry("save the kept display settings");
     }
 
+    /// <summary>
+    /// Puts the displays back to <paramref name="original"/>: first by reapplying the registry (an unconfirmed change
+    /// never reached it), then, if the displays still differ, display by display. Returns true only when every attached
+    /// display of <paramref name="original"/> shows its original mode and position again.
+    /// </summary>
+    public static bool Revert(IReadOnlyList<DisplaySetting> original)
+    {
+        ApplyRegistry("reapply the saved display settings");
+        if (Matches(original))
+        {
+            return true;
+        }
+
+        var present = Current().Select(d => d.DeviceName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var setting in original.Where(s => present.Contains(s.DeviceName)).OrderByDescending(s => s.IsPrimary))
+        {
+            Change(setting, setting.IsPrimary ? NativeMethods.CDS_SET_PRIMARY : 0, "restore");
+        }
+
+        var restored = Matches(original);
+        if (!restored)
+        {
+            Log.Warn("The displays could not be put back to their previous settings");
+        }
+
+        return restored;
+    }
+
+    /// <summary>True when the attached displays of <paramref name="expected"/> show those modes and positions.</summary>
+    private static bool Matches(IReadOnlyList<DisplaySetting> expected)
+    {
+        var current = Current();
+        var present = expected.Where(e => current.Any(c => string.Equals(c.DeviceName, e.DeviceName, StringComparison.OrdinalIgnoreCase))).ToList();
+        return present.Count > 0 && DisplayRevertRecord.IsStillApplied(new DisplayRevert(present, present), current);
+    }
+
+    /// <summary>ChangeDisplaySettingsEx with no device and no mode applies what the registry holds to every display.</summary>
+    private static bool ApplyRegistry(string what)
+    {
+        var result = NativeMethods.ChangeDisplaySettingsExApplyStaged(null, 0, 0, 0, 0);
+        if (result == NativeMethods.DISP_CHANGE_SUCCESSFUL)
+        {
+            return true;
+        }
+
+        Log.Warn($"ChangeDisplaySettingsEx could not {what} (result {result})");
+        return false;
+    }
     private static bool Change(DisplaySetting setting, uint flags, string what)
     {
         if (CurrentMode(setting.DeviceName) is not { } mode)

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Windows.Input;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using WinGnome.Core.ControlCenter;
 using WinGnome.Core.Geometry;
 using WinGnome.Infrastructure;
@@ -73,10 +74,12 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
     private readonly SystemSettingWriter _writer;
     private readonly KeepChangesCountdown _countdown = new();
     private readonly DispatcherTimer _timer;
-    private IReadOnlyList<DisplaySetting> _revertTo = [];
+    private DisplayRevert? _pending;
     private DisplayItem? _selected;
     private bool _isApplying;
     private bool _open;
+    private bool _disposing;
+    private int _generation;
     private int _secondsLeft;
 
     public DisplaysPanelViewModel(SystemPanelContext context)
@@ -86,7 +89,7 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
         _timer = new DispatcherTimer(DispatcherPriority.Normal, context.Dispatcher) { Interval = TimeSpan.FromMilliseconds(250) };
         _timer.Tick += OnTick;
         ApplyCommand = new RelayCommand(Apply, () => IsDirty && CanEdit && !_isApplying && !IsWaiting);
-        ResetCommand = new RelayCommand(Reload, () => IsDirty && !_isApplying);
+        ResetCommand = new RelayCommand(Load, () => IsDirty && !_isApplying);
         KeepCommand = new RelayCommand(Keep);
         RevertCommand = new RelayCommand(Revert);
         ScaleCommand = new RelayCommand(() => context.OpenLink("ms-settings:display"));
@@ -127,12 +130,11 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
 
             var rates = DisplayModes.RefreshRates(_selected.Info.Modes, size);
             var refresh = DisplayModes.PickRefresh(rates, _selected.Staged.RefreshHz);
-            var resized = DisplayArrangement.Resize(Placements(), _selected.Id, size.Width, size.Height);
+            var resized = DisplayArrangement.Resize(Placements(), _selected.Id, PrimaryId, size.Width, size.Height);
             Restage(resized, primaryId: PrimaryId, change: (id, setting) =>
                 id == _selected.Id ? setting with { Width = size.Width, Height = size.Height, RefreshHz = refresh } : setting);
         }
     }
-
 
     /// <summary>The selected display's refresh rates at its staged resolution, fastest first.</summary>
     public IReadOnlyList<int> RefreshRates => _selected is null
@@ -204,25 +206,40 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
     public double DesktopPixelsPerPreviewPixel =>
         Displays.FirstOrDefault() is { } d && d.Preview.Width > 0 ? d.Staged.Width / d.Preview.Width : 1;
 
+    public override void Dispose()
+    {
+        // Closing the window (which is also how WinGnome quits) reverts an unconfirmed change before returning.
+        _disposing = true;
+        base.Dispose();
+    }
+
     protected override void Open()
     {
         _open = true;
-        Reload();
+        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        Load();
     }
 
     protected override void Close()
     {
-        // Leaving the panel (or closing the window, or quitting) during the countdown reverts at once; this blocks
-        // briefly, but the change must not outlive the panel that can confirm it.
         _open = false;
-        if (_countdown.Revert())
+        _generation++;
+        SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+        _timer.Stop();
+        if (_countdown.Revert() && _pending is { } pending)
         {
             Log.Info("Displays panel closed during the countdown; reverting the display change");
-            DisplayService.Restore(_revertTo);
-            DisplayRevertFile.Delete(Context.SettingsDirectory);
+            if (_disposing)
+            {
+                // The window is closing, possibly because WinGnome is quitting: revert now, before the process can exit.
+                RevertNow(pending);
+            }
+            else
+            {
+                RevertInBackground(pending);
+            }
         }
 
-        _timer.Stop();
         Displays.Clear();
         _selected = null;
     }
@@ -244,11 +261,31 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
         OnStagedChanged();
     }
 
-    private void Reload()
+    /// <summary>Reads the displays off the UI thread (mode lists take a while) and shows them, dropping staged changes.</summary>
+    private void Load()
+    {
+        var generation = ++_generation;
+        Task.Run(DisplayService.Read).ContinueWith(task => Context.Dispatcher.BeginInvoke(() =>
+        {
+            if (generation != _generation || !_open)
+            {
+                return;
+            }
+
+            if (task.IsFaulted)
+            {
+                Log.Warn("Could not read the displays", task.Exception);
+            }
+
+            Show(task.IsFaulted ? [] : task.Result);
+        }), TaskScheduler.Default);
+    }
+
+    private void Show(IReadOnlyList<DisplayInfo> displays)
     {
         Displays.Clear();
         var number = 1;
-        foreach (var info in DisplayService.Read())
+        foreach (var info in displays)
         {
             Displays.Add(new DisplayItem(info, number++));
         }
@@ -261,7 +298,17 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
         _selected = Displays.FirstOrDefault(d => d.IsPrimary) ?? Displays.FirstOrDefault();
         UpdatePreview();
         OnPropertyChanged(string.Empty);
+        CommandManager.InvalidateRequerySuggested();
     }
+
+    /// <summary>Windows changed the displays (a monitor plugged in, another app): re-read unless the user is mid-change.</summary>
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e) => Context.Dispatcher.BeginInvoke(() =>
+    {
+        if (_open && !_isApplying && !IsWaiting && !IsDirty)
+        {
+            Load();
+        }
+    });
 
     private void OnSelectedChanged()
     {
@@ -292,67 +339,93 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
 
     private void Apply()
     {
-        var target = Displays.Select(d => d.Staged).ToList();
-        var original = Displays.Select(d => d.Info.Current).ToList();
         if (!DisplayArrangement.IsValid(Placements()))
         {
             Problem = "Displays must touch along an edge without overlapping. Drag them next to each other and try again.";
             return;
         }
 
-        if (!DisplayService.Test(target))
-        {
-            Problem = "Windows can't show this display mode. Choose another resolution or refresh rate.";
-            return;
-        }
-
-        // Record before change: if WinGnome stops during the countdown, the next start reverts this.
-        if (!DisplayRevertFile.Write(Context.SettingsDirectory, original))
-        {
-            Problem = "WinGnome couldn't record the current display settings, so it didn't change them.";
-            return;
-        }
-
+        var target = Displays.Select(d => d.Staged).ToList();
         Problem = null;
-        _isApplying = true;
-        _revertTo = original;
-        CommandManager.InvalidateRequerySuggested();
+        SetApplying(true);
         _writer.Run("apply the new display settings", () =>
         {
-            var applied = DisplayService.Apply(target, original);
-            if (applied)
-            {
-                Context.Dispatcher.BeginInvoke(StartCountdown);
-            }
-
-            return applied;
-        }, () =>
-        {
-            _isApplying = false;
-            DisplayRevertFile.Delete(Context.SettingsDirectory);
-            ReportWriteFailure("the displays");
-            Reload();
-        });
+            var outcome = ApplyOnWorker(target);
+            Context.Dispatcher.BeginInvoke(() => OnApplied(outcome));
+            return true;
+        }, () => SetApplying(false));
     }
 
-    private void StartCountdown()
+    /// <summary>
+    /// Re-reads the current settings (the panel's copy may be stale), tests the target, records both before the change,
+    /// and applies the target for this session only.
+    /// </summary>
+    private (DisplayRevert? Pending, string? Problem) ApplyOnWorker(IReadOnlyList<DisplaySetting> target)
     {
-        _isApplying = false;
+        var original = DisplayService.Current();
+        if (original.Count != target.Count
+            || !target.All(t => original.Any(o => string.Equals(o.DeviceName, t.DeviceName, StringComparison.OrdinalIgnoreCase))))
+        {
+            return (null, "The displays changed while you were editing. Your changes were reset; try again.");
+        }
+
+        if (!DisplayService.Test(target))
+        {
+            return (null, "Windows can't show this display mode. Choose another resolution or refresh rate.");
+        }
+
+        var pending = new DisplayRevert(original, target);
+        if (!DisplayRevertFile.Write(Context.SettingsDirectory, pending))
+        {
+            return (null, "WinGnome couldn't record the current display settings, so it didn't change them.");
+        }
+
+        var (applied, restored) = DisplayService.ApplyTemporarily(target, original);
+        if (applied)
+        {
+            return (pending, null);
+        }
+
+        if (restored)
+        {
+            DisplayRevertFile.Delete(Context.SettingsDirectory);
+            return (null, "Windows didn't accept the new display settings, so nothing changed.");
+        }
+
+        return (null, "Windows didn't accept the new display settings and WinGnome couldn't put the old ones back. It will try again when it next starts; you can also fix them in Windows Settings.");
+    }
+
+    private void OnApplied((DisplayRevert? Pending, string? Problem) outcome)
+    {
+        SetApplying(false);
+        if (outcome.Pending is not { } pending)
+        {
+            Problem = outcome.Problem;
+            if (_open)
+            {
+                Load();
+            }
+
+            return;
+        }
+
+        _pending = pending;
         _countdown.Start(DateTime.UtcNow);
         if (!_open)
         {
             // The panel closed while the change was being applied: nobody can confirm it.
             Log.Info("Displays panel closed while applying; reverting the display change");
             _countdown.Revert();
-            RestoreApplied();
+            RevertInBackground(pending);
             return;
         }
 
         _secondsLeft = _countdown.SecondsLeft(DateTime.UtcNow);
         _timer.Start();
-        Reload();
         OnPropertyChanged(nameof(IsWaiting));
         OnPropertyChanged(nameof(CountdownText));
+        CommandManager.InvalidateRequerySuggested();
+        Load();
     }
 
     private void OnTick(object? sender, EventArgs e)
@@ -361,7 +434,7 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
         if (_countdown.Tick(now))
         {
             Log.Info("Display change not confirmed in time; reverting");
-            RestoreApplied();
+            AfterCountdown();
             return;
         }
 
@@ -371,46 +444,84 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
 
     private void Keep()
     {
-        if (!_countdown.Keep())
+        if (!_countdown.Keep() || _pending is not { } pending)
         {
             return;
         }
 
         _timer.Stop();
-        DisplayRevertFile.Delete(Context.SettingsDirectory);
-        Log.Info("Display change kept");
+        _pending = null;
         OnPropertyChanged(nameof(IsWaiting));
         CommandManager.InvalidateRequerySuggested();
+        Log.Info("Display change kept");
+        _writer.Run("save the kept display settings", () =>
+        {
+            var saved = DisplayService.Persist(pending.Target);
+            DisplayRevertFile.Delete(Context.SettingsDirectory);
+            return saved;
+        }, () => Problem = "The new display settings are showing, but Windows didn't save them; they'll be undone when you sign out.");
     }
 
     private void Revert()
     {
         if (_countdown.Revert())
         {
-            RestoreApplied();
+            AfterCountdown();
         }
     }
 
-    /// <summary>Puts back the settings from before the last apply (after a timeout or Revert).</summary>
-    private void RestoreApplied()
+    private void AfterCountdown()
     {
         _timer.Stop();
         OnPropertyChanged(nameof(IsWaiting));
-        var snapshot = _revertTo;
-        _isApplying = true;
+        CommandManager.InvalidateRequerySuggested();
+        if (_pending is { } pending)
+        {
+            RevertInBackground(pending);
+        }
+    }
+
+    /// <summary>Puts back the settings from before the change on the writer thread, then re-reads if the panel is open.</summary>
+    private void RevertInBackground(DisplayRevert pending)
+    {
+        _pending = null;
+        SetApplying(true);
         _writer.Run("revert the display settings", () =>
         {
-            var restored = DisplayService.Restore(snapshot);
+            var restored = RevertAndForget(pending);
             Context.Dispatcher.BeginInvoke(() =>
             {
-                _isApplying = false;
-                DisplayRevertFile.Delete(Context.SettingsDirectory);
+                SetApplying(false);
                 if (_open)
                 {
-                    Reload();
+                    Load();
                 }
             });
             return restored;
-        }, () => ReportWriteFailure("the displays back"));
+        }, () => Problem = "WinGnome couldn't put the previous display settings back. It will try again when it next starts.");
+    }
+
+    private void RevertNow(DisplayRevert pending)
+    {
+        _pending = null;
+        RevertAndForget(pending);
+    }
+
+    /// <summary>Reverts and deletes the record only when the displays really show the original again.</summary>
+    private bool RevertAndForget(DisplayRevert pending)
+    {
+        var restored = DisplayService.Revert(pending.Original);
+        if (restored)
+        {
+            DisplayRevertFile.Delete(Context.SettingsDirectory);
+        }
+
+        return restored;
+    }
+
+    private void SetApplying(bool applying)
+    {
+        _isApplying = applying;
+        CommandManager.InvalidateRequerySuggested();
     }
 }
