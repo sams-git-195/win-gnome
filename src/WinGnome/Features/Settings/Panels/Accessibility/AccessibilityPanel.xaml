@@ -1,0 +1,79 @@
+<UserControl x:Class="WinGnome.Features.Settings.Panels.Accessibility.AccessibilityPanel" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls"
+             xmlns:p="clr-namespace:WinGnome.Features.Settings.Panels">
+    <StackPanel>
+        <p:PanelNotices />
+        <TextBlock Text="Applying the change in Windows…" Style="{DynamicResource RowSubtitleText}" Margin="4,0,0,12"
+                   Visibility="{Binding IsBusy, Converter={x:Static c:Converters.BoolToVisibility}}" />
+
+        <c:SettingsGroup Header="Seeing">
+            <c:SettingsRow Title="High Contrast" Subtitle="A contrast theme. Windows shows &quot;Please wait&quot; while it switches.">
+                <ComboBox ItemsSource="{Binding ContrastChoices}" SelectedItem="{Binding HighContrast}" MinWidth="160"
+                          IsEnabled="{Binding CanChange}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Reduce Animation" Subtitle="Turn off Windows' animation effects; the overview opens without animating.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding ReduceAnimation}" IsEnabled="{Binding CanChange}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Text Size" Subtitle="{Binding TextSizeText, StringFormat='Currently {0}. Changed in Windows Settings.'}">
+                <Button Content="Text Size Settings" Style="{DynamicResource SettingsButton}" Command="{Binding TextSizeSettingsCommand}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Magnifier" Subtitle="Zoom in on part of the screen. Win+Plus also starts it.">
+                <Button Content="Start" Style="{DynamicResource SettingsButton}" Command="{Binding MagnifierCommand}"
+                        AutomationProperties.Name="Start Magnifier" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Screen Reader" Subtitle="Narrator reads the screen aloud. Ctrl+Win+Enter also starts it.">
+                <Button Content="Start" Style="{DynamicResource SettingsButton}" Command="{Binding NarratorCommand}"
+                        AutomationProperties.Name="Start Narrator" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Pointing &amp; Clicking">
+            <c:SettingsRow Title="Cursor Size" Subtitle="{Binding CursorSizeNote}">
+                <StackPanel Orientation="Horizontal">
+                    <Slider Minimum="1" Maximum="15" SmallChange="1" LargeChange="1" IsSnapToTickEnabled="True" TickFrequency="1"
+                            Value="{Binding CursorSize}" Width="180" IsEnabled="{Binding CanChangeCursorSize}" />
+                    <TextBlock Text="{Binding CursorSizeText}" Width="60" TextAlignment="Right" VerticalAlignment="Center" FontSize="13"
+                               Foreground="{DynamicResource SecondaryForegroundBrush}" />
+                </StackPanel>
+            </c:SettingsRow>
+            <c:SettingsRow Title="Pointer Colour and Style" Subtitle="Black, inverted and coloured pointers are set in Windows Settings.">
+                <Button Content="Pointer Settings" Style="{DynamicResource SettingsButton}" Command="{Binding PointerSettingsCommand}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Typing">
+            <c:SettingsRow Title="Screen Keyboard" Subtitle="Type with the mouse or a pointing device.">
+                <Button Content="Start" Style="{DynamicResource SettingsButton}" Command="{Binding OnScreenKeyboardCommand}"
+                        AutomationProperties.Name="Start the on-screen keyboard" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Text Cursor Thickness" Subtitle="How wide the blinking text cursor is.">
+                <StackPanel Orientation="Horizontal">
+                    <Slider Minimum="1" Maximum="20" SmallChange="1" LargeChange="1" IsSnapToTickEnabled="True" TickFrequency="1"
+                            Value="{Binding CaretWidth}" Width="180" IsEnabled="{Binding CanChangeCaretWidth}" />
+                    <TextBlock Text="{Binding CaretWidthText}" Width="60" TextAlignment="Right" VerticalAlignment="Center" FontSize="13"
+                               Foreground="{DynamicResource SecondaryForegroundBrush}" />
+                </StackPanel>
+            </c:SettingsRow>
+            <c:SettingsRow Title="Text Cursor Indicator" Subtitle="A coloured marker on the text cursor, run by Windows.">
+                <Button Content="Text Cursor Settings" Style="{DynamicResource SettingsButton}" Command="{Binding TextCursorSettingsCommand}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Typing Assist"
+                         Description="Slow keys and bounce keys are one Windows feature (filter keys), so turning one on turns the other off. The keyboard shortcuts (Shift five times, hold right Shift) keep working as Windows has them.">
+            <c:SettingsRow Title="Sticky Keys" Subtitle="Press Shift, Ctrl, Alt or Win one at a time instead of together.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding StickyKeys}" IsEnabled="{Binding CanChange}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Slow Keys" Subtitle="Only accept a key that is held down for a moment.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding SlowKeys}" IsEnabled="{Binding CanChange}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Bounce Keys" Subtitle="Ignore quick repeated presses of the same key.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding BounceKeys}" IsEnabled="{Binding CanChange}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <p:PanelFooter />
+    </StackPanel>
+</UserControl>

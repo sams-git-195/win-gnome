@@ -1,5 +1,6 @@
 using WinGnome.Core.ControlCenter;
 using WinGnome.Features.Settings.Panels.About;
+using WinGnome.Features.Settings.Panels.Accessibility;
 using WinGnome.Features.Settings.Panels.Appearance;
 using WinGnome.Features.Settings.Panels.DateAndTime;
 using WinGnome.Features.Settings.Panels.Displays;
@@ -31,5 +32,6 @@ internal static class PanelRegistry
             [PanelIds.Multitasking] = context => new MultitaskingPanelViewModel(context),
             [PanelIds.DateTime] = context => new DateTimePanelViewModel(context),
             [PanelIds.About] = context => new AboutPanelViewModel(context),
+            [PanelIds.Accessibility] = context => new AccessibilityPanelViewModel(context),
         };
 }
