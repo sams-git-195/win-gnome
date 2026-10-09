@@ -1,6 +1,6 @@
 # 0009 — Round buttons on more custom title bars
 
-Status: Implemented (branch, not merged); Dia not achieved, see Implementation notes
+Status: Implemented (merged to improvements/shell-polish; the Dia addendum on its branch, verified by tests only)
 
 ## Problem
 With *Decorate apps with custom title bars (experimental)* on (spec 0005), Claude desktop is decorated, but Dia,
@@ -78,8 +78,21 @@ Unchanged at idle. Child lookups add a few cheap calls per sample; the click gua
   `ReunionWindowingCaptionControls` is 0 px wide and answers nothing. The row reads, from the right: 5 px
   `HTRIGHT`, 54 px `HTCLIENT` (close), 50 px `HTMAXBUTTON`, then `HTCLIENT`. So deepest-child hit testing (kept:
   it's how input is routed, and other Windows App SDK apps that set all their non-client regions will answer) finds
-  only one button. A "maximise-anchored" rule (an `HTMAXBUTTON` run with equal-width `HTCLIENT` runs either side)
-  would cover Dia but is a new heuristic; left as an open question in KI-007.
+  only one button.
+- **Addendum: maximise-anchored rule for Dia** (agreed after the measurements above). Under
+  `DecorateWebTitleBarButtons`, and only for windows with a visible `ReunionWindowingCaptionControls` child
+  (Windows App SDK caption controls), Core `CaptionMaxAnchorProbe.FindGroup` accepts, from the right: at most
+  8 DIPs of resize border, an `HTCLIENT` close zone, immediately an `HTMAXBUTTON` zone of at least 30 DIPs, then
+  immediately `HTCLIENT` for at least the maximise width (the minimise zone, taken to be that wide), with no
+  other button code in the row. Two points differ from the rule as first proposed, because Dia's measured row
+  wouldn't pass them: the close zone (59 px with the border) is 9 px wider than maximise (49–50 px), so the
+  widths must be within the usual 25 % ratio rather than 2 DIPs; and left of the minimise zone Dia reports more
+  `HTCLIENT` (its caption input sink), not `HTCAPTION`, so nothing is required there beyond the minimise width.
+  The controls child is 0 px wide on Dia, so "has the child" means present and visible, not non-empty. The
+  vertical extent comes from a column through the maximise zone (`FindZoneExtent`). The click guard expects
+  `HTMAXBUTTON` over maximise and `HTCLIENT` over close and minimise, and for those two also re-checks that
+  maximise still answers `HTMAXBUTTON` (two hit tests). Verified by Core tests from the measured row only; Dia
+  stayed minimised, and it isn't relaunched by agents (that restored the user's window).
 - Docker Desktop's window was hidden throughout, so its row is covered by Core tests from the research numbers only.
 - The click guard hit-tests the middle of the clicked button's third of the probed group, on the probe row (10 DIPs
   below the frame top), not the click point itself: with the circles on the left or smaller than the native

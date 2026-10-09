@@ -94,8 +94,10 @@ setting, recognises GitHub Desktop's HTML buttons from a built-in profile of the
 windows are checked against a fresh hit test first, so a stale or wrong decoration drops the click instead of
 sending a command. Still undecorated:
 - **Dia** answers `HTMAXBUTTON` only over its maximise button (from its Windows App SDK non-client child) and
-  `HTCLIENT` over close and minimise. Open question: accept "an `HTMAXBUTTON` run between two equal `HTCLIENT`
-  runs at the right edge" for Windows App SDK windows, with the click guard expecting those codes.
+  `HTCLIENT` over close and minimise. Since the maximise-anchored rule (spec 0009 addendum) it's decorated
+  with *Also decorate apps with web-drawn buttons* on, but only verified by Core tests from measured numbers:
+  Dia stayed minimised afterwards. The rule infers the minimise zone's left edge (it's client area like what
+  lies left of it), so the circles may sit a few pixels off if Dia's minimise button isn't as wide as maximise.
 - Windows Terminal and other apps that report plain client area, unless they get a web-button profile.
 - Profiled apps whose layout changes in a new release (the hole check then fails, and they keep their buttons).
 
@@ -200,10 +202,12 @@ their target, so their windows show unpinned until the catalogue's `Changed` ref
 
 The settings window and app picker hide the Windows caption with `WindowChrome` but keep `WS_CAPTION`, the
 system menu and the maximise box (needed for Snap Layouts), so DWM still reports caption-button bounds. Each
-instance skips only its own process, so a second WinGnome with window buttons on (a QA profile next to the
-everyday one) overlays its circles on top of the header bar's own ones. One instance alone is unaffected. As
-with KI-015, turn window buttons off in test profiles; capture header bars with `PrintWindow` to see only
-the window's own drawing.
+instance skips only its own process, so another WinGnome that decorates windows overlays its circles on top of
+the header bar's own ones. Since dbf86fb only one instance per session decorates (the window-buttons session
+role), so with current builds this happens only when the decorating instance is a different one from the
+instance whose header bar is shown, e.g. a QA profile's settings window while the everyday instance holds the
+role. A pre-role build (KI-042) still decorates regardless and overlays every other instance's header bars. One
+instance alone is unaffected. Capture header bars with `PrintWindow` to see only the window's own drawing.
 
 ### KI-051
 **The round window buttons aren't exposed to screen readers or keyboard** · S3 · Accessibility · Open
