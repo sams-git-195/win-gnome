@@ -482,19 +482,21 @@ placed left of and above the primary (negative coordinates).
 
 ## Design note: outcome B, the work-area fallback (`SPI_SETWORKAREA`)
 
-Status: chosen by the user 2026-10-09 (option 2 above), advisor-reviewed before coding as this spec requires. The
-`TbExp` experiment still runs in the same live session, to see whether option 1 (hide the taskbar windows only after
-Explorer has applied auto-hide) can later remove the need for this; the fallback fixes the unplugged-monitor case
-too, which option 1 does not.
+Status: chosen by the user 2026-10-09 (option 2 above). Advisor review (DeepSeek V4 Pro) applied 2026-10-09:
+atomic marker writes with a defined repair for an unreadable one, an ordered restore chain instead of a per-bar
+restore, no re-registration immediately before a shrink, and the monitor key derived at use time. The `TbExp`
+experiment still runs in the same live session, to see whether option 1 (hide the taskbar windows only after
+Explorer has applied auto-hide) can later remove the need for this; the fallback also fixes the unplugged-monitor
+case, which option 1 does not.
 
 ### Why
 
 Explorer owns work areas. WinGnome's bars are registered AppBars and Explorer grants their rectangles, but it applies
 them to work areas only inside its own taskbar layout pass, which is deferred while its taskbar is auto-hidden and
 `SW_HIDE`n (measured ~35 s), and which it can skip entirely when a monitor is unplugged. In both cases maximised
-windows cover the bar and the desktop is left with a strip that nothing reserves. `SystemParametersInfo(SPI_SETWORKAREA)`
-is documented, needs no elevation and is exactly the value Explorer writes, so WinGnome can finish the job itself —
-provided it changes as little as possible, records it, and gives it back.
+windows cover the bar and a strip nothing reserves is left in the desktop. `SystemParametersInfo(SPI_SETWORKAREA)` is
+documented, needs no elevation and writes exactly the value Explorer writes, so WinGnome can finish the job itself —
+provided it changes as little as possible, records it before it changes it, and gives it back.
 
 ### Rules
 
@@ -502,126 +504,157 @@ provided it changes as little as possible, records it, and gives it back.
    bar that is registered, holds a granted `Bounds`, and whose monitor's fresh work area fails
    `AppBarReservation.IsReserved` for that `Bounds`.
 2. **Only the bar's own edge moves**, and always from a **fresh** `GetMonitorInfo` work area read inside the same
-   critical section as the write. The taskbar's strip and other AppBars' strips therefore stay reserved, and two bars
-   on one monitor stack instead of clobbering each other.
-3. **Never `SPIF_UPDATEINIFILE`** — nothing reaches the user's profile. `SPIF_SENDCHANGE` is used so apps and our own
-   bars learn at once, except on the crash path (below).
-4. **`--safe` and `--selftest` never shrink.** Both *do* restore a leftover record from an earlier non-safe run: that
+   critical section as the write, so the result is a subset of the current work area: the taskbar's strip and other
+   AppBars' strips survive, and two bars on one monitor stack instead of clobbering each other.
+3. **Never `SPIF_UPDATEINIFILE`** — nothing reaches the user's profile. `SPIF_SENDCHANGE` is used on the normal path
+   so apps and our own bars learn at once, and skipped on the crash path (risk 13).
+4. **`--safe` and `--selftest` never shrink.** Both *do* recover a leftover marker from an earlier non-safe run: that
    is a repair of our own change, exactly like `TaskbarController.RestoreFromMarker`, which already runs in safe mode.
-5. **Bounded, never a loop.** Per bar, `StripRecovery` allows at most three shrinks per missing-strip episode; per
-   monitor, `WorkAreaBudget` allows three applications per 60 s. Hitting either logs once and stops until the next
-   display change. There is no polling: every check rides an existing trigger (dock, display pass, the debounced
+5. **Act, don't re-register, and never loop.** A missing strip is acted on at most three times per episode (1.5 s,
+   then 5 s and 20 s later), then left until the bar is docked afresh. The action is a shrink when shrinking is
+   allowed, and a re-registration only when it is not (`--safe`, or the monitor's budget spent) — re-registering
+   during Explorer's deferral is what the third live run showed to be useless and possibly harmful, so it is no
+   longer on the normal path. Per monitor, `WorkAreaBudget` allows three applications per 60 s. Hitting either bound
+   logs once and stops. There is no polling: every check rides an existing trigger (dock, display pass, the debounced
    `WM_SETTINGCHANGE`, `ABN_POSCHANGED`/`ABN_STATECHANGE`, the bar's one-shot recovery timer).
 
 ### Core (`src/WinGnome.Core/Shell/`, all tested)
 
 - `WorkAreaFallback.Shrink(AppBarEdge edge, PixelRect strip, PixelRect workArea) -> PixelRect?`: the work area with
-  only that edge moved past the strip (`Top = max(workArea.Top, strip.Bottom)` and the mirror for the other three
-  edges). **Null** when the strip is already left out, when the strip is empty, or when the result would be empty or
-  inverted (a strip taller than the monitor) — it never grows a work area and never produces an invalid rectangle.
-- `WorkAreaFallback.IsStillOurs(PixelRect applied, PixelRect current) -> bool`: exact equality; the only condition
-  under which a restore may write.
-- `WorkAreaBudget.TrySpend(long nowMs) -> bool`: a sliding window of three applications per 60 s, clock injected by
-  the caller (`Environment.TickCount64`), so tests use literal times.
-- `WorkAreaRecord` (`Key`, `Bounds`, `Original`, `Applied`) and `WorkAreaState.Parse/Serialize`: the marker's shape,
-  tolerant of a missing, empty or corrupt file (reads as "no records", never throws).
-- `WorkAreaRecovery.Plan(records, monitors, current)`: which records to restore (monitor key still present, bounds
-  unchanged, current work area still exactly `Applied`) and which to drop. Pure, so the force-kill path is tested.
-- `StripRecovery` reworked, same class and same call sites: `Wait` at 1.5 s → `Reregister` once → `Shrink` at the next
-  pass → up to three shrinks 1.5 s, 5 s and 20 s apart → `GiveUp` until the bar is docked afresh. `Shrink` is a new
-  `StripRecoveryKind`; the 45 s grace and the 60/120/240 s re-registration back-off of 5c19982 go (waiting 45 s was
-  only ever "do nothing while Explorer is slow", which the fallback replaces).
+  only that edge moved past the strip (`Top = Math.Max(workArea.Top, strip.Bottom)` and the mirror for the other
+  three edges). **Null** when the strip is empty, when the work area already leaves it out
+  (`AppBarReservation.IsReserved`), or when the result would be empty or inverted on the moving axis (a strip taller
+  than the monitor). It never grows a work area and never touches the other axis, however far the strip reaches.
+- `WorkAreaBudget.TrySpend(long nowMs) -> bool`: a sliding window of three applications per 60 s, the clock injected
+  by the caller (`Environment.TickCount64`), so tests use literal times.
+- `WorkAreaRecord(int Owner, string Key, PixelRect Bounds, PixelRect Original, PixelRect Applied)`: one shrink.
+  `Owner` is the shrinking bar's HWND (unique per bar, needs no plumbing); `Original` is the fresh work area before
+  the shrink, `Applied` the one we set. Records are kept **in application order**, which is the restore order.
+- `WorkAreaFile(IReadOnlyList<WorkAreaRecord> Records, bool Unreadable)` with `WorkAreaState.Parse(string? json)` and
+  `Serialize(records)`: an absent or empty file is "no records"; a corrupt one is `Unreadable` (never an exception),
+  because silently reading it as empty would strand the shrinks it described.
+- `WorkAreaRecovery.Plan(records, MonitorLayout monitors, IReadOnlySet<int> released) -> WorkAreaPlan`: the whole
+  restore decision, pure. Per monitor key it walks that key's records **newest first**, restoring one only when its
+  owner has released *and* the running work area still equals its `Applied`, then continuing from its `Original`; it
+  stops at the first record that fails either test. A record whose monitor is gone, or whose `Bounds` differ from the
+  live monitor's, is dropped as stale (a mode change reset the work area anyway). The plan carries the ordered
+  `Restores` (key + rectangle to write), the records to `Keep` (a live bar still owns a newer one) and `Nudge` (true
+  when something was dropped or a chain broke, so Explorer gets a chance to recompute). Restoring newest first is
+  what makes a top bar's and a bottom dock's strips on one monitor unwind in the right order; restoring an older
+  record while a newer one is still applied would leave the newer strip behind.
+- `StripRecovery` reworked, same class and same call sites: `Update(bool reserved, bool shrinkAllowed, long nowMs)`
+  returns `None` (reserved — and resets), `Wait(due)`, `Shrink`, `Reregister` (only when `shrinkAllowed` is false) or
+  `GiveUp`. Attempts land at +1.5 s, +5 s and +20 s, then it gives up until `Reset()`. The 45 s grace and the
+  60/120/240 s re-registration back-off of 5c19982 go: waiting 45 s was only "do nothing while Explorer is slow",
+  which is what the fallback replaces.
 
 ### App
 
 - `Interop/NativeMethods.Monitors.cs`: one new overload next to the `SPI_SETWORKAREA` constant,
-  `SystemParametersInfoRect(uint action, uint uiParam, ref RECT value, uint winIni)`. The existing
-  `SystemParametersInfo*` overloads in `NativeMethods.Input.cs` take scalars or int arrays, not a RECT.
-- `Services/WorkAreaController.cs` (new, static so the crash path can use it from any thread, plain Win32, no
-  dispatcher): `Enabled` (set once in `App.OnStartup` from `!options.Safe`), `TryShrink(key, edge, strip)`,
-  `Restore(key)`, `RestoreAll(bool broadcast)`, `RecoverFromMarker(settingsDirectory)`, and the per-monitor
-  `WorkAreaBudget` and record tables behind one lock that spans read-compute-write. Every application and restore is
-  one `Log.Info` line with the monitor key, the edge and both rectangles; a refused budget, a failed call (with the
-  Win32 error) and a dropped record are `Log.Warn`.
-- `AppBar.CheckStrip`: a `Shrink` step calls `WorkAreaController.TryShrink(_monitorKey, _edge, Bounds)`. Whether it
-  was applied or refused, the bar re-checks on the schedule `StripRecovery` gives it, so a refusal cannot spin.
-- `AppBar.Undock`/`Dispose`: after `ABM_REMOVE`, `Restore(key)`. When the work area is no longer the one we applied
-  (another instance's strip is in it, or Explorer recomputed), we do not write; we log and `AppBarJanitor.Nudge()`,
-  which makes Explorer re-check its registrations and recompute. The nudge runs only for monitors we shrank, so an
-  ordinary undock costs nothing extra.
-- `AppBar.UndockAll()` (crash path): `ABM_REMOVE` for every bar, then `RestoreAll(broadcast: false)` — without
-  `SPIF_SENDCHANGE`, because that flag broadcasts synchronously to every top-level window and one hung window would
-  block the crash path. The work area changes all the same.
-- `App.OnStartup`: `WorkAreaController.RecoverFromMarker(dir)` immediately after `TaskbarController.RestoreFromMarker`
-  and before `AppBarJanitor.Nudge()`, so the janitor's "before" log and the self-test baseline both see recovered
-  work areas; `--restore-taskbar` does the same before its nudge.
+  `SystemParametersInfoRect(uint action, uint uiParam, ref RECT value, uint winIni)`. The `SystemParametersInfo*`
+  overloads in `NativeMethods.Input.cs` take scalars or int arrays, not a RECT, so nothing is redeclared.
+- `Services/WorkAreaController.cs` (new, static so the crash path can use it from any thread; plain Win32, no
+  dispatcher, one lock spanning read-compute-write): `Initialize(settingsDirectory, enabled)`,
+  `TryShrink(nint owner, PixelRect monitor, AppBarEdge edge, PixelRect strip) -> bool`, `Release(nint owner)`,
+  `ReleaseAll(bool broadcast)` and `RecoverFromMarker(settingsDirectory)`. It holds the record list, a
+  `WorkAreaBudget` per monitor key and the marker path. **It derives the monitor key itself** (`MonitorFromRect` +
+  `GetMonitorInfoEx`, the `MonitorKeyOf` fallback pattern) inside the lock, so `AppBar` needs no key field and no
+  stale key can survive a display change; a monitor whose bounds no longer equal the cached rectangle is refused.
+  Every application, restore, refusal and drop is logged: `Log.Info` with the key, the edge and both rectangles for
+  an application or restore, `Log.Warn` for a spent budget, a failed call (with the Win32 error), an unwritable
+  marker and a stale record.
+- `AppBar.CheckStrip`: a `Shrink` step calls `TryShrink(_hwnd, _monitor, _edge, Bounds)`, a `Reregister` step calls
+  the existing `Reregister()`. Applied or refused, the bar re-checks on the schedule `StripRecovery` gives it, so a
+  refusal cannot spin. `TryShrink` returns false when the fresh read shows the strip already reserved, which is the
+  common case and costs one `GetMonitorInfo`.
+- `AppBar.Undock` (and so `Dispose`): after `ABM_REMOVE`, `WorkAreaController.Release(_hwnd)`. `AppBar.UndockAll()`
+  (crash path): `ABM_REMOVE` for every bar, then `ReleaseAll(broadcast: false)`, guarded so file I/O on a faulting
+  thread can never throw.
+- `App.OnStartup`: `WorkAreaController.Initialize(dir, enabled: !options.Safe)` before any feature starts, and
+  `RecoverFromMarker(dir)` immediately after `TaskbarController.RestoreFromMarker` and before `AppBarJanitor.Nudge()`,
+  so the janitor's "before" line and the self-test baseline both see recovered work areas. `--restore-taskbar` does
+  the same before its nudge. A second launch that loses the single-instance check returns before any of this, so it
+  can never recover or clear the running instance's marker.
+- **Unreadable marker** (the crash-mid-write case, which atomic writing makes unlikely but not impossible): log
+  `Log.Warn`, then repair conservatively — when `taskbar.state` exists in the same directory the taskbar is hidden or
+  auto-hidden, so every monitor's correct work area is its full bounds and that is what is written; when it does not,
+  nothing is written (a visible taskbar's own strip must survive) — and in both cases `AppBarJanitor.Nudge()` runs
+  and the file is deleted.
 
 ### The marker `workareas.state`
 
-In the settings directory, next to `taskbar.state`, written **before** the first shrink of a run and updated when a
-record changes; deleted when the last record is restored or dropped.
+In the settings directory, next to `taskbar.state`: written **before** the first shrink of a run and rewritten when
+a record is added, restored or dropped; deleted when the last record goes. Written to a temporary file and moved
+over the old one, so a crash mid-write cannot truncate it.
 
 ```json
-{"Records":[{"Key":"\\\\.\\DISPLAY1","Bounds":"0,0,2560,1600","Original":"0,40,2560,1600","Applied":"0,80,2560,1600"}]}
+{"Records":[{"Owner":131479,"Key":"\\\\.\\DISPLAY1","Bounds":"0,0,2560,1600","Original":"0,0,2560,1540","Applied":"0,40,2560,1540"}]}
 ```
 
-`Original` is the fresh work area before our shrink, `Applied` the one we set. Discipline as for the taskbar marker:
-**no record, no shrink** — if the file cannot be written, the fallback logs a warning and does nothing, so a
-force-kill can never leave a work area WinGnome cannot give back. `WorkAreaRecovery.Plan` restores a record only when
-its monitor is still present with the same bounds and its current work area is still exactly `Applied`; everything
-else is dropped with a log line (a resolution change resets work areas anyway).
+Discipline as for the taskbar marker: **no record, no shrink** — if the file cannot be written, the fallback logs a
+warning and does nothing, so a force-kill can never leave a work area WinGnome cannot give back.
 
 ### Safety and recovery
 
 | Path | What happens |
 |---|---|
-| Normal exit, feature off, `TopBar.Monitors` → Primary | Each bar undocks, `ABM_REMOVE`, then its record is restored exactly — or a nudge when the work area is no longer ours. |
-| Crash | `AppBar.UndockAll()` → `ABM_REMOVE` for every bar → `RestoreAll(broadcast: false)` → features' `EmergencyRestore` → `TaskbarController.RestoreFromMarker`. |
-| Force-kill | Nothing runs. The next start's `RecoverFromMarker` restores what still matches; `--restore-taskbar` does the same on demand. |
-| Two instances | Separate profiles, separate records. Whoever finds the work area no longer equal to what it applied nudges instead of writing, so the other's strip is never clobbered. |
-| Explorer recomputes late | While our AppBar is registered it grants the same strip, so its rectangle equals ours and nothing happens. A different one is caught by the next check, within the budget. |
-| Displays panel (`SetDisplayConfig`) | A mode change resets work areas and changes bounds, so the record no longer matches and is dropped; the bars re-dock and re-check. |
-| `--selftest` | Unchanged, and still fails if a work area differs after shutdown: safe mode never shrinks, and the recovery runs before the baseline is read. |
+| Normal exit, feature off, `TopBar.Monitors` → Primary | Bars undock in reverse creation order; each `ABM_REMOVE` releases its owner, and the plan unwinds the chain newest first, so a top bar's and a dock's strips on one monitor both go back. |
+| One bar off, another still docked on the same monitor | The older record is kept, not written over: its `Applied` is no longer the live work area. Explorer's `ABM_REMOVE` recompute normally gives the strip back; if it doesn't, the record is still there for the next release or the next start, and the nudge is logged. |
+| Crash | `AppBar.UndockAll()` → `ABM_REMOVE` for every bar → `ReleaseAll(broadcast: false)` → features' `EmergencyRestore` → `TaskbarController.RestoreFromMarker`. |
+| Force-kill | Nothing runs. The next start's `RecoverFromMarker` restores every record whose monitor and work area still match; `--restore-taskbar` does the same on demand. |
+| Two instances | Separate profiles, separate markers, and each chain is walked only while the live work area equals the record's `Applied`, so neither can write over the other's strip. |
+| Explorer recomputes late | While our AppBar is registered it grants the same strip, so its rectangle equals ours and the plan finds nothing to do. A different one is caught by the next check, within the budget. |
+| Displays panel (`SetDisplayConfig`) | A mode change resets work areas and changes bounds, so the record is stale and is dropped with a log line; the bars re-dock and re-check. |
+| `--selftest` | Unchanged, and still fails if a work area differs after shutdown: safe mode never shrinks, and recovery runs before the baseline is read. |
 
 ### Footprint
 
-No new timer, hook or poll. Per shrink: one `GetMonitorInfo`, one `SystemParametersInfo`, one small file write (rare
-— at most a few per run). Per undock of a bar that shrank: one read, one write, one nudge. Idle cost is unchanged.
+No new timer, hook or poll. Per shrink: one `MonitorFromRect`, one `GetMonitorInfo`, one `SystemParametersInfo`, one
+small file write (rare — a few per run at most). Per release: one read, at most a few writes, one nudge only when the
+plan asks for it. Idle cost is unchanged.
 
 ### Acceptance criteria (outcome B)
 
-B1. T `WorkAreaFallback.Shrink`: each of the four edges; already reserved → null; empty strip → null; a strip taller
-    than the monitor → null; a monitor at negative coordinates; a work area that already excludes the taskbar's
-    bottom strip keeps it; a second bar on the same edge stacks on the first.
-B2. T `WorkAreaBudget`: three allowed inside 60 s, the fourth refused, one allowed again 60 s after the first.
-B3. T `StripRecovery`: the exact Wait → Reregister → Shrink → Shrink → Shrink → GiveUp sequence at literal times; a
-    reserved strip resets it; `Reset` (undock, re-dock) starts afresh.
-B4. T `WorkAreaState` and `WorkAreaRecovery.Plan`: a record round-trips; a missing, empty or corrupt file reads as no
-    records; recovery skips a record whose bounds changed, whose monitor is gone, or whose current work area differs
-    from `Applied`, and restores one that matches.
-B5. Q Non-safe start with the taskbar hidden: both strips in the work area within ~3 s (`tools/Get-WorkAreas.ps1`
+B1. T `WorkAreaFallback.Shrink`: each of the four edges; already reserved → null, including exact equality
+    (`strip.Bottom == workArea.Top`); empty strip → null; a strip taller than the monitor → null; a strip reaching
+    past the monitor on the axis that doesn't move leaves that axis alone; a monitor at negative coordinates; a work
+    area that already excludes the taskbar's bottom strip keeps it; a second bar on the same edge stacks on the first.
+B2. T `WorkAreaBudget`: three allowed inside 60 s, the fourth refused, one allowed again 60 s after the first;
+    boundary rows at exactly +60 s and +60001 ms, and a clock that doesn't move.
+B3. T `StripRecovery`: `Wait` at +1.5 s, then `Shrink` at 1.5 s / 6.5 s / 26.5 s with `shrinkAllowed`, `Reregister`
+    at the same times without it, then `GiveUp`; a reserved strip resets it; `Reset` (undock, re-dock) starts afresh;
+    a notification or display pass between attempts cannot make it act sooner.
+B4. T `WorkAreaState`: a record round-trips; absent, empty and corrupt files; `Serialize` of no records.
+B5. T `WorkAreaRecovery.Plan`: one record restores; two stacked records on one key both released restore newest
+    first and land on the outermost `Original`; only the older released restores nothing and keeps both; a live work
+    area that differs from `Applied` restores nothing and nudges; a monitor gone or with changed bounds drops the
+    record; no records → an empty plan that doesn't nudge.
+B6. Q Non-safe start with the taskbar hidden: both strips in the work area within ~3 s (`tools/Get-WorkAreas.ps1`
     shows DISPLAY1 work top = 40 and DISPLAY2 work top = −1408), one "work area set directly" line per monitor, and
     no further lines over 5 idle minutes.
-B6. Q Unplug the secondary: DISPLAY1 keeps top = 40 and at most budget-many shrinks are logged; replug (Win+P →
+B7. Q Unplug the secondary: DISPLAY1 keeps top = 40 and at most budget-many shrinks are logged; replug (Win+P →
     Extend if Windows loses it): both strips back, no doubled strip (exactly 40 / −1408).
-B7. Q Quit: work areas exactly the baseline (taskbar visible: DISPLAY1 bottom 1540, DISPLAY2 bottom −48).
-B8. Q Crash (a temporary `throw`, removed before committing) and `taskkill /f` + restart with the same
-    `--settings-dir`: work areas back to the original and `workareas.state` gone; `--restore-taskbar` alone after a
-    force-kill clears it too.
-B9. Q `--selftest --safe` exits 0 with the fallback compiled in, and a `--safe` run never logs a shrink.
-B10. Q Scale change, primary swap, sleep/resume: strips reserved within ~3 s of the pass, no doubled strip, budget
-     not exhausted (no budget warning in the log).
-B11. Q Native taskbar mode (taskbar visible, not auto-hidden) with an always-visible dock at the bottom: the dock's
+B8. Q Quit: work areas exactly the baseline (taskbar visible: DISPLAY1 bottom 1540, DISPLAY2 bottom −48) and no
+    `workareas.state` left.
+B9. Q Crash (a temporary `throw`, removed before committing) and `taskkill /f` + restart with the same
+    `--settings-dir`: work areas back to the original and the marker gone; `--restore-taskbar` alone after a
+    force-kill clears it too; a deliberately corrupted marker takes the documented repair path and leaves full work
+    areas with the taskbar hidden.
+B10. Q `--selftest --safe` exits 0 with the fallback compiled in, and a `--safe` run never logs a shrink.
+B11. Q Scale change, primary swap, sleep/resume: strips reserved within ~3 s of the pass, no doubled strip, no
+     budget warning in the log.
+B12. Q Native taskbar mode (taskbar visible, not auto-hidden) with an always-visible dock at the bottom: the dock's
      strip is reserved *above* the taskbar's, and quitting leaves the taskbar's own strip intact.
 
 ### Risks
 
-12. **WinGnome now writes a system value Explorer also writes.** Bounded by the two budgets, always derived from a
-    fresh read, only ever moving our own edge, and reversible through the record. KI-099 (S3) records it, including
+12. **WinGnome now writes a system value Explorer also writes.** Bounded by two budgets, always derived from a fresh
+    read, only ever moving our own edge inward, and reversible through the record. KI-099 (S3) records it, including
     that a third-party tool which also sets work areas could fight us — after three applications in a minute we stop
-    and log, so the fight cannot become a loop.
+    and log, so a fight cannot become a loop.
 13. **`SPIF_SENDCHANGE` broadcasts synchronously** to top-level windows, so a hung app could delay a shrink. It is
-    skipped on the crash path for that reason; on the normal path it runs on the dispatcher and is worth its cost
-    (apps and our own bars see the change at once).
-14. **The record is per profile.** A force-kill followed by a start with a different `--settings-dir` cannot restore
-    (same limitation as `display-revert.json`, KI-068); `--restore-taskbar` from the original profile can.
+    skipped on the crash path for that reason; on the normal path it runs on the dispatcher and is worth its cost.
+14. **The marker is per profile.** A force-kill followed by a start with a different `--settings-dir` cannot recover
+    (the same limitation as `display-revert.json`, KI-068); `--restore-taskbar` from the original profile can.
+15. **The crash path does file I/O** (deleting the marker) on a possibly faulting thread, like `UndockAll`'s tray
+    sends (risk 5). Guarded, never fatal; a marker left behind is recovered by the next start.
