@@ -76,4 +76,31 @@ public class AccentColorChangesTests
     {
         Assert.Equal(Map(AdwaitaBlue), Map(HexColor.Parse("#803584E4")));
     }
+
+    [Theory]
+    [InlineData(unchecked((int)0xFFE48435), "#3584E4")]
+    [InlineData(0x00E48435, "#3584E4")]
+    [InlineData(0x000000FF, "#FF0000")]
+    [InlineData(0x0000FF00, "#00FF00")]
+    [InlineData(0x00FF0000, "#0000FF")]
+    public void FromAbgr_ReadsDwmAccentColor(int abgr, string expected)
+    {
+        Assert.Equal(HexColor.Parse(expected), AccentColorChanges.FromAbgr(abgr));
+    }
+
+    [Fact]
+    public void FromAbgr_RoundTripsWhatForWrites()
+    {
+        var written = (int)Map(AdwaitaBlue)[(@"Software\Microsoft\Windows\DWM", "AccentColor")].Data;
+
+        Assert.Equal(AdwaitaBlue, AccentColorChanges.FromAbgr(written));
+    }
+
+    [Fact]
+    public void Automatic_TurnsAccentFromWallpaperBackOn()
+    {
+        Assert.Equal(
+            [new RegistryChange(@"Control Panel\Desktop", "AutoColorization", RegistryValue.DWord(1))],
+            AccentColorChanges.Automatic());
+    }
 }
