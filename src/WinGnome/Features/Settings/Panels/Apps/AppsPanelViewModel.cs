@@ -19,6 +19,10 @@ internal sealed class AppsPanelViewModel : SystemPanelViewModel
 {
     private const string AppsSettingsUri = "ms-settings:appsfeatures";
 
+    // LoadAsync shows only the newest load per channel, so each independent list or row action has its own: a startup
+    // re-read must never drop the installed-apps walk, a package's details or a removal's result. A row can't start a
+    // second detail load or removal while one is in flight (IsBusy), so per-family channels drop nothing.
+
     private readonly SystemSettingWriter _writer;
     private readonly List<IDisposable> _uninstallWatches = [];
     private IReadOnlyList<InstalledAppRecord> _desktop = [];
@@ -134,7 +138,7 @@ internal sealed class AppsPanelViewModel : SystemPanelViewModel
             _desktop = records;
             IsLoadingApps = false;
             RebuildApps();
-        }, longRunning: true);
+        }, longRunning: true, channel: "installed");
     }
 
     private void RefreshStartup()
@@ -142,7 +146,8 @@ internal sealed class AppsPanelViewModel : SystemPanelViewModel
         if (_isOpen)
         {
             LoadAsync(StartupAppsService.Read, rows =>
-                StartupApps = rows.Select(r => new StartupAppItem(r, CanEdit, Context.Services.Icons, SetStartupEnabled)).ToList());
+                StartupApps = rows.Select(r => new StartupAppItem(r, CanEdit, Context.Services.Icons, SetStartupEnabled)).ToList(),
+                channel: "startup");
         }
     }
 
@@ -183,7 +188,7 @@ internal sealed class AppsPanelViewModel : SystemPanelViewModel
         {
             item.IsBusy = false;
             item.ShowDetails(details);
-        });
+        }, channel: "details:" + package.FamilyName);
     }
 
     private void Uninstall(InstalledAppItem? item)
@@ -258,7 +263,7 @@ internal sealed class AppsPanelViewModel : SystemPanelViewModel
 
             // The catalogue raises Changed when it has re-read the Start menu, which rebuilds the list.
             _ = Context.Services.Apps.RefreshAsync();
-        }, longRunning: true);
+        }, longRunning: true, channel: "remove:" + family);
     }
 
     private static PackageRemoval RemovePackage(string familyName)
