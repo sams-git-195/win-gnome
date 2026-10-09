@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@v4
+
+      # global.json pins the SDK band so newer analyzers on the runner don't fail -warnaserror.
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore WinGnome.sln
+
+      - name: Build
+        run: dotnet build WinGnome.sln -c Release --no-restore -warnaserror
+
+      - name: Test
+        run: dotnet test WinGnome.sln -c Release --no-build --logger "trx;LogFileName=tests.trx" --results-directory "${{ runner.temp }}/test-results"
+
+      # --selftest forces safe mode: no taskbar hiding, tweaks or hooks on the runner.
+      - name: Self-test
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'wingnome-selftest'
+          dotnet run --project src/WinGnome -c Release --no-build -- --selftest --safe --settings-dir "$dir"
+          $code = $LASTEXITCODE
+          Get-Content (Join-Path $dir 'wingnome.log') -ErrorAction SilentlyContinue
+          if ($code -ne 0) { Write-Error "Self-test exited with $code"; exit $code }
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs
+          path: |
+            ${{ runner.temp }}/wingnome-selftest
+            ${{ runner.temp }}/test-results
