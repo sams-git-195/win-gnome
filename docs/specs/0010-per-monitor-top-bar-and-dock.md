@@ -572,12 +572,14 @@ provided it changes as little as possible, records it before it changes it, and 
   `ReleaseAll(bool broadcast)` and `RecoverFromMarker(settingsDirectory)`. It holds the record list, a
   `WorkAreaBudget` per monitor key and the marker path. The record list only ever changes through
   `WorkAreaLedger.Add`, so a re-shrink replaces its pair's record instead of accumulating duplicates, and a shrink
-  whose marker write or `SPI_SETWORKAREA` call fails rolls the list back to the exact snapshot from before it. **It derives the monitor key itself** (`MonitorFromRect` +
+  whose marker write or `SPI_SETWORKAREA` call fails rolls the list back to the exact snapshot from before it.
+  **It derives the monitor key itself** (`MonitorFromRect` +
   `GetMonitorInfoEx`, the `MonitorKeyOf` fallback pattern) inside the lock, so `AppBar` needs no key field and no
   stale key can survive a display change; a monitor whose bounds no longer equal the cached rectangle is refused.
   Every application, restore, refusal and drop is logged: `Log.Info` with the key, the edge and both rectangles for
-  an application or restore, `Log.Warn` for a spent budget, a failed call (with the Win32 error), an unwritable
-  marker and a stale record.
+  an application or restore, and with a count for records dropped without a write (they no longer matched the live
+  work area — given back by Explorer, stale, or someone else's value in effect); `Log.Warn` for a spent budget, a
+  failed call (with the Win32 error) and an unwritable marker.
 - `AppBar.CheckStrip`: a `Shrink` step calls `TryShrink(_hwnd, _monitor, _edge, Bounds)`, a `Reregister` step calls
   the existing `Reregister()`. Applied or refused, the bar re-checks on the schedule `StripRecovery` gives it, so a
   refusal cannot spin. `TryShrink` returns false when the fresh read shows the strip already reserved, which is the

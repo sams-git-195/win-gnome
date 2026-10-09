@@ -269,12 +269,22 @@ internal static class WorkAreaController
             }
         }
 
+        // Every record was restored, kept or dropped, so the remainder is the ones dropped without a write:
+        // Explorer (or whoever wrote last) already gave the strip back, the record went stale, or someone else's
+        // value is in effect. Say so, or a graceful quit that changes nothing looks like one that lost a record.
+        var dropped = Records.Count - plan.Keep.Count - plan.Restores.Count;
+
         // Keep is a subset of Records by position, so an equal count means nothing was restored or dropped.
         if (plan.Restores.Count > 0 || plan.Keep.Count != Records.Count)
         {
             Records.Clear();
             Records.AddRange(plan.Keep);
             WriteMarker();
+        }
+
+        if (dropped > 0)
+        {
+            Log.Info($"Dropped {dropped} work area record(s) that no longer matched the live work area; nothing was written back");
         }
 
         Prune(layout);
