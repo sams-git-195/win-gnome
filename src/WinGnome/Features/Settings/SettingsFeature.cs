@@ -47,7 +47,7 @@ internal sealed class SettingsFeature : IFeature
     public void Dispose()
     {
         _context.Commands.SettingsRequested -= OnSettingsRequested;
-        _window?.Close();
+        _window?.CloseForShutdown();
     }
 
     /// <summary>
@@ -61,11 +61,8 @@ internal sealed class SettingsFeature : IFeature
             return;
         }
 
-        // Off the UI thread: changing display modes waits on every top-level window.
-        var directory = _context.Settings.Directory;
-        Task.Run(() => DisplayRevertFile.RecoverIfPending(directory)).ContinueWith(
-            task => Log.Warn("Could not recover an unconfirmed display change", task.Exception),
-            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        // Queued on the shared display queue, off the UI thread: changing display modes waits on every top-level window.
+        DisplayRevertFile.RecoverIfPending(_context.Settings.Directory);
     }
 
     private void OnSettingsRequested(object? sender, string? panelId)

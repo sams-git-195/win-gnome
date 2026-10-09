@@ -59,7 +59,9 @@ Nothing while the window is closed. Services exist only for the open panel.
 
 ## Acceptance criteria
 1. Core tests for the catalogue, arrangement geometry, keep/revert state machine and presets.
-2. Manual per panel: read matches Windows Settings; a change shows up in Windows Settings; Displays reverts after
+2. Manual per panel: read matches Windows Settings; a change shows up in Windows Settings; Displays: apply, then
+   `taskkill /f` WinGnome during the countdown, sign out and in, and the original settings are back (the change was
+   never saved); apply, kill, restart WinGnome without signing out, and it reverts the change; Displays reverts after
    15 s without confirmation; undocumented-API failure falls back to the link.
 3. Every linked panel opens the right `ms-settings:` page.
 4. Light/dark, 100 % and 125 %.
@@ -87,16 +89,20 @@ What is native and what is linked, as built:
 | Wi-Fi, Network, Bluetooth, Printers, Removable Media, Colour, Notifications, Apps, Default Apps, Online Accounts, Sharing, Privacy & Security, Region & Language, Users, Accessibility, Windows Update | — | Matching `ms-settings:` page (Colour opens `colorcpl.exe`) |
 
 Design decisions taken while building:
-- Display changes use the documented `ChangeDisplaySettingsEx` rather than `SetDisplayConfig`, because it carries the
-  refresh rate directly; `QueryDisplayConfig` is used only for monitor names. Changes are staged in the panel and
-  applied with *Apply*, as GNOME does. At *Apply* the current settings are re-read, every display's new mode is tested
-  (`CDS_TEST`), the original and the target are written to `display-revert.json`, and the target is applied for the
-  session only (no `CDS_UPDATEREGISTRY`), so a reboot or sign-out always drops an unconfirmed change. *Keep Changes*
-  writes it to the registry. A failed apply (including `DISP_CHANGE_RESTART`) restores the original at once. Reverting
-  reapplies the registry's settings (which never saw the change), then display by display if needed, and the record is
-  deleted only when the displays show the original again. The countdown reverts on timeout, on *Revert*, when the
-  panel is left (in the background) or the window closes (at once, as WinGnome may be quitting), and at the next
-  normal start after a crash, off the UI thread and only if the displays still show the recorded target.
+- Display changes use the documented CCD API: `QueryDisplayConfig`, then the source modes (size, position) and, for a
+  new refresh rate, the path's refresh rate are rewritten, and `SetDisplayConfig` with the supplied configuration
+  validates (`SDC_VALIDATE`) and applies (`SDC_APPLY | SDC_ALLOW_CHANGES`) all displays at once, so a resize that moves
+  a neighbour or a change of primary lands atomically. The apply leaves out `SDC_SAVE_TO_DATABASE`, so an unconfirmed
+  change lasts for the session only; *Keep Changes* saves it. Mode lists, names and the cheap current-settings read
+  still use `EnumDisplaySettingsEx`/`QueryDisplayConfig`. Changes are staged in the panel and applied with *Apply*.
+- The safety order lives in Core (`DisplayChangeFlow`, tested with injected system calls): at *Apply* the current
+  settings are re-read and the configuration validated, the original and target are written to `display-revert.json`,
+  then the target is applied for the session; a failed apply reverts at once. *Keep Changes* deletes the record on the
+  UI thread before the save is queued. Reverting applies the database's configuration (`SDC_USE_DATABASE_CURRENT`),
+  then the original explicitly if needed, and deletes the record only when the original shows again. The countdown
+  reverts on timeout, on *Revert*, and when the panel is left or the window closed (on the display queue); at WinGnome
+  shutdown it reverts before returning. Start-up recovery runs on the same queue (never interleaving with the panel),
+  reverts only if the recorded target is still showing, and keeps the record for the next start if the revert fails.
 - Every write runs on `SystemSettingWriter` (ordered, off the UI thread, logged, nothing in safe mode), except the
   sound volume sliders, which call Core Audio directly like the top bar does.
 - Rows whose value a Streamline tweak owns (dark mode, accent, snap layouts) are read-only while that tweak is on

@@ -71,21 +71,20 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
 
     private const double PreviewPadding = 16;
 
-    private readonly SystemSettingWriter _writer;
+    private readonly DisplayChangeFlow _flow;
     private readonly KeepChangesCountdown _countdown = new();
     private readonly DispatcherTimer _timer;
     private DisplayRevert? _pending;
     private DisplayItem? _selected;
     private bool _isApplying;
     private bool _open;
-    private bool _disposing;
     private int _generation;
     private int _secondsLeft;
 
     public DisplaysPanelViewModel(SystemPanelContext context)
         : base(context, PanelIds.Displays)
     {
-        _writer = context.CreateWriter();
+        _flow = DisplayWork.Flow(context.SettingsDirectory);
         _timer = new DispatcherTimer(DispatcherPriority.Normal, context.Dispatcher) { Interval = TimeSpan.FromMilliseconds(250) };
         _timer.Tick += OnTick;
         ApplyCommand = new RelayCommand(Apply, () => IsDirty && CanEdit && !_isApplying && !IsWaiting);
@@ -206,12 +205,11 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
     public double DesktopPixelsPerPreviewPixel =>
         Displays.FirstOrDefault() is { } d && d.Preview.Width > 0 ? d.Staged.Width / d.Preview.Width : 1;
 
-    public override void Dispose()
-    {
-        // Closing the window (which is also how WinGnome quits) reverts an unconfirmed change before returning.
-        _disposing = true;
-        base.Dispose();
-    }
+    /// <summary>
+    /// Set when WinGnome quits: closing then reverts an unconfirmed change on the calling thread, because the process
+    /// may exit right after. Otherwise leaving the panel or closing the window reverts on the display queue.
+    /// </summary>
+    public bool RevertAtOnceOnClose { get; set; }
 
     protected override void Open()
     {
@@ -228,11 +226,11 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
         _timer.Stop();
         if (_countdown.Revert() && _pending is { } pending)
         {
+            _pending = null;
             Log.Info("Displays panel closed during the countdown; reverting the display change");
-            if (_disposing)
+            if (RevertAtOnceOnClose)
             {
-                // The window is closing, possibly because WinGnome is quitting: revert now, before the process can exit.
-                RevertNow(pending);
+                DisplayWork.RunAtShutdown("revert the display settings", () => _flow.Revert(pending));
             }
             else
             {
@@ -243,7 +241,6 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
         Displays.Clear();
         _selected = null;
     }
-
     private string PrimaryId => (Displays.FirstOrDefault(d => d.IsPrimary) ?? Displays[0]).Id;
 
     private List<DisplayPlacement> Placements() => Displays.Select(d => new DisplayPlacement(d.Id, d.Bounds)).ToList();
@@ -339,6 +336,11 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
 
     private void Apply()
     {
+        if (!CanEdit)
+        {
+            return;
+        }
+
         if (!DisplayArrangement.IsValid(Placements()))
         {
             Problem = "Displays must touch along an edge without overlapping. Drag them next to each other and try again.";
@@ -348,59 +350,30 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
         var target = Displays.Select(d => d.Staged).ToList();
         Problem = null;
         SetApplying(true);
-        _writer.Run("apply the new display settings", () =>
+
+        // Core re-reads the current settings, validates the whole configuration, records before changing and applies
+        // for the session only (see DisplayChangeFlow).
+        DisplayWork.Enqueue("apply the new display settings", () =>
         {
-            var outcome = ApplyOnWorker(target);
+            var outcome = _flow.Apply(target);
             Context.Dispatcher.BeginInvoke(() => OnApplied(outcome));
-            return true;
-        }, () => SetApplying(false));
+        });
     }
 
-    /// <summary>
-    /// Re-reads the current settings (the panel's copy may be stale), tests the target, records both before the change,
-    /// and applies the target for this session only.
-    /// </summary>
-    private (DisplayRevert? Pending, string? Problem) ApplyOnWorker(IReadOnlyList<DisplaySetting> target)
-    {
-        var original = DisplayService.Current();
-        if (original.Count != target.Count
-            || !target.All(t => original.Any(o => string.Equals(o.DeviceName, t.DeviceName, StringComparison.OrdinalIgnoreCase))))
-        {
-            return (null, "The displays changed while you were editing. Your changes were reset; try again.");
-        }
-
-        if (!DisplayService.Test(target))
-        {
-            return (null, "Windows can't show this display mode. Choose another resolution or refresh rate.");
-        }
-
-        var pending = new DisplayRevert(original, target);
-        if (!DisplayRevertFile.Write(Context.SettingsDirectory, pending))
-        {
-            return (null, "WinGnome couldn't record the current display settings, so it didn't change them.");
-        }
-
-        var (applied, restored) = DisplayService.ApplyTemporarily(target, original);
-        if (applied)
-        {
-            return (pending, null);
-        }
-
-        if (restored)
-        {
-            DisplayRevertFile.Delete(Context.SettingsDirectory);
-            return (null, "Windows didn't accept the new display settings, so nothing changed.");
-        }
-
-        return (null, "Windows didn't accept the new display settings and WinGnome couldn't put the old ones back. It will try again when it next starts; you can also fix them in Windows Settings.");
-    }
-
-    private void OnApplied((DisplayRevert? Pending, string? Problem) outcome)
+    private void OnApplied(DisplayApplyOutcome outcome)
     {
         SetApplying(false);
         if (outcome.Pending is not { } pending)
         {
-            Problem = outcome.Problem;
+            Problem = outcome.Result switch
+            {
+                DisplayApplyResult.NoChange => null,
+                DisplayApplyResult.DisplaysChanged => "The displays changed while you were editing. Your changes were reset; try again.",
+                DisplayApplyResult.Rejected => "Windows can't show this display configuration. Choose another resolution or refresh rate.",
+                DisplayApplyResult.NotRecorded => "WinGnome couldn't record the current display settings, so it didn't change them.",
+                DisplayApplyResult.FailedAndRestored => "Windows didn't accept the new display settings, so nothing changed.",
+                _ => "Windows didn't accept the new display settings and WinGnome couldn't put the old ones back. It will try again when it next starts; you can also fix them in Windows Settings.",
+            };
             if (_open)
             {
                 Load();
@@ -442,6 +415,10 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
         OnPropertyChanged(nameof(CountdownText));
     }
 
+    /// <summary>
+    /// Keep Changes: the record is deleted here, on the UI thread, before anything is saved, so a crash in between
+    /// can't revert a kept change; a change that already went away is not saved.
+    /// </summary>
     private void Keep()
     {
         if (!_countdown.Keep() || _pending is not { } pending)
@@ -453,13 +430,22 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
         _pending = null;
         OnPropertyChanged(nameof(IsWaiting));
         CommandManager.InvalidateRequerySuggested();
-        Log.Info("Display change kept");
-        _writer.Run("save the kept display settings", () =>
+        if (!_flow.BeginKeep(pending))
         {
-            var saved = DisplayService.Persist(pending.Target);
-            DisplayRevertFile.Delete(Context.SettingsDirectory);
-            return saved;
-        }, () => Problem = "The new display settings are showing, but Windows didn't save them; they'll be undone when you sign out.");
+            Log.Info("Display change was no longer showing when kept; nothing to save");
+            Load();
+            return;
+        }
+
+        Log.Info("Display change kept");
+        DisplayWork.Enqueue("save the kept display settings", () =>
+        {
+            if (!_flow.Persist(pending))
+            {
+                Context.Dispatcher.BeginInvoke(() => Problem =
+                    "The new display settings are showing, but Windows didn't save them; they'll be undone when you sign out.");
+            }
+        });
     }
 
     private void Revert()
@@ -477,46 +463,32 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
         CommandManager.InvalidateRequerySuggested();
         if (_pending is { } pending)
         {
+            _pending = null;
             RevertInBackground(pending);
         }
     }
 
-    /// <summary>Puts back the settings from before the change on the writer thread, then re-reads if the panel is open.</summary>
+    /// <summary>Puts back the settings from before the change on the display queue, then re-reads if the panel is open.</summary>
     private void RevertInBackground(DisplayRevert pending)
     {
-        _pending = null;
         SetApplying(true);
-        _writer.Run("revert the display settings", () =>
+        DisplayWork.Enqueue("revert the display settings", () =>
         {
-            var restored = RevertAndForget(pending);
+            var restored = _flow.Revert(pending);
             Context.Dispatcher.BeginInvoke(() =>
             {
                 SetApplying(false);
+                if (!restored)
+                {
+                    Problem = "WinGnome couldn't put the previous display settings back. It will try again when it next starts.";
+                }
+
                 if (_open)
                 {
                     Load();
                 }
             });
-            return restored;
-        }, () => Problem = "WinGnome couldn't put the previous display settings back. It will try again when it next starts.");
-    }
-
-    private void RevertNow(DisplayRevert pending)
-    {
-        _pending = null;
-        RevertAndForget(pending);
-    }
-
-    /// <summary>Reverts and deletes the record only when the displays really show the original again.</summary>
-    private bool RevertAndForget(DisplayRevert pending)
-    {
-        var restored = DisplayService.Revert(pending.Original);
-        if (restored)
-        {
-            DisplayRevertFile.Delete(Context.SettingsDirectory);
-        }
-
-        return restored;
+        });
     }
 
     private void SetApplying(bool applying)

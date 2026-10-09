@@ -87,6 +87,13 @@ internal sealed partial class SettingsWindow : Window, IDialogService
         }
     }
 
+    /// <summary>Closes the window because WinGnome is quitting: an unconfirmed display change is reverted before this returns.</summary>
+    public void CloseForShutdown()
+    {
+        _viewModel.PrepareForShutdown();
+        Close();
+    }
+
     /// <summary>Shows a panel by id (see <c>PanelIds</c>).</summary>
     public void ShowPanel(string panelId) => _viewModel.ShowPanel(panelId);
 

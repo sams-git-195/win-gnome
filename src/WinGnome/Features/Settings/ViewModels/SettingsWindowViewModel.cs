@@ -156,6 +156,15 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>WinGnome is quitting: pages that would finish work in the background must finish it on close instead.</summary>
+    public void PrepareForShutdown()
+    {
+        foreach (var displays in Pages.OfType<DisplaysPanelViewModel>())
+        {
+            displays.RevertAtOnceOnClose = true;
+        }
+    }
+
     /// <summary>Opens a link entry's Windows Settings page (or control panel); the current page stays.</summary>
     public void OpenLinkEntry(SidebarEntry entry)
     {
