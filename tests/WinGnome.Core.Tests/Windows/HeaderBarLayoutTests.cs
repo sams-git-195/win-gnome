@@ -159,23 +159,41 @@ public class HeaderBarLayoutTests
         Assert.Null(CaptionButtonLayout.ComputeForHeaderBar(width, height, Settings()));
     }
 
-    [Theory]
-    [InlineData(ButtonSide.Right, ButtonOrder.MinimizeMaximizeClose)]
-    [InlineData(ButtonSide.Left, ButtonOrder.CloseMinimizeMaximize)]
-    public void ComputeForHeaderBar_MatchesTheSyntheticWindowTheSettingsPreviewUsedToBuild(ButtonSide side, ButtonOrder order)
+    // The settings preview's 400 x 36 bar: the geometry it built by hand before ComputeForHeaderBar existed
+    // (a 138 DIP native block at the right of a 400 DIP window at 100 %).
+    [Fact]
+    public void ComputeForHeaderBar_PreviewBarOnTheRight_KeepsThePreviewGeometry()
+    {
+        var layout = CaptionButtonLayout.ComputeForHeaderBar(400, 36, Settings())!;
+
+        Assert.Equal(new PixelRect(262, 0, 400, 36), layout.Bounds);
+        Assert.Equal(14, layout.Diameter);
+        Assert.Equal(
+            [
+                new CaptionButtonSlot(CaptionButtonKind.Minimize, 75, 18),
+                new CaptionButtonSlot(CaptionButtonKind.Maximize, 97, 18),
+                new CaptionButtonSlot(CaptionButtonKind.Close, 119, 18),
+            ],
+            layout.Buttons);
+    }
+
+    [Fact]
+    public void ComputeForHeaderBar_PreviewBarOnTheLeft_KeepsThePreviewGeometry()
     {
         var settings = Settings();
-        settings.Side = side;
-        settings.Order = order;
-        var window = PixelRect.FromSize(0, 0, 400, 36);
-        var native = new PixelRect(262, 0, 400, 36);
+        settings.Side = ButtonSide.Left;
+        settings.Order = ButtonOrder.CloseMinimizeMaximize;
 
-        var expected = CaptionButtonLayout.Compute(native, window, 1.0, settings)!;
-        var actual = CaptionButtonLayout.ComputeForHeaderBar(400, 36, settings)!;
+        var layout = CaptionButtonLayout.ComputeForHeaderBar(400, 36, settings)!;
 
-        Assert.Equal(expected.Bounds, actual.Bounds);
-        Assert.Equal(expected.Diameter, actual.Diameter);
-        Assert.Equal(expected.Buttons, actual.Buttons);
+        Assert.Equal(new PixelRect(8, 0, 90, 36), layout.Bounds);
+        Assert.Equal(
+            [
+                new CaptionButtonSlot(CaptionButtonKind.Close, 19, 18),
+                new CaptionButtonSlot(CaptionButtonKind.Minimize, 41, 18),
+                new CaptionButtonSlot(CaptionButtonKind.Maximize, 63, 18),
+            ],
+            layout.Buttons);
     }
 
     // Default layout in a 940 x 46 bar: the maximise target spans bar x 888-910 (centre 899, pitch 22).
@@ -210,6 +228,55 @@ public class HeaderBarLayoutTests
         Assert.Equal(CaptionButtonKind.Maximize, CaptionButtonHitTest.FindInHeaderBar(Bar(), 1361, 13, 1.5, 8, 8));
         Assert.Null(CaptionButtonHitTest.FindInHeaderBar(Bar(), 1361, 11, 1.5, 8, 8));
         Assert.Equal(CaptionButtonKind.Minimize, CaptionButtonHitTest.FindInHeaderBar(Bar(), 1343, 30, 1.5, 8, 8));
+    }
+
+    [Theory]
+    [InlineData(899, 23, 1.0, CaptionButtonKind.Maximize)]    // 100 %: pixels are DIPs
+    [InlineData(887, 23, 1.0, CaptionButtonKind.Minimize)]
+    [InlineData(1124, 29, 1.25, CaptionButtonKind.Maximize)]  // 899.2
+    [InlineData(1109, 29, 1.25, CaptionButtonKind.Minimize)]  // 887.2
+    public void FindInHeaderBar_OtherScales_MapPixelsToButtons(int x, int y, double scale, CaptionButtonKind expected)
+    {
+        Assert.Equal(expected, CaptionButtonHitTest.FindInHeaderBar(Bar(), x, y, scale, 0, 0));
+    }
+
+    [Theory]
+    [InlineData(70, CaptionButtonKind.Maximize)]    // centres at bar x 27, 49, 71 (group starts 8 DIPs in)
+    [InlineData(60, CaptionButtonKind.Maximize)]    // the maximise target's left edge
+    [InlineData(59, CaptionButtonKind.Minimize)]
+    [InlineData(16, CaptionButtonKind.Close)]
+    public void FindInHeaderBar_LeftSide_MapsDipsToButtons(int x, CaptionButtonKind expected)
+    {
+        var settings = Settings();
+        settings.Side = ButtonSide.Left;
+        settings.Order = ButtonOrder.CloseMinimizeMaximize;
+        var layout = CaptionButtonLayout.ComputeForHeaderBar(940, 46, settings)!;
+
+        Assert.Equal(expected, CaptionButtonHitTest.FindInHeaderBar(layout, x, 23, 1.0, 0, 0));
+    }
+
+    [Theory]
+    [InlineData(4)]     // left padding, outside the group
+    [InlineData(95)]    // right of the group
+    public void FindInHeaderBar_LeftSidePadding_HitsNothing(int x)
+    {
+        var settings = Settings();
+        settings.Side = ButtonSide.Left;
+        var layout = CaptionButtonLayout.ComputeForHeaderBar(940, 46, settings)!;
+
+        Assert.Null(CaptionButtonHitTest.FindInHeaderBar(layout, x, 23, 1.0, 0, 0));
+    }
+
+    [Theory]
+    [InlineData(921, CaptionButtonKind.Close)]   // the close circle's centre (bar x 802 + 119)
+    [InlineData(914, CaptionButtonKind.Close)]   // a lone circle's target is its diameter
+    [InlineData(913, null)]
+    [InlineData(928, null)]
+    public void FindInHeaderBar_CloseOnly_HasOneTarget(int x, CaptionButtonKind? expected)
+    {
+        var layout = CaptionButtonLayout.ComputeForHeaderBar(940, 46, Settings(), closeOnly: true)!;
+
+        Assert.Equal(expected, CaptionButtonHitTest.FindInHeaderBar(layout, x, 23, 1.0, 0, 0));
     }
 
     [Theory]

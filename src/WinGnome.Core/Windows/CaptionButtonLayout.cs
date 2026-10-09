@@ -77,7 +77,8 @@ public static class CaptionButtonLayout
         var available = Math.Max(0, widthDip - (Padding * 2));
         if (naturalGroup > available + 1e-6)
         {
-            if (count * diameter <= available)
+            // count > 1 also keeps the division safe; a lone circle has no spacing to shrink.
+            if (count > 1 && count * diameter <= available)
             {
                 spacing = (available - (count * diameter)) / (count - 1);
             }
