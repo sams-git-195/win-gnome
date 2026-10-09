@@ -175,4 +175,26 @@ public class SettingsPanelCatalogTests
 
         Assert.Equal([PanelIds.Multitasking, PanelIds.Activities], results.Select(p => p.Id).ToList());
     }
+
+    [Theory]
+    [InlineData(PanelIds.Wifi, "ms-settings:network-wifi")]
+    [InlineData(PanelIds.Bluetooth, "ms-settings:bluetooth")]
+    [InlineData(PanelIds.Network, "ms-settings:network-status")]
+    public void DirectLinkFor_LinkPanel_ReturnsItsPage(string panelId, string expected)
+    {
+        Assert.Equal(expected, SettingsPanelCatalog.DirectLinkFor(panelId));
+    }
+
+    [Theory]
+    [InlineData(PanelIds.Sound)]
+    [InlineData(PanelIds.Displays)]
+    [InlineData(PanelIds.Power)]
+    [InlineData(PanelIds.DateTime)]
+    [InlineData(PanelIds.About)]
+    [InlineData(PanelIds.General)]
+    [InlineData("no-such-panel")]
+    public void DirectLinkFor_NativePageOrUnknown_ReturnsNull(string panelId)
+    {
+        Assert.Null(SettingsPanelCatalog.DirectLinkFor(panelId));
+    }
 }

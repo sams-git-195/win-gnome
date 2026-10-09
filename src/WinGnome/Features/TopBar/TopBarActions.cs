@@ -1,4 +1,5 @@
 using System.IO;
+using WinGnome.Core.ControlCenter;
 using WinGnome.Features.TopBar.Popups;
 using WinGnome.Features.TopBar.Services;
 using WinGnome.Infrastructure;
@@ -12,10 +13,13 @@ internal enum TopBarAction
     DateTimeSettings,
     WifiSettings,
     BluetoothSettings,
+    SoundSettings,
+    DisplaySettings,
+    PowerSettings,
     WindowsQuickSettings,
     ShowSystemTray,
     Screenshot,
-    WindowsSettings,
+    Settings,
     WinGnomeSettings,
     AboutThisPc,
     MicrosoftStore,
@@ -44,13 +48,22 @@ internal sealed class TopBarActions(ShellContext context)
                 ShellShortcuts.OpenNotificationCenter();
                 break;
             case TopBarAction.DateTimeSettings:
-                context.Launcher.Launch("ms-settings:dateandtime");
+                OpenSettingsPanel(PanelIds.DateTime);
                 break;
             case TopBarAction.WifiSettings:
-                context.Launcher.Launch("ms-settings:network-wifi");
+                OpenSettingsPanel(PanelIds.Wifi);
                 break;
             case TopBarAction.BluetoothSettings:
-                context.Launcher.Launch("ms-settings:bluetooth");
+                OpenSettingsPanel(PanelIds.Bluetooth);
+                break;
+            case TopBarAction.SoundSettings:
+                OpenSettingsPanel(PanelIds.Sound);
+                break;
+            case TopBarAction.DisplaySettings:
+                OpenSettingsPanel(PanelIds.Displays);
+                break;
+            case TopBarAction.PowerSettings:
+                OpenSettingsPanel(PanelIds.Power);
                 break;
             case TopBarAction.WindowsQuickSettings:
                 ShellShortcuts.OpenWindowsQuickSettings();
@@ -62,14 +75,15 @@ internal sealed class TopBarActions(ShellContext context)
             case TopBarAction.Screenshot:
                 ShellShortcuts.StartScreenshot();
                 break;
-            case TopBarAction.WindowsSettings:
-                context.Launcher.Launch("ms-settings:");
-                break;
-            case TopBarAction.WinGnomeSettings:
+            case TopBarAction.Settings:
+                // The settings window as the user left it, or its first page.
                 context.Commands.ShowSettings();
                 break;
+            case TopBarAction.WinGnomeSettings:
+                OpenSettingsPanel(PanelIds.General);
+                break;
             case TopBarAction.AboutThisPc:
-                context.Launcher.Launch("ms-settings:about");
+                OpenSettingsPanel(PanelIds.About);
                 break;
             case TopBarAction.MicrosoftStore:
                 context.Launcher.Launch("ms-windows-store:");
@@ -86,6 +100,22 @@ internal sealed class TopBarActions(ShellContext context)
             default:
                 ExecutePowerAction(action);
                 break;
+        }
+    }
+
+    /// <summary>
+    /// Shows a panel of the settings app through <see cref="ShellCommands"/>. Link panels (Wi-Fi, Bluetooth) open their
+    /// Windows Settings page straight away, so the row doesn't also bring up the settings window.
+    /// </summary>
+    private void OpenSettingsPanel(string panelId)
+    {
+        if (SettingsPanelCatalog.DirectLinkFor(panelId) is { } link)
+        {
+            context.Launcher.Launch(link);
+        }
+        else
+        {
+            context.Commands.ShowSettings(panelId);
         }
     }
 

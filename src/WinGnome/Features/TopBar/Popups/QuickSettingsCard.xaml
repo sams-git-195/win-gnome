@@ -25,6 +25,17 @@
             </Style>
 
             <!-- Wi-Fi tile turns accent-coloured while connected over Wi-Fi, like an active GNOME toggle. -->
+            <!-- Small chevron at the end of a slider row that opens the matching settings panel (GNOME's menu arrow). -->
+            <Style x:Key="RowSettingsButton" TargetType="Button" BasedOn="{StaticResource QuickRoundButton}">
+                <Setter Property="Width" Value="32" />
+                <Setter Property="Height" Value="32" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Content" Value="&#xE76C;" />
+                <Setter Property="Margin" Value="4,0,0,0" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+
             <Style x:Key="WifiTile" TargetType="Button" BasedOn="{StaticResource QuickTile}">
                 <Style.Triggers>
                     <DataTrigger Binding="{Binding IsWifiConnected}" Value="True">
@@ -37,39 +48,47 @@
     </UserControl.Resources>
 
     <StackPanel Margin="4">
-        <!-- Volume: mute toggle, live slider, percentage. Scrolling anywhere on the row also changes the volume. -->
-        <Grid Margin="4,2,4,10" IsEnabled="{Binding IsVolumeAvailable}" Background="Transparent" MouseWheel="OnVolumeWheel">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="44" />
-            </Grid.ColumnDefinitions>
-            <Button Style="{StaticResource QuickRoundButton}" Background="Transparent" ToolTip="Mute" Click="OnMuteClick">
-                <controls:SymbolicIcon Icon="{Binding VolumeIcon}" />
-            </Button>
-            <Slider Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Style="{StaticResource QuickSlider}"
-                    Value="{Binding VolumePercent, Mode=TwoWay}" />
-            <TextBlock Grid.Column="2" Text="{Binding VolumeText}" VerticalAlignment="Center" HorizontalAlignment="Right"
-                       Foreground="{DynamicResource SecondaryForegroundBrush}" />
-        </Grid>
+        <!-- Volume: mute toggle, live slider, percentage. Scrolling anywhere on the row also changes the volume. The
+             chevron opens the Sound panel and stays enabled without an audio device, when it is most useful. -->
+        <DockPanel Margin="4,2,4,10">
+            <Button DockPanel.Dock="Right" Style="{StaticResource RowSettingsButton}" ToolTip="Sound settings"
+                    AutomationProperties.Name="Sound settings" Tag="{x:Static local:TopBarAction.SoundSettings}" Click="OnActionClick" />
+            <Grid IsEnabled="{Binding IsVolumeAvailable}" Background="Transparent" MouseWheel="OnVolumeWheel">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="44" />
+                </Grid.ColumnDefinitions>
+                <Button Style="{StaticResource QuickRoundButton}" Background="Transparent" ToolTip="Mute" Click="OnMuteClick">
+                    <controls:SymbolicIcon Icon="{Binding VolumeIcon}" />
+                </Button>
+                <Slider Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Style="{StaticResource QuickSlider}"
+                        Value="{Binding VolumePercent, Mode=TwoWay}" />
+                <TextBlock Grid.Column="2" Text="{Binding VolumeText}" VerticalAlignment="Center" HorizontalAlignment="Right"
+                           Foreground="{DynamicResource SecondaryForegroundBrush}" />
+            </Grid>
+        </DockPanel>
 
         <!-- Brightness: same row as the volume, minus the mute button. Hidden when no panel supports brightness control. -->
-        <Grid Margin="4,0,4,10" Visibility="{Binding IsBrightnessAvailable, Converter={StaticResource VisibleWhen}}"
-              Background="Transparent" MouseWheel="OnBrightnessWheel">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="44" />
-            </Grid.ColumnDefinitions>
-            <!-- Purely an icon: not clickable, so it takes no hover or press highlight. -->
-            <Button Style="{StaticResource QuickRoundButton}" Background="Transparent" Content="&#xE706;"
-                    IsHitTestVisible="False" IsTabStop="False" Focusable="False" />
-            <Slider Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Style="{StaticResource QuickSlider}"
-                    Value="{Binding BrightnessPercent, Mode=TwoWay}" AutomationProperties.Name="Screen brightness"
-                    PreviewKeyDown="OnBrightnessKeyDown" />
-            <TextBlock Grid.Column="2" Text="{Binding BrightnessText}" VerticalAlignment="Center" HorizontalAlignment="Right"
-                       Foreground="{DynamicResource SecondaryForegroundBrush}" />
-        </Grid>
+        <DockPanel Margin="4,0,4,10" Visibility="{Binding IsBrightnessAvailable, Converter={StaticResource VisibleWhen}}">
+            <Button DockPanel.Dock="Right" Style="{StaticResource RowSettingsButton}" ToolTip="Display settings"
+                    AutomationProperties.Name="Display settings" Tag="{x:Static local:TopBarAction.DisplaySettings}" Click="OnActionClick" />
+            <Grid Background="Transparent" MouseWheel="OnBrightnessWheel">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="44" />
+                </Grid.ColumnDefinitions>
+                <!-- Purely an icon: not clickable, so it takes no hover or press highlight. -->
+                <Button Style="{StaticResource QuickRoundButton}" Background="Transparent" Content="&#xE706;"
+                        IsHitTestVisible="False" IsTabStop="False" Focusable="False" />
+                <Slider Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Style="{StaticResource QuickSlider}"
+                        Value="{Binding BrightnessPercent, Mode=TwoWay}" AutomationProperties.Name="Screen brightness"
+                        PreviewKeyDown="OnBrightnessKeyDown" />
+                <TextBlock Grid.Column="2" Text="{Binding BrightnessText}" VerticalAlignment="Center" HorizontalAlignment="Right"
+                           Foreground="{DynamicResource SecondaryForegroundBrush}" />
+            </Grid>
+        </DockPanel>
 
         <!-- Tiles. -->
         <UniformGrid Columns="2">
@@ -114,11 +133,15 @@
             </Button>
         </UniformGrid>
 
-        <!-- Battery. -->
-        <StackPanel Orientation="Horizontal" Margin="10,10,10,0" Visibility="{Binding HasBattery, Converter={StaticResource VisibleWhen}}">
-            <controls:SymbolicIcon Icon="{Binding BatteryIcon}" Margin="0,0,10,0" VerticalAlignment="Center" />
-            <TextBlock Text="{Binding BatterySummary}" VerticalAlignment="Center" />
-        </StackPanel>
+        <!-- Battery: opens the Power panel. -->
+        <Button Style="{StaticResource MenuRowButton}" Margin="4,6,4,0" Padding="6,4" ToolTip="Power settings"
+                Visibility="{Binding HasBattery, Converter={StaticResource VisibleWhen}}"
+                Tag="{x:Static local:TopBarAction.PowerSettings}" Click="OnActionClick">
+            <StackPanel Orientation="Horizontal">
+                <controls:SymbolicIcon Icon="{Binding BatteryIcon}" Margin="0,0,10,0" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding BatterySummary}" VerticalAlignment="Center" />
+            </StackPanel>
+        </Button>
 
         <Border Height="1" Margin="4,12,4,10" Background="{DynamicResource BorderBrush}" />
 
@@ -126,8 +149,8 @@
         <DockPanel Margin="4,0,4,2" LastChildFill="False">
             <Button Style="{StaticResource QuickRoundButton}" Content="&#xE924;" ToolTip="Take a screenshot" Margin="0,0,8,0"
                     Tag="{x:Static local:TopBarAction.Screenshot}" Click="OnActionClick" />
-            <Button Style="{StaticResource QuickRoundButton}" Content="&#xE713;" ToolTip="Windows Settings" Margin="0,0,8,0"
-                    Tag="{x:Static local:TopBarAction.WindowsSettings}" Click="OnActionClick" />
+            <Button Style="{StaticResource QuickRoundButton}" Content="&#xE713;" ToolTip="Settings" Margin="0,0,8,0"
+                    Tag="{x:Static local:TopBarAction.Settings}" Click="OnActionClick" />
             <Button Style="{StaticResource QuickRoundButton}" Content="&#xE9F5;" ToolTip="WinGnome settings"
                     Tag="{x:Static local:TopBarAction.WinGnomeSettings}" Click="OnActionClick" />
             <Button x:Name="PowerButton" DockPanel.Dock="Right" Style="{StaticResource QuickRoundButton}"

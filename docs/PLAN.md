@@ -46,6 +46,7 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | Namespace | Type | Purpose |
 |---|---|---|
 | Settings | `AppSettings`, `SettingsStore`, `SettingsSerializer` | Persisted config, JSON in `%APPDATA%\WinGnome` |
+| Settings | `SettingsActivationRequest` | Format and validation of the `settings-request.txt` a second launch leaves for the running instance (`--settings-panel`) |
 | Theming | `HexColor`, `TrafficLightPalette` | Colour parsing, presets → `TrafficLightColors` |
 | Input | `Hotkey`, `SuperKeyStateMachine`, `HotCornerDetector` | Hotkey parsing, the "Win alone" detector, corner dwell |
 | Geometry | `PixelRect`, `LayoutRect`, `LayoutSize`, `BackdropPlacement` | Integer screen rectangles, double layout rectangles, blur backdrop inset under rounded bodies |
@@ -62,7 +63,7 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | Tray | `ShellTrayData`, `TrayIconRegistry`, `TrayFrontCheckSchedule` | Tray-host message parsing, icon list, how often the host re-checks it is in front |
 | Collections | `LruCache`, `DeadlineSchedule` | Bounded least-recently-used cache; one deadline per key for debouncing on a single timer |
 | Workspaces | `VirtualDesktopState` | Parses Explorer's virtual-desktop registry blobs |
-| ControlCenter | `SettingsPanelCatalog`, `SettingsPanel`, `PanelIds`, `DisplayArrangement`, `KeepChangesCountdown`, `DisplayRevertRecord`, `DisplayModes`, `PowerTimeouts`, `TimeZoneList`, `InputTuning`, `SystemInfoText` | The GNOME Settings style app (spec 0015): sidebar panels, groups, links and search; display arrangement geometry (edge snapping, primary at the origin, preview fit), the 15-second keep-or-revert state machine and the crash-safe revert record; resolution and refresh choices; GNOME's power timeouts; time zone ordering and search; SystemParametersInfo value ranges; About and Sound text |
+| ControlCenter | `SettingsPanelCatalog` (incl. `DirectLinkFor`), `SettingsPanel`, `PanelIds`, `DisplayArrangement`, `KeepChangesCountdown`, `DisplayRevertRecord`, `DisplayModes`, `PowerTimeouts`, `TimeZoneList`, `InputTuning`, `SystemInfoText` | The GNOME Settings style app (spec 0015): sidebar panels, groups, links and search; display arrangement geometry (edge snapping, primary at the origin, preview fit), the 15-second keep-or-revert state machine and the crash-safe revert record; resolution and refresh choices; GNOME's power timeouts; time zone ordering and search; SystemParametersInfo value ranges; About and Sound text |
 | Tweaks | `TweakCatalog`, `TweakDefinition`, `RegistryChange`, `IRegistryStore`, `TweakEngine`, `TweakBackup`, `AccentColorChanges` | Reversible HKCU tweaks, accent-colour registry values (also read back and handed to Windows by the Appearance panel) |
 
 ## App modules (WinGnome)
