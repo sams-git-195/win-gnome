@@ -47,6 +47,29 @@ public class SettingsSerializerTests
     }
 
     [Fact]
+    public void Deserialize_PinWithoutRunAsAdministratorField_KeepsItOff()
+    {
+        // A settings file written before PinnedApp.RunAsAdministrator existed.
+        var settings = SettingsSerializer.Deserialize(
+            """{ "Dock": { "PinnedApps": [ { "Name": "Terminal", "LaunchId": "Microsoft.WindowsTerminal", "Arguments": null } ] } }""");
+
+        var pin = Assert.Single(settings.Dock.PinnedApps);
+        Assert.Equal("Microsoft.WindowsTerminal", pin.LaunchId);
+        Assert.False(pin.RunAsAdministrator);
+    }
+
+    [Fact]
+    public void RoundTrip_PreservesRunAsAdministrator()
+    {
+        var original = new AppSettings();
+        original.Dock.PinnedApps = [new PinnedApp { Name = "Terminal", LaunchId = "Microsoft.WindowsTerminal", RunAsAdministrator = true }];
+
+        var copy = SettingsSerializer.Deserialize(SettingsSerializer.Serialize(original));
+
+        Assert.True(Assert.Single(copy.Dock.PinnedApps).RunAsAdministrator);
+    }
+
+    [Fact]
     public void Deserialize_WindowButtonsWithoutCustomTitleBarField_KeepsItOff()
     {
         // A settings file written before DecorateCustomTitleBars existed.

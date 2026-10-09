@@ -105,4 +105,58 @@ public class DockPinsTests
         Assert.Equal("Paint.net", pin.Name);
         Assert.Equal(@"C:\Users\me\Desktop\paint.net.lnk", pin.LaunchId);
     }
+
+    [Fact]
+    public void Find_IgnoresCase_AndReturnsNullWhenMissing()
+    {
+        var pins = Pins("a", "B");
+
+        Assert.Same(pins[1], DockPins.Find(pins, "b"));
+        Assert.Null(DockPins.Find(pins, "c"));
+    }
+
+    [Fact]
+    public void SetRunAsAdministrator_ChangesOnlyThatPin_AndKeepsItsOtherFields()
+    {
+        var pins = Pins("a", "b");
+        pins[1].Arguments = "--dev";
+
+        var result = DockPins.SetRunAsAdministrator(pins, "B", true);
+
+        Assert.Equal(["a", "b"], Ids(result));
+        Assert.False(result[0].RunAsAdministrator);
+        Assert.True(result[1].RunAsAdministrator);
+        Assert.Equal("b", result[1].Name);
+        Assert.Equal("--dev", result[1].Arguments);
+    }
+
+    [Fact]
+    public void SetRunAsAdministrator_DoesNotModifyTheInput()
+    {
+        var pins = Pins("a");
+
+        _ = DockPins.SetRunAsAdministrator(pins, "a", true);
+
+        Assert.False(pins[0].RunAsAdministrator);
+    }
+
+    [Fact]
+    public void SetRunAsAdministrator_Off_ClearsTheFlag()
+    {
+        var pins = Pins("a");
+        pins[0].RunAsAdministrator = true;
+
+        Assert.False(DockPins.SetRunAsAdministrator(pins, "a", false)[0].RunAsAdministrator);
+    }
+
+    [Fact]
+    public void SetRunAsAdministrator_UnknownId_ReturnsAnUnchangedCopy()
+    {
+        var pins = Pins("a");
+
+        var result = DockPins.SetRunAsAdministrator(pins, "zz", true);
+
+        Assert.Equal(["a"], Ids(result));
+        Assert.False(result[0].RunAsAdministrator);
+    }
 }

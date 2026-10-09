@@ -11,12 +11,13 @@ namespace WinGnome.Services.Apps;
 
 /// <summary>
 /// Starts apps from dock pins and search results. Launch ids can be URIs, file paths, packaged AUMIDs,
-/// desktop AUMIDs or known-folder AppsFolder parsing names.
+/// desktop AUMIDs or known-folder AppsFolder parsing names. Everything is launched in-process; nothing goes
+/// through explorer.exe, so launching never starts Explorer (which matters when Explorer is not the shell).
 /// </summary>
 internal sealed class AppLauncher : IAppLauncher
 {
-    private static readonly string ExplorerPath =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
+    private const string AppsFolderPrefix = "shell:AppsFolder\\";
+    private const string RunAsVerb = "runas";
 
     private readonly Func<string, string> _resolvePath;
 
@@ -27,44 +28,39 @@ internal sealed class AppLauncher : IAppLauncher
         _resolvePath = resolvePath;
     }
 
-    public bool Launch(string launchId, string? arguments = null)
+    public bool Launch(string launchId, string? arguments = null) =>
+        Launch(new LaunchRequest(launchId ?? "", arguments, Elevate: false), started: null);
+
+    public bool Launch(LaunchRequest request, Action? started = null)
     {
-        if (string.IsNullOrWhiteSpace(launchId))
+        ArgumentNullException.ThrowIfNull(request);
+        if (string.IsNullOrWhiteSpace(request.LaunchId))
         {
             Log.Warn("AppLauncher: empty launch id");
             return false;
         }
 
-        var id = launchId.Trim();
+        var id = request.LaunchId.Trim();
 
         // We are (usually) the foreground process right after a click; let the new app take focus.
         NativeMethods.AllowSetForegroundWindow(NativeMethods.ASFW_ANY);
         try
         {
-            if (IsUri(id))
+            // LaunchPlanner decides elevation (full-trust packaged apps need the catalogue's host, which this class
+            // doesn't have); URIs are handed to their scheme's handler and are never elevated.
+            if (request.Elevate && !LaunchPlanner.IsUri(id))
             {
-                return ShellExecute(id, arguments: null, workingDirectory: null);
-            }
-
-            if (Path.IsPathRooted(id) && File.Exists(id))
-            {
-                return StartFile(id, arguments);
-            }
-
-            if (KnownFolderPath.TryParse(id, out _, out _) && _resolvePath(id) is { } resolved
-                && Path.IsPathRooted(resolved) && File.Exists(resolved)
-                && resolved.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-            {
-                return StartFile(resolved, arguments);
-            }
-
-            if (id.Contains('!'))
-            {
-                ActivatePackagedApp(id, arguments);
+                LaunchElevated(id, request.Arguments, started);
                 return true;
             }
 
-            return StartViaAppsFolder(id);
+            if (!LaunchNormally(id, request.Arguments))
+            {
+                return false;
+            }
+
+            started?.Invoke();
+            return true;
         }
         catch (Exception ex) when (ex is Win32Exception or FileNotFoundException or COMException or InvalidOperationException)
         {
@@ -73,35 +69,73 @@ internal sealed class AppLauncher : IAppLauncher
         }
     }
 
+    private bool LaunchNormally(string id, string? arguments)
+    {
+        if (LaunchPlanner.IsUri(id))
+        {
+            return ShellExecute(id, arguments: null, workingDirectory: null);
+        }
+
+        if (ExistingFile(id) is { } path)
+        {
+            return ShellExecute(path, arguments, WorkingDirectoryFor(path));
+        }
+
+        if (id.Contains('!'))
+        {
+            ActivatePackagedApp(id, arguments);
+            return true;
+        }
+
+        return OpenAppsFolderItem(id, verb: null);
+    }
+
     /// <summary>
-    /// True for "scheme:rest" strings such as "ms-settings:", "shell:RecycleBinFolder" or "https://...".
-    /// A scheme is at least two characters, so drive-letter paths ("C:\...") never qualify.
+    /// Starts <paramref name="id"/> with the "runas" verb on its own STA thread, because ShellExecuteEx waits there
+    /// until the UAC prompt is answered. <paramref name="started"/> is posted back to the calling thread only when
+    /// the user accepted; packaged apps are elevated through their AppsFolder item, as Start does.
     /// </summary>
-    private static bool IsUri(string id)
+    private void LaunchElevated(string id, string? arguments, Action? started)
     {
-        var colon = id.IndexOf(':', StringComparison.Ordinal);
-        if (colon < 2 || !char.IsAsciiLetter(id[0]))
+        var path = ExistingFile(id);
+        var context = SynchronizationContext.Current;
+        RunOnShellThread(id, () =>
         {
-            return false;
-        }
-
-        foreach (var c in id.AsSpan(0, colon))
-        {
-            if (!char.IsAsciiLetterOrDigit(c) && c is not ('+' or '-' or '.'))
+            var ok = path is not null
+                ? ShellExecuteElevated(path, arguments, WorkingDirectoryFor(path))
+                : OpenAppsFolderItem(id, RunAsVerb);
+            if (ok && started is not null)
             {
-                return false;
+                if (context is null)
+                {
+                    started();
+                }
+                else
+                {
+                    context.Post(_ => started(), null);
+                }
             }
+        });
+    }
+
+    /// <summary>The file a launch id names: an existing path, or a known-folder "{GUID}\app.exe" that resolves to one.</summary>
+    private string? ExistingFile(string id)
+    {
+        if (Path.IsPathRooted(id) && File.Exists(id))
+        {
+            return id;
         }
 
-        return true;
+        return KnownFolderPath.TryParse(id, out _, out _) && _resolvePath(id) is { } resolved
+            && Path.IsPathRooted(resolved) && File.Exists(resolved)
+            && resolved.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                ? resolved
+                : null;
     }
 
-    /// <summary>Opens an existing file. Executables start in their own folder; shortcuts keep their "Start in".</summary>
-    private static bool StartFile(string path, string? arguments)
-    {
-        var workingDirectory = path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? Path.GetDirectoryName(path) : null;
-        return ShellExecute(path, arguments, workingDirectory);
-    }
+    /// <summary>Executables start in their own folder; shortcuts keep their "Start in".</summary>
+    private static string? WorkingDirectoryFor(string path) =>
+        path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? Path.GetDirectoryName(path) : null;
 
     private static bool ShellExecute(string target, string? arguments, string? workingDirectory)
     {
@@ -121,42 +155,119 @@ internal sealed class AppLauncher : IAppLauncher
         return true;
     }
 
-    /// <summary>
-    /// Asks Explorer to open the AppsFolder item, exactly like clicking it in Start. Explorer has no way to
-    /// pass arguments to such items, so any arguments are ignored.
-    /// </summary>
-    private static bool StartViaAppsFolder(string id)
+    private static bool ShellExecuteElevated(string path, string? arguments, string? workingDirectory)
     {
-        var info = new ProcessStartInfo(ExplorerPath) { UseShellExecute = false };
-        info.ArgumentList.Add("shell:AppsFolder\\" + id);
-        using var process = Process.Start(info);
-        return true;
+        var info = NewExecuteInfo(RunAsVerb);
+        info.lpFile = path;
+        info.lpParameters = string.IsNullOrEmpty(arguments) ? null : arguments;
+        info.lpDirectory = workingDirectory;
+        return Execute(ref info, path);
     }
 
     /// <summary>
-    /// Activates a packaged app through IApplicationActivationManager, falling back to Explorer.
-    /// ActivateApplication blocks until the app has started (seconds on a cold start), so it runs on a
-    /// worker thread to keep the dock responsive; failures are logged there.
+    /// Invokes an AppsFolder item like clicking it in Start, through its ID list, so it runs in this process
+    /// rather than via explorer.exe. AppsFolder items take no arguments, so any are ignored.
     /// </summary>
-    private static void ActivatePackagedApp(string aumid, string? arguments)
+    private static bool OpenAppsFolderItem(string id, string? verb)
     {
-        _ = Task.Run(() =>
+        var hr = NativeMethods.SHParseDisplayName(AppsFolderPrefix + id, 0, out var idList, 0, out _);
+        if (hr < 0 || idList == 0)
         {
-            if (TryActivate(aumid, arguments))
+            Log.Warn($"AppLauncher: SHParseDisplayName('{AppsFolderPrefix}{id}') failed with 0x{hr:X8}");
+            return false;
+        }
+
+        try
+        {
+            var info = NewExecuteInfo(verb);
+            info.fMask |= NativeMethods.SEE_MASK_INVOKEIDLIST;
+            if (verb is null)
             {
-                return;
+                // A normal launch runs on the dispatcher: a shell error box would block it, so failures are only logged.
+                // Elevated launches keep the shell's UI, since they run on their own thread and must show UAC.
+                info.fMask |= NativeMethods.SEE_MASK_FLAG_NO_UI;
             }
 
+            info.lpIDList = idList;
+            return Execute(ref info, id);
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(idList);
+        }
+    }
+
+    private static SHELLEXECUTEINFO NewExecuteInfo(string? verb) => new()
+    {
+        cbSize = Marshal.SizeOf<SHELLEXECUTEINFO>(),
+        // NOASYNC: the launch may run on a short-lived worker thread that exits straight after the call.
+        fMask = NativeMethods.SEE_MASK_NOASYNC,
+        lpVerb = verb,
+        nShow = NativeMethods.SW_SHOWNORMAL,
+    };
+
+    /// <summary>Runs ShellExecuteEx. "No" on a UAC prompt is the user's choice, so it is logged at Info, not as a failure.</summary>
+    private static bool Execute(ref SHELLEXECUTEINFO info, string what)
+    {
+        var verb = info.lpVerb ?? "default";
+        if (info.lpVerb == RunAsVerb)
+        {
+            Log.Info($"AppLauncher: launching '{what}' elevated (verb {verb}, mask 0x{info.fMask:X})");
+        }
+
+        if (NativeMethods.ShellExecuteEx(ref info))
+        {
+            return true;
+        }
+
+        var error = Marshal.GetLastPInvokeError();
+        if (error == NativeMethods.ERROR_CANCELLED)
+        {
+            Log.Info($"AppLauncher: launch of '{what}' cancelled (verb {verb})");
+        }
+        else
+        {
+            Log.Warn($"AppLauncher: ShellExecuteEx('{what}', verb {verb}) failed with Win32 error {error}");
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Runs a blocking launch on its own STA thread. An elevated ShellExecuteEx waits until the UAC prompt is answered
+    /// and packaged activation waits for a cold start, so neither may run on the dispatcher; the shell wants STA.
+    /// </summary>
+    private static void RunOnShellThread(string what, Action launch)
+    {
+        var thread = new Thread(() =>
+        {
             try
             {
-                StartViaAppsFolder(aumid);
+                launch();
             }
-            catch (Exception ex) when (ex is Win32Exception or FileNotFoundException or InvalidOperationException)
+            catch (Exception ex)
             {
-                Log.Warn($"AppLauncher: could not launch '{aumid}' through Explorer", ex);
+                // Thread boundary: an exception escaping here would end the shell process, so everything is logged.
+                Log.Warn($"AppLauncher: could not launch '{what}'", ex);
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "WinGnome launch",
+        };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+    }
+
+    /// <summary>Activates a packaged app through IApplicationActivationManager, falling back to its AppsFolder item.</summary>
+    private static void ActivatePackagedApp(string aumid, string? arguments) =>
+        RunOnShellThread(aumid, () =>
+        {
+            if (!TryActivate(aumid, arguments))
+            {
+                OpenAppsFolderItem(aumid, verb: null);
             }
         });
-    }
 
     private static bool TryActivate(string aumid, string? arguments)
     {

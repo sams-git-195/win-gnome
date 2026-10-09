@@ -40,6 +40,27 @@ internal struct BITMAPINFO
     public uint bmiColor2;
 }
 
+/// <summary>SHELLEXECUTEINFOW. The hIcon/hMonitor union is declared as its one pointer-sized member.</summary>
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+internal struct SHELLEXECUTEINFO
+{
+    public int cbSize;
+    public uint fMask;
+    public nint hwnd;
+    public string? lpVerb;
+    public string? lpFile;
+    public string? lpParameters;
+    public string? lpDirectory;
+    public int nShow;
+    public nint hInstApp;
+    public nint lpIDList;
+    public string? lpClass;
+    public nint hkeyClass;
+    public uint dwHotKey;
+    public nint hIconOrMonitor;
+    public nint hProcess;
+}
+
 /// <summary>Shell, icon and GDI bitmap declarations used by the installed-apps services.</summary>
 internal static partial class NativeMethods
 {
@@ -54,6 +75,19 @@ internal static partial class NativeMethods
 
     /// <summary>AllowSetForegroundWindow argument that lets any process take the foreground.</summary>
     public const int ASFW_ANY = -1;
+
+    // ---- ShellExecuteEx ---------------------------------------------------------------------
+    /// <summary>Use lpIDList and invoke the verb through the item's context menu (needed for "runas" on AppsFolder items).</summary>
+    public const uint SEE_MASK_INVOKEIDLIST = 0x0000000C;
+
+    /// <summary>Finish the launch before returning, so the calling thread may exit straight after.</summary>
+    public const uint SEE_MASK_NOASYNC = 0x00000100;
+
+    /// <summary>Don't show an error message box when the launch fails.</summary>
+    public const uint SEE_MASK_FLAG_NO_UI = 0x00000400;
+
+    /// <summary>Win32 error for "the operation was cancelled by the user", e.g. "No" on a UAC prompt.</summary>
+    public const int ERROR_CANCELLED = 1223;
 
     // ---- GDI --------------------------------------------------------------------------------
     public const uint BI_RGB = 0;
@@ -93,7 +127,16 @@ internal static partial class NativeMethods
     [DllImport("shell32.dll")]
     public static extern int SHGetKnownFolderItem(
         ref Guid folderId, uint flags, nint token, ref Guid riid, [MarshalAs(UnmanagedType.Interface)] out object? item);
+
+    // SHELLEXECUTEINFO carries strings, so it is not blittable and needs the built-in marshaller too.
+    [DllImport("shell32.dll", EntryPoint = "ShellExecuteExW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool ShellExecuteEx(ref SHELLEXECUTEINFO info);
 #pragma warning restore SYSLIB1054
+
+    /// <summary>Parses a shell name ("shell:AppsFolder\...") to an absolute ID list; free it with Marshal.FreeCoTaskMem.</summary>
+    [LibraryImport("shell32.dll", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial int SHParseDisplayName(string name, nint bindContext, out nint idList, uint attributesIn, out uint attributesOut);
 
     // ---- Helpers ----------------------------------------------------------------------------
 
