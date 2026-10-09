@@ -1,0 +1,17 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls"
+                    xmlns:pr="clr-namespace:WinGnome.Features.Settings.Panels.Privacy">
+    <DataTemplate DataType="{x:Type pr:PrivacyPanelViewModel}">
+        <pr:PrivacyPanel />
+    </DataTemplate>
+
+    <!-- One app in a capability's list: a switch for a packaged app, only its use for a desktop app. -->
+    <DataTemplate DataType="{x:Type pr:PrivacyAppViewModel}">
+        <c:SettingsRow Title="{Binding Name}" Subtitle="{Binding UseText}">
+            <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding Switch.IsOn}" IsEnabled="{Binding Switch.IsInteractive}"
+                      Visibility="{Binding HasSwitch, Converter={x:Static c:Converters.BoolToVisibility}}"
+                      AutomationProperties.Name="{Binding Name, StringFormat=Allow {0}}" />
+        </c:SettingsRow>
+    </DataTemplate>
+</ResourceDictionary>

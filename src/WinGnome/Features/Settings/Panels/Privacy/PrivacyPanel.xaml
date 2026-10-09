@@ -1,0 +1,22 @@
+<UserControl x:Class="WinGnome.Features.Settings.Panels.Privacy.PrivacyPanel" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls"
+             xmlns:p="clr-namespace:WinGnome.Features.Settings.Panels"
+             xmlns:pr="clr-namespace:WinGnome.Features.Settings.Panels.Privacy">
+    <StackPanel>
+        <p:PanelNotices />
+
+        <pr:PrivacyCapabilityView DataContext="{Binding Camera}" />
+        <pr:PrivacyCapabilityView DataContext="{Binding Microphone}" />
+        <pr:PrivacyCapabilityView DataContext="{Binding Location}" />
+
+        <c:SettingsGroup Header="Screen Lock">
+            <c:SettingsRow Title="Screen Lock" Subtitle="Lock screen apps and what shows while the screen is locked.">
+                <Button Content="Open Windows Settings" Style="{DynamicResource SettingsButton}" Command="{Binding OpenScreenLockCommand}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <p:PanelFooter />
+    </StackPanel>
+</UserControl>
