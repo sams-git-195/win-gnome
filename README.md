@@ -17,7 +17,7 @@ the way it was when it exits.
 
 ### Top bar
 - **On every display**: each monitor gets its own full bar, laid out at that monitor's scale, showing the app focused on that monitor. Menus open on the display you clicked, and only one is open at a time. Choose *Main display only* in Settings → Top Bar → Show on.
-- **Logo menu**: a Windows logo at the far left opens a menu like the macOS Apple menu: About This PC, System Settings, WinGnome Settings, Microsoft Store, the Start menu, Task Manager, Sleep, Restart, Shut Down, Lock Screen, Log Out and Quit WinGnome. Restart, shut down and log out ask first. Use the arrow keys and Enter, or Esc to close.
+- **Logo menu**: a logo at the far left opens a menu like the macOS Apple menu: About This PC, Windows Settings, Control Panel, WinGnome Settings, Microsoft Store, the Start menu, Task Manager, Sleep, Restart, Shut Down, Lock Screen, Log Out and Quit WinGnome. Restart, shut down and log out ask first. Use the arrow keys and Enter, or Esc to close. The logo itself is customisable (Settings → Top Bar → **Logo icon**): the Windows mark, a foot, a star, a terminal, or a **custom image**. A custom image is always drawn as a solid silhouette in the bar's text colour (white by default), never in its own colours: a PNG's transparency becomes the shape, and an opaque image (JPEG, BMP) is inverted by luminance, so it should be a *dark mark on a light background*.
 - **Activities** button (or press **Alt+F1**, the Super key, or flick the pointer into the top-left hot corner of a display) opens the overview (on the main display).
 - **Workspace dots** for Windows virtual desktops. Click a dot to switch desktops.
 - **Focused app name** next to the dots, as in GNOME.

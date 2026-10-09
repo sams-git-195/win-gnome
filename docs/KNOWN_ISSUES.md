@@ -16,8 +16,8 @@ Status is one of *Open*, *In progress*, *By design* (a limitation we've chosen t
 or *Fixed* (with the commit). When in doubt, pick the higher severity. A resolved entry may carry a `### KI-…`
 detail section below the Resolved table when the measured evidence behind the fix is worth keeping (KI-100).
 
-IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-102 all
-have entries now). The next free ID is **KI-103**; grep the specs for `KI-0` before allocating one.
+IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-103 all
+have entries now). The next free ID is **KI-104**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
@@ -71,6 +71,7 @@ have entries now). The next free ID is **KI-103**; grep the specs for `KI-0` bef
 | [KI-099](#ki-099) | S3 | Top bar, Dock | WinGnome sets monitor work areas directly when Explorer doesn't apply a strip it granted | Open |
 | [KI-101](#ki-101) | S4 | Settings | About and Displays bypass the shared load gate; a failed About read shows nothing at all | Open |
 | [KI-102](#ki-102) | S3 | Top bar, Dock | Explorer keeps recomputing work areas without the strips after an everyday display pass, and the fallback's give-up lasts the run | Open |
+| [KI-103](#ki-103) | S4 | Top bar | The custom-logo mask inverts a light mark on a dark background, one stray transparent pixel takes the alpha rule, and the size guards don't bound the decompressed middle | By design |
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -776,6 +777,31 @@ What is wrong:
 - Consider re-arming `StripRecovery` on a display pass, or after a long cool-down, so a display wake recovers
   without a restart.
 - Consider giving up sooner: the fight cost 20 writes and broadcasts and ended in the same state as not trying.
+
+### KI-103
+**The custom-logo mask inverts a light mark on a dark background, one stray transparent pixel takes the alpha rule, and the size guards don't bound the decompressed middle** · S4 · Top bar · By design
+
+Spec 0021 renders a custom logo as a solid silhouette in the bar's text colour: the image's shape becomes a mask
+(Core's `LogoMaskRule`), filled with `TopBarSettings.ForegroundColor`. The image's own colours are never shown. Three
+accepted limitations of that rule:
+
+- **Opaque images use inverted BT.601 luminance**, so a *dark mark on a light background* becomes the silhouette — the
+  intended case, documented in Settings and the README. A *light mark on a dark background* (a white logo on black,
+  common for JPEGs) inverts badly: the background becomes the silhouette and the mark becomes the hole. Alternatives
+  considered in the spec — a hard threshold (aliases on antialiased edges) and "darkest colour is ink" heuristics
+  (unpredictable) — were rejected, so the decision is inverted luminance. Images with real transparency (the normal
+  case for a logo PNG) use their alpha channel and are unaffected.
+- **The alpha rule is all-or-nothing**: a single pixel with alpha < 255 anywhere switches the *whole* image to the
+  alpha mask (RGB ignored). An otherwise-opaque image carrying one stray transparent pixel therefore yields a
+  near-full-square mask (every opaque pixel becomes alpha 255) rather than the luminance silhouette. A clean opaque
+  image with no transparent pixels takes the luminance path.
+- **The size guards bound the ends, not the middle**: the 10 MB pre-check bounds the *compressed* file and the 256 px
+  decode cap bounds the *decoded transient* (WIC downscales during the decode), but neither bounds a small compressed
+  file's decompressed size in between. The retained mask is a frozen Gray8 bitmap of at most 256×256 (64 KB)
+  regardless.
+
+*Workaround:* use a transparent PNG (the normal logo case), or for an opaque file make it a dark mark on a light
+background. Colour logos are out of scope by design (spec 0021 non-goals).
 
 ## Resolved
 

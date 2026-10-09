@@ -1,6 +1,6 @@
 # 0021 — Logo menu items and customisable logo icon
 
-Status: Draft
+Status: Implemented (branch logo-menu-spec). Core logic is unit-tested and mutation-checked; app-level QA — clicking the real menu items, the picker dialog, DPI and light/dark logo rendering, footprint and `--selftest` — is pending with the integrator (no app run in this worktree).
 
 ## Problem
 
