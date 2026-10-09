@@ -103,6 +103,12 @@ internal sealed class TrayModel : IDisposable
     {
         if (_host is null)
         {
+            if (TrayCallback.MayTakeForeground(action))
+            {
+                // Callers are the bars' pointer handlers and the hover timer, all on the UI thread, so ThrottledLog is safe.
+                ThrottledLog.Info("tray-nohost", $"Tray {action} did nothing: the tray host is not running");
+            }
+
             return;
         }
 
@@ -153,7 +159,30 @@ internal sealed class TrayModel : IDisposable
     {
         var state = entry.State;
         var notifications = TrayCallback.Notifications(action, state);
-        if (state.CallbackMessage == 0 || notifications.Count == 0 || _host is null)
+
+        // Only clicks are logged: Enter/Hover/Leave fire on every pointer move across the tray and must stay silent.
+        var click = TrayCallback.MayTakeForeground(action);
+        if (state.CallbackMessage == 0)
+        {
+            if (click)
+            {
+                Log.Info($"Tray {action} on {Tip(state)} (owner 0x{state.Id.Owner:X}, id {state.Id.Id}) did nothing: the icon registered no callback message");
+            }
+
+            return;
+        }
+
+        if (notifications.Count == 0)
+        {
+            if (click)
+            {
+                Log.Info($"Tray {action} on {Tip(state)} (owner 0x{state.Id.Owner:X}, id {state.Id.Id}) produced no notifications; nothing sent");
+            }
+
+            return;
+        }
+
+        if (_host is null)
         {
             return;
         }
@@ -161,7 +190,7 @@ internal sealed class TrayModel : IDisposable
         // Shell_NotifyIconGetRect answers with the icon the user actually used, on that bar's monitor.
         _host.SetIconBounds(state.Id, iconBounds);
         var owner = state.Id.Owner;
-        if (TrayCallback.MayTakeForeground(action))
+        if (click)
         {
             // We just received the click, so we may pass the right to take the foreground on, as Explorer does. Without
             // it the app's context menu opens behind other windows and never closes on an outside click.
@@ -170,18 +199,35 @@ internal sealed class TrayModel : IDisposable
 
         // Version 4 apps get an anchor in wParam: menus they place there open just under the clicked bar.
         var (anchorX, anchorY) = TrayAnchor.For(iconBounds, barBounds);
+        if (click)
+        {
+            // The recorded version is the diagnosis for icons whose NIM_SETVERSION the host missed: a version-4 icon
+            // logged as version 0 gets legacy-encoded callbacks and ignores them.
+            var guid = state.Id.ItemGuid == Guid.Empty ? "none" : state.Id.ItemGuid.ToString();
+            var sends = string.Join(", ", notifications.Select(notification => $"0x{notification:X}"));
+            Log.Info($"Tray {action} on {Tip(state)} (owner 0x{owner:X}, id {state.Id.Id}, guid {guid}, version {state.Version}, callback 0x{state.CallbackMessage:X}): sending [{sends}]; anchor {anchorX},{anchorY}, icon {Rect(iconBounds)}, bar {Rect(barBounds)}");
+        }
+
         foreach (var notification in notifications)
         {
             var (wParam, lParam) = TrayCallback.Encode(state.Version, state.Id.Id, notification, anchorX, anchorY);
 
             // SendNotifyMessage: delivered like a sent message, but never waits for a busy or hung app.
-            if (!NativeMethods.SendNotifyMessage(owner, state.CallbackMessage, wParam, lParam) && TrayCallback.MayTakeForeground(action))
+            if (!NativeMethods.SendNotifyMessage(owner, state.CallbackMessage, wParam, lParam) && click)
             {
                 Log.Warn($"Could not deliver a tray click to window 0x{owner:X} (error {Marshal.GetLastPInvokeError()})");
                 return;
             }
         }
     }
+
+    /// <summary>The icon's quoted tooltip, capped: it is arbitrary app-supplied text (potential PII) and must not fill the log.</summary>
+    private static string Tip(TrayIconState state) =>
+        state.Tip.Length == 0 ? "\"(no tooltip)\""
+        : state.Tip.Length <= 64 ? $"\"{state.Tip}\""
+        : $"\"{state.Tip[..64]}…\"";
+
+    private static string Rect(PixelRect rect) => $"{rect.Left},{rect.Top},{rect.Right},{rect.Bottom}";
 
     private void OnHostChange(TrayHost? host, TrayChange change, bool imageChanged, IconHandle? image)
     {

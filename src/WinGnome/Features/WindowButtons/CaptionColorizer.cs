@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO;
 using WinGnome.Core.Theming;
+using WinGnome.Infrastructure;
 using WinGnome.Interop;
 
 namespace WinGnome.Features.WindowButtons;
