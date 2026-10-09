@@ -7,6 +7,8 @@ using WinGnome.Features.Settings.Panels.Keyboard;
 using WinGnome.Features.Settings.Panels.Mouse;
 using WinGnome.Features.Settings.Panels.Multitasking;
 using WinGnome.Features.Settings.Panels.Power;
+using WinGnome.Features.Settings.Panels.Printers;
+using WinGnome.Features.Settings.Panels.RemovableMedia;
 using WinGnome.Features.Settings.Panels.Sound;
 
 namespace WinGnome.Features.Settings.Panels;
@@ -31,5 +33,7 @@ internal static class PanelRegistry
             [PanelIds.Multitasking] = context => new MultitaskingPanelViewModel(context),
             [PanelIds.DateTime] = context => new DateTimePanelViewModel(context),
             [PanelIds.About] = context => new AboutPanelViewModel(context),
+            [PanelIds.Printers] = context => new PrintersPanelViewModel(context),
+            [PanelIds.RemovableMedia] = context => new RemovableMediaPanelViewModel(context),
         };
 }
