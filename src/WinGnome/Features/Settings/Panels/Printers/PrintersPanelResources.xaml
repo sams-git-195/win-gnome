@@ -1,0 +1,7 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:printers="clr-namespace:WinGnome.Features.Settings.Panels.Printers">
+    <DataTemplate DataType="{x:Type printers:PrintersPanelViewModel}">
+        <printers:PrintersPanel />
+    </DataTemplate>
+</ResourceDictionary>
