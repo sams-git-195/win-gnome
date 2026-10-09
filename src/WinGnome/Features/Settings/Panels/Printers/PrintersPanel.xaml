@@ -1,0 +1,57 @@
+<UserControl x:Class="WinGnome.Features.Settings.Panels.Printers.PrintersPanel" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls"
+             xmlns:p="clr-namespace:WinGnome.Features.Settings.Panels">
+    <StackPanel>
+        <p:PanelNotices />
+
+        <c:SettingsGroup Header="Printers" ItemsSource="{Binding Printers}"
+                         Visibility="{Binding HasPrinters, Converter={x:Static c:Converters.BoolToVisibility}}">
+            <c:SettingsGroup.ItemTemplate>
+                <DataTemplate>
+                    <c:SettingsRow Title="{Binding Name}" Subtitle="{Binding Subtitle}">
+                        <c:SettingsRow.Details>
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button Content="Set as default" Style="{DynamicResource SettingsButton}" Margin="0,0,8,4"
+                                        Command="{Binding DataContext.SetDefaultCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        Visibility="{Binding CanSetDefault, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                                <Button Content="Print queue" Style="{DynamicResource SettingsButton}" Margin="0,0,8,4"
+                                        Command="{Binding DataContext.QueueCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                                <Button Content="Printer properties" Style="{DynamicResource SettingsButton}" Margin="0,0,8,4"
+                                        Command="{Binding DataContext.PropertiesCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                                <Button Content="Printing preferences" Style="{DynamicResource SettingsButton}" Margin="0,0,8,4"
+                                        Command="{Binding DataContext.PreferencesCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                            </WrapPanel>
+                        </c:SettingsRow.Details>
+                    </c:SettingsRow>
+                </DataTemplate>
+            </c:SettingsGroup.ItemTemplate>
+        </c:SettingsGroup>
+
+        <TextBlock Text="No printers found." Style="{DynamicResource RowSubtitleText}" Margin="4,0,0,20"
+                   Visibility="{Binding ShowsEmptyNote, Converter={x:Static c:Converters.BoolToVisibility}}" />
+
+        <c:SettingsGroup>
+            <c:SettingsRow Title="Add Printer" Subtitle="Windows Settings finds and installs printers.">
+                <Button Content="Add Printer&#x2026;" Style="{DynamicResource SettingsButton}" Command="{Binding AddPrinterCommand}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Refresh" Subtitle="Reads the list from Windows again.">
+                <Button Content="Refresh" Style="{DynamicResource SettingsButton}" Command="{Binding RefreshCommand}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Default Printer" IsEnabled="{Binding CanChange}">
+            <c:SettingsRow Title="Let Windows Manage My Default Printer"
+                           Subtitle="Windows then uses the printer you used most recently. Choosing &#x201C;Set as default&#x201D; turns this off.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding WindowsManagesDefault}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <p:PanelFooter />
+    </StackPanel>
+</UserControl>

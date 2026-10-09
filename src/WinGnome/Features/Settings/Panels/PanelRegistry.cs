@@ -1,5 +1,6 @@
 using WinGnome.Core.ControlCenter;
 using WinGnome.Features.Settings.Panels.About;
+using WinGnome.Features.Settings.Panels.Accessibility;
 using WinGnome.Features.Settings.Panels.Appearance;
 using WinGnome.Features.Settings.Panels.DateAndTime;
 using WinGnome.Features.Settings.Panels.Displays;
@@ -9,6 +10,8 @@ using WinGnome.Features.Settings.Panels.Multitasking;
 using WinGnome.Features.Settings.Panels.Notifications;
 using WinGnome.Features.Settings.Panels.Power;
 using WinGnome.Features.Settings.Panels.Privacy;
+using WinGnome.Features.Settings.Panels.Printers;
+using WinGnome.Features.Settings.Panels.RemovableMedia;
 using WinGnome.Features.Settings.Panels.Sound;
 
 namespace WinGnome.Features.Settings.Panels;
@@ -35,5 +38,8 @@ internal static class PanelRegistry
             [PanelIds.About] = context => new AboutPanelViewModel(context),
             [PanelIds.Notifications] = context => new NotificationsPanelViewModel(context),
             [PanelIds.Privacy] = context => new PrivacyPanelViewModel(context),
+            [PanelIds.Printers] = context => new PrintersPanelViewModel(context),
+            [PanelIds.RemovableMedia] = context => new RemovableMediaPanelViewModel(context),
+            [PanelIds.Accessibility] = context => new AccessibilityPanelViewModel(context),
         };
 }
