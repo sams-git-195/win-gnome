@@ -8,6 +8,8 @@ namespace WinGnome.Core.Windows;
 /// </summary>
 public static class AppIdentity
 {
+    private const string FileExplorerAppUserModelId = "Microsoft.Windows.Explorer";
+
     /// <summary>Identity of a running window: AppUserModelID first, then process path, then process id.</summary>
     public static string ForWindow(string? appUserModelId, string? processPath, int processId)
     {
@@ -33,6 +35,18 @@ public static class AppIdentity
         !string.IsNullOrWhiteSpace(appUserModelId)
         && PathText.FileNameWithoutExtension(processPath).Equals("ApplicationFrameHost", StringComparison.OrdinalIgnoreCase)
             ? appUserModelId.Trim()
+            : null;
+
+    /// <summary>
+    /// The AppUserModelID a window stands for when it carries none of its own, or null. File Explorer folder
+    /// windows (class CabinetWClass in explorer.exe) set no AUMID, and the "File Explorer" Start entry
+    /// (Microsoft.Windows.Explorer) targets a shell CLSID rather than explorer.exe, so neither identity nor path
+    /// would tie them to that pin. Other explorer.exe windows (the desktop, the taskbar, dialogs) keep no AUMID.
+    /// </summary>
+    public static string? ImpliedAppUserModelId(string? processPath, string? className) =>
+        string.Equals(className, "CabinetWClass", StringComparison.Ordinal)
+        && PathText.FileName(processPath).Equals("explorer.exe", StringComparison.OrdinalIgnoreCase)
+            ? FileExplorerAppUserModelId
             : null;
 
     /// <summary>

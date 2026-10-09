@@ -1,8 +1,11 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using WinGnome.Controls.TrafficLights;
 using WinGnome.Features.Settings.Tweaks;
 using WinGnome.Features.Settings.ViewModels;
@@ -55,13 +58,13 @@ internal sealed partial class SettingsWindow : Window, IDialogService
     /// </summary>
     public void VisitAllPages()
     {
-        foreach (var page in _viewModel.Pages)
+        foreach (var entry in _viewModel.Entries.Where(e => e.Page is not null))
         {
-            _viewModel.SelectedPage = page;
+            _viewModel.SelectedEntry = entry;
             UpdateLayout();
             if (!PageViewIsShowing())
             {
-                throw new InvalidOperationException($"The \"{page.Title}\" settings page did not create its view.");
+                throw new InvalidOperationException($"The \"{entry.Title}\" settings page did not create its view.");
             }
         }
 
@@ -84,6 +87,16 @@ internal sealed partial class SettingsWindow : Window, IDialogService
         }
     }
 
+    /// <summary>Closes the window because WinGnome is quitting: an unconfirmed display change is reverted before this returns.</summary>
+    public void CloseForShutdown()
+    {
+        _viewModel.PrepareForShutdown();
+        Close();
+    }
+
+    /// <summary>Shows a panel by id (see <c>PanelIds</c>).</summary>
+    public void ShowPanel(string panelId) => _viewModel.ShowPanel(panelId);
+
     bool IDialogService.Confirm(string title, string message, string confirmLabel, bool isDestructive)
     {
         var dialog = new ConfirmDialog(title, message, confirmLabel, isDestructive, _context.Theme.IsDark) { Owner = this };
@@ -102,6 +115,88 @@ internal sealed partial class SettingsWindow : Window, IDialogService
         && VisualTreeHelper.GetChild(PageHost, 0) is ContentPresenter presenter
         && VisualTreeHelper.GetChildrenCount(presenter) > 0
         && VisualTreeHelper.GetChild(presenter, 0) is UserControl;
+
+    /// <summary>
+    /// The list's selection drives the view model by hand (its binding is one-way: a two-way binding re-reads the view
+    /// model while the list is still selecting, which leaves a refused row looking selected). Selecting a link, by
+    /// mouse or arrow keys, never opens it; a click, Enter or Space does (see below).
+    /// </summary>
+    private void OnSidebarSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.AddedItems is [SidebarEntry { IsLink: false } entry])
+        {
+            _viewModel.SelectedEntry = entry;
+        }
+    }
+
+    /// <summary>A click on a link row opens it in Windows Settings.</summary>
+    private void OnSidebarMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Left
+            && ItemsControl.ContainerFromElement(SidebarList, (DependencyObject)e.OriginalSource) is ListBoxItem { DataContext: SidebarEntry { IsLink: true } link })
+        {
+            OpenLink(link);
+        }
+    }
+
+    /// <summary>Enter or Space on a highlighted link opens it.</summary>
+    private void OnSidebarKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Enter or Key.Space && SidebarList.SelectedItem is SidebarEntry { IsLink: true } link)
+        {
+            OpenLink(link);
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>Opens the link, then moves the highlight back to the page that is showing.</summary>
+    private void OpenLink(SidebarEntry link)
+    {
+        _viewModel.OpenLinkEntry(link);
+        Dispatcher.BeginInvoke(DispatcherPriority.Input,
+            () => SidebarList.SetCurrentValue(Selector.SelectedItemProperty, _viewModel.SelectedEntry));
+    }
+    /// <summary>Escape clears the search; Enter opens the best match; Down moves into the results.</summary>
+    private void OnSearchKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && SidebarList.Items.Count > 0 && SidebarList.Items[0] is SidebarEntry best)
+        {
+            if (best.IsLink)
+            {
+                OpenLink(best);
+            }
+            else
+            {
+                _viewModel.SelectedEntry = best;
+            }
+
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape && SearchBox.Text.Length > 0)
+        {
+            SearchBox.Clear();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Down && SidebarList.Items.Count > 0)
+        {
+            var target = SidebarList.SelectedIndex >= 0 ? SidebarList.SelectedIndex : 0;
+            (SidebarList.ItemContainerGenerator.ContainerFromIndex(target) as UIElement)?.Focus();
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>Ctrl+F jumps to the search entry, as in GNOME Settings.</summary>
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            SearchBox.Focus();
+            SearchBox.SelectAll();
+            e.Handled = true;
+        }
+
+        base.OnPreviewKeyDown(e);
+    }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {

@@ -10,6 +10,7 @@
             <Border DataContext="{Binding Preview}" VerticalAlignment="Top" Height="{Binding Height}"
                     Margin="{Binding Margin}" tb:PillCorners.Radius="{Binding CornerRadius}" Background="{Binding Background}"
                     TextElement.Foreground="{Binding Foreground}" TextElement.FontSize="{Binding FontSize}"
+                    TextElement.FontFamily="{Binding FontFamily}" TextElement.FontWeight="Bold"
                     AutomationProperties.Name="Top bar preview">
                 <Grid Margin="12,0">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
@@ -26,14 +27,14 @@
                             <Ellipse Width="8" Height="8" Margin="0,0,5,0" Fill="{Binding Foreground}" Opacity="0.4" />
                             <Ellipse Width="8" Height="8" Fill="{Binding Foreground}" Opacity="0.4" />
                         </StackPanel>
-                        <TextBlock Text="Files" FontWeight="SemiBold"
+                        <TextBlock Text="Files"
                                    Visibility="{Binding ShowAppName, Converter={x:Static c:Converters.BoolToVisibility}}" />
                     </StackPanel>
                     <TextBlock Text="{Binding ClockText}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                        <TextBlock FontFamily="{DynamicResource IconFont}" Text="&#xE701;" Margin="0,0,10,0" />
-                        <TextBlock FontFamily="{DynamicResource IconFont}" Text="&#xE767;" Margin="0,0,10,0" />
-                        <TextBlock FontFamily="{DynamicResource IconFont}" Text="&#xE83F;" />
+                        <tb:SymbolicIcon Icon="NetworkWireless" Size="{Binding IconSize}" Margin="0,0,10,0" />
+                        <tb:SymbolicIcon Icon="AudioVolumeHigh" Size="{Binding IconSize}" Margin="0,0,10,0" />
+                        <tb:SymbolicIcon Icon="BatteryLevel90" Size="{Binding IconSize}" />
                         <TextBlock Text="87%" Margin="4,0,0,0"
                                    Visibility="{Binding ShowBatteryText, Converter={x:Static c:Converters.BoolToVisibility}}" />
                     </StackPanel>
@@ -59,6 +60,9 @@
                 <ComboBox ItemsSource="{Binding Blur.Options}" SelectedItem="{Binding Blur.Selected}" DisplayMemberPath="Label" />
             </c:SettingsRow>
             <c:SettingsRow Title="Height" Content="{Binding Height}" />
+            <c:SettingsRow Title="Font" Subtitle="Adwaita Sans is GNOME's own typeface, bundled with WinGnome.">
+                <ComboBox ItemsSource="{Binding Font.Options}" SelectedItem="{Binding Font.Selected}" DisplayMemberPath="Label" />
+            </c:SettingsRow>
             <c:SettingsRow Title="Text size" Content="{Binding FontSize}" />
             <c:SettingsRow Title="Floating margin" Subtitle="0 = classic edge-to-edge bar." Content="{Binding Margin}" />
             <c:SettingsRow Title="Corner radius" Content="{Binding CornerRadius}" />

@@ -1,0 +1,91 @@
+<UserControl x:Class="WinGnome.Features.Settings.Panels.Sound.SoundPanel" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls"
+             xmlns:p="clr-namespace:WinGnome.Features.Settings.Panels">
+    <UserControl.Resources>
+        <!-- Speaker button that mutes; shows the muted speaker while checked. -->
+        <Style x:Key="MuteToggle" TargetType="ToggleButton">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Back" CornerRadius="16" Background="Transparent">
+                            <TextBlock x:Name="Glyph" Text="&#xE767;" FontFamily="{StaticResource IconFont}" FontSize="15"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource ForegroundBrush}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Back" Property="Background" Value="{DynamicResource HoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Glyph" Property="Text" Value="&#xE74F;" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <StackPanel>
+        <p:PanelNotices />
+
+        <c:SettingsGroup Header="Output">
+            <c:SettingsRow Title="Output Device" Subtitle="{Binding DeviceNote}">
+                <ComboBox ItemsSource="{Binding Outputs}" SelectedItem="{Binding Output}" DisplayMemberPath="Name" MaxWidth="320"
+                          IsEnabled="{Binding CanChooseDevice}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Output Volume" IsEnabled="{Binding CanEdit}"
+                           Visibility="{Binding HasOutput, Converter={x:Static c:Converters.BoolToVisibility}}">
+                <StackPanel Orientation="Horizontal">
+                    <ToggleButton Style="{DynamicResource MuteToggle}" IsChecked="{Binding OutputMuted}" ToolTip="Mute"
+                                  AutomationProperties.Name="Mute output" />
+                    <Slider Minimum="0" Maximum="100" SmallChange="2" LargeChange="10" Value="{Binding OutputVolume}" Width="240" />
+                    <TextBlock Text="{Binding OutputVolume, StringFormat={}{0:0}%}" Width="44" TextAlignment="Right" VerticalAlignment="Center"
+                               FontSize="13" Foreground="{DynamicResource SecondaryForegroundBrush}" />
+                </StackPanel>
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Input">
+            <c:SettingsRow Title="Input Device">
+                <ComboBox ItemsSource="{Binding Inputs}" SelectedItem="{Binding Input}" DisplayMemberPath="Name" MaxWidth="320"
+                          IsEnabled="{Binding CanChooseDevice}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Input Volume" IsEnabled="{Binding CanEdit}"
+                           Visibility="{Binding HasInput, Converter={x:Static c:Converters.BoolToVisibility}}">
+                <StackPanel Orientation="Horizontal">
+                    <Slider Minimum="0" Maximum="100" SmallChange="2" LargeChange="10" Value="{Binding InputVolume}" Width="240" />
+                    <TextBlock Text="{Binding InputVolume, StringFormat={}{0:0}%}" Width="44" TextAlignment="Right" VerticalAlignment="Center"
+                               FontSize="13" Foreground="{DynamicResource SecondaryForegroundBrush}" />
+                </StackPanel>
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Volume Levels" Description="Apps appear here while they have sound open on the output device.">
+            <ItemsControl ItemsSource="{Binding Apps}" Focusable="False" IsEnabled="{Binding CanEdit}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <c:SettingsRow Title="{Binding Name}">
+                            <StackPanel Orientation="Horizontal">
+                                <Slider Minimum="0" Maximum="1" SmallChange="0.02" LargeChange="0.1" Value="{Binding Level}" Width="240" />
+                                <TextBlock Text="{Binding Level, StringFormat={}{0:P0}}" Width="44" TextAlignment="Right" VerticalAlignment="Center"
+                                           FontSize="13" Foreground="{DynamicResource SecondaryForegroundBrush}" />
+                            </StackPanel>
+                        </c:SettingsRow>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <c:SettingsRow Title="Volume mixer" Subtitle="Per-app output and input devices.">
+                <Button Content="Open" Style="{DynamicResource SettingsButton}" Command="{Binding VolumeMixerCommand}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <p:PanelFooter />
+    </StackPanel>
+</UserControl>

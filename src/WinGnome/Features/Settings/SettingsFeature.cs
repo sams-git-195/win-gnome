@@ -1,5 +1,6 @@
 using System.Windows.Threading;
 using WinGnome.Core.Settings;
+using WinGnome.Features.Settings.Panels.Displays;
 using WinGnome.Features.Settings.Startup;
 using WinGnome.Features.Settings.Tweaks;
 using WinGnome.Features.Settings.Views;
@@ -32,6 +33,7 @@ internal sealed class SettingsFeature : IFeature
     {
         _startup.Sync(settings.General.StartWithWindows);
         _tweaks.SyncEnabledSetting();
+        RecoverUnconfirmedDisplayChange();
         _context.Commands.SettingsRequested += OnSettingsRequested;
 
         if (_context.Options.SelfTest)
@@ -45,16 +47,39 @@ internal sealed class SettingsFeature : IFeature
     public void Dispose()
     {
         _context.Commands.SettingsRequested -= OnSettingsRequested;
-        _window?.Close();
+        _window?.CloseForShutdown();
+
+        // Even with no window, a save, revert or start-up recovery may still be running on the display queue.
+        DisplayWork.WaitAtShutdown();
     }
 
-    private void OnSettingsRequested(object? sender, EventArgs e)
+    /// <summary>
+    /// Reverts a display change that was applied but never confirmed because WinGnome stopped during the countdown.
+    /// Safe mode changes no system state, so the record waits for a normal start.
+    /// </summary>
+    private void RecoverUnconfirmedDisplayChange()
+    {
+        if (_context.IsSafeMode)
+        {
+            return;
+        }
+
+        // Queued on the shared display queue, off the UI thread: changing display modes waits on every top-level window.
+        DisplayRevertFile.RecoverIfPending(_context.Settings.Directory);
+    }
+
+    private void OnSettingsRequested(object? sender, string? panelId)
     {
         if (_window is null)
         {
             _window = new SettingsWindow(_context, _tweaks);
             _window.Closed += (_, _) => _window = null;
             _window.Show();
+        }
+
+        if (panelId is not null)
+        {
+            _window.ShowPanel(panelId);
         }
 
         _window.BringToFront();

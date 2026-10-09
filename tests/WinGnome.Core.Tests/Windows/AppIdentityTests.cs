@@ -46,6 +46,28 @@ public class AppIdentityTests
         Assert.Null(AppIdentity.HostedAppIconId(aumid, path));
     }
 
+    [Theory]
+    [InlineData(@"C:\Windows\explorer.exe", "CabinetWClass")]
+    [InlineData(@"C:\WINDOWS\Explorer.EXE", "CabinetWClass")]
+    [InlineData("c:/windows/explorer.exe", "CabinetWClass")]
+    public void ImpliedAppUserModelId_FileExplorerFolderWindow_IsFileExplorer(string path, string className)
+    {
+        Assert.Equal("Microsoft.Windows.Explorer", AppIdentity.ImpliedAppUserModelId(path, className));
+    }
+
+    [Theory]
+    [InlineData(@"C:\Windows\explorer.exe", "Progman")]
+    [InlineData(@"C:\Windows\explorer.exe", "Shell_TrayWnd")]
+    [InlineData(@"C:\Windows\explorer.exe", "#32770")]
+    [InlineData(@"C:\Windows\explorer.exe", null)]
+    [InlineData(@"C:\Tools\Explorer++\Explorer++.exe", "CabinetWClass")]
+    [InlineData(@"C:\Tools\notexplorer.exe", "CabinetWClass")]
+    [InlineData(null, "CabinetWClass")]
+    public void ImpliedAppUserModelId_OtherWindows_IsNull(string? path, string? className)
+    {
+        Assert.Null(AppIdentity.ImpliedAppUserModelId(path, className));
+    }
+
     [Fact]
     public void ForLaunchId_AumidIsLowercased()
     {

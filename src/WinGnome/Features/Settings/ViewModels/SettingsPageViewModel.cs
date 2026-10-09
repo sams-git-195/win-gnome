@@ -34,6 +34,11 @@ internal abstract class SettingsPageViewModel : ObservableObject, IDisposable
     {
     }
 
+    /// <summary>Called when another page replaces this one. Pages that hold system resources release them here.</summary>
+    public virtual void OnDeselected()
+    {
+    }
+
     /// <summary>Saves edits that are still waiting for their debounce timer.</summary>
     public void Flush()
     {

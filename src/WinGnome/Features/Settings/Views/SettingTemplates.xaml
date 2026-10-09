@@ -2,7 +2,16 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:items="clr-namespace:WinGnome.Features.Settings.ViewModels.Items"
                     xmlns:vm="clr-namespace:WinGnome.Features.Settings.ViewModels"
-                    xmlns:views="clr-namespace:WinGnome.Features.Settings.Views">
+                    xmlns:views="clr-namespace:WinGnome.Features.Settings.Views"
+                    xmlns:about="clr-namespace:WinGnome.Features.Settings.Panels.About"
+                    xmlns:appearance="clr-namespace:WinGnome.Features.Settings.Panels.Appearance"
+                    xmlns:datetime="clr-namespace:WinGnome.Features.Settings.Panels.DateAndTime"
+                    xmlns:displays="clr-namespace:WinGnome.Features.Settings.Panels.Displays"
+                    xmlns:keyboard="clr-namespace:WinGnome.Features.Settings.Panels.Keyboard"
+                    xmlns:mouse="clr-namespace:WinGnome.Features.Settings.Panels.Mouse"
+                    xmlns:multitasking="clr-namespace:WinGnome.Features.Settings.Panels.Multitasking"
+                    xmlns:power="clr-namespace:WinGnome.Features.Settings.Panels.Power"
+                    xmlns:sound="clr-namespace:WinGnome.Features.Settings.Panels.Sound">
     <ResourceDictionary.MergedDictionaries>
         <ResourceDictionary Source="/WinGnome;component/Theme/SettingsControls.xaml" />
     </ResourceDictionary.MergedDictionaries>
@@ -18,7 +27,34 @@
         </StackPanel>
     </DataTemplate>
 
-    <!-- One view per page. -->
+        <!-- One view per page: the system panels, then WinGnome's own pages. -->
+    <DataTemplate DataType="{x:Type displays:DisplaysPanelViewModel}">
+        <displays:DisplaysPanel />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type sound:SoundPanelViewModel}">
+        <sound:SoundPanel />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type power:PowerPanelViewModel}">
+        <power:PowerPanel />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type mouse:MousePanelViewModel}">
+        <mouse:MousePanel />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type keyboard:KeyboardPanelViewModel}">
+        <keyboard:KeyboardPanel />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type appearance:AppearancePanelViewModel}">
+        <appearance:AppearancePanel />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type multitasking:MultitaskingPanelViewModel}">
+        <multitasking:MultitaskingPanel />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type datetime:DateTimePanelViewModel}">
+        <datetime:DateTimePanel />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type about:AboutPanelViewModel}">
+        <about:AboutPanel />
+    </DataTemplate>
     <DataTemplate DataType="{x:Type vm:GeneralPageViewModel}">
         <views:GeneralPage />
     </DataTemplate>

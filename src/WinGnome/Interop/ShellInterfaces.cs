@@ -123,7 +123,10 @@ internal interface IShellItem2
     [PreserveSig]
     int GetString(ref WindowProperties.PROPERTYKEY key, [MarshalAs(UnmanagedType.LPWStr)] out string? value);
 
-    // GetUInt32, GetUInt64 and GetBool follow; not declared because they are not used.
+    [PreserveSig]
+    int GetUInt32(ref WindowProperties.PROPERTYKEY key, out uint value);
+
+    // GetUInt64 and GetBool follow; not declared because they are not used.
 }
 
 [ComImport]

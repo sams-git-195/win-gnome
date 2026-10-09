@@ -41,6 +41,17 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-041](#ki-041) | S4 | Window buttons | Clicks on custom title bars wait for one hit test, and clicks meanwhile are ignored | By design |
 | [KI-042](#ki-042) | S4 | Window buttons | WinGnome builds from before the window-buttons role still decorate alongside newer ones | Open |
 | [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
+| [KI-052](#ki-052) | S4 | Dock | Explorer windows other than folder windows don't join the File Explorer pin | Open |
+| [KI-055](#ki-055) | S4 | Top bar | The Wi-Fi icon doesn't show signal strength | Open |
+| [KI-056](#ki-056) | S4 | Launching | Elevation details: an undocumented host value, and a late UAC answer can close a reopened overview | Open |
+| [KI-060](#ki-060) | S4 | Settings | Choosing the default sound device uses the undocumented `IPolicyConfig` | Open |
+| [KI-061](#ki-061) | S4 | Settings | The power mode uses undocumented powrprof functions | Open |
+| [KI-062](#ki-062) | S4 | Settings | Display scale, orientation and turning displays on or off are left to Windows Settings | By design |
+| [KI-063](#ki-063) | S3 | Settings | The Settings panels' writes are verified by code review and tests, not yet on a live machine | Open |
+| [KI-064](#ki-064) | S4 | Settings | Snap and Alt+Tab options may need a new sign-in to take effect | Open |
+| [KI-066](#ki-066) | S4 | Settings | Input sources are listed but not switched or reordered in the Keyboard panel | Open |
+| [KI-067](#ki-067) | S4 | Settings | Appearance style and accent are read-only while the matching Streamline tweak is on | By design |
+| [KI-068](#ki-068) | S4 | Settings | A few exit paths leave an unconfirmed display change until sign-out | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -282,6 +293,116 @@ instance whose header bar is shown, e.g. a QA profile's settings window while th
 role. A pre-role build (KI-042) still decorates regardless and overlays every other instance's header bars. One
 instance alone is unaffected. Capture header bars with `PrintWindow` to see only the window's own drawing.
 
+### KI-052
+**Explorer windows other than folder windows don't join the File Explorer pin** · S4 · Dock · Open
+
+Only `CabinetWClass` windows in `explorer.exe` are treated as File Explorer (`AppIdentity.ImpliedAppUserModelId`,
+spec 0006). Other un-owned `explorer.exe` windows that pass the alt-tab filter, such as a file-copy progress
+window, have no AUMID and still show as a separate unpinned "Explorer" icon, where the Windows taskbar groups them
+under File Explorer. *Fix direction:* list the classes seen live (for example `OperationStatusWindow`) and add
+them to the rule, keeping the desktop, taskbar and other shell windows out.
+
+### KI-055
+**The Wi-Fi icon doesn't show signal strength** · S4 · Top bar · Open
+
+`NetworkMonitor` only knows whether the connection is wired, wireless or absent, so the bar shows one
+"connected" Wi-Fi wedge (spec 0012) where GNOME shows 0–4 bars. Signal strength changes without a network-change
+event, so adding it means either polling (WLAN API or `ConnectionProfile.GetSignalBars`) or refreshing it only on
+network changes and when quick settings opens. Draw the 0–3 bar icons in `Theme/SymbolicIcons.xaml` (GNOME dims
+the unlit part of the wedge) when a source is added.
+
+### KI-056
+**Elevation details: an undocumented host value, and a late UAC answer can close a reopened overview** · S4 · Launching · Open
+
+Spec 0014 tells full-trust packaged apps (Windows Terminal, Notepad) from UWP apps by the AppsFolder property
+`System.AppUserModel.HostEnvironment`, whose value 2 isn't documented by Microsoft (checked on one machine against the
+apps' manifests). If a Windows build changes it, those apps stop offering *Run as administrator* rather than
+misbehave. Also, the overview stays open while an elevated launch waits for UAC; if the user dismisses and reopens
+it before answering, the late "started" callback closes the reopened overview.
+
+### KI-060
+**Choosing the default sound device uses the undocumented `IPolicyConfig`** · S4 · Settings · Open
+
+Windows has no documented API to change the default audio endpoint. The Sound panel uses `IPolicyConfig`
+(`CPolicyConfigClient` `{870AF99C-…}`, interface `{F8679F50-…}`, `SetDefaultEndpoint` for the console,
+multimedia and communications roles), as Windows' own sound settings and tools such as SoundSwitch do. It has been
+stable since Windows 7, but an update could change it. The panel checks that the interface answers when it opens;
+if not, the device drop-downs are disabled and point to Windows Settings, and a failed call shows the problem banner
+with the link (`Interop/PolicyConfig.cs`, `Panels/Sound/AudioDevices.cs`).
+
+### KI-061
+**The power mode uses undocumented powrprof functions** · S4 · Settings · Open
+
+`PowerGetEffectiveOverlayScheme` and `PowerSetActiveOverlayScheme` (the power mode behind Windows 11's *Best power
+efficiency / Balanced / Best performance*) are exported by `powrprof.dll` but not documented. They are resolved at
+run time (`NativeMethods.Power.cs`); when they are missing, or Windows reports no power mode (Windows 11 has none
+while a plan other than Balanced is active), the Power Mode group is hidden and the rest of the panel works.
+
+### KI-062
+**Display scale, orientation and turning displays on or off are left to Windows Settings** · S4 · Settings · By design
+
+Changing the scale needs the undocumented `DisplayConfigSetDeviceInfo` type −4, so the Displays panel shows the
+effective scale (documented `GetDpiForMonitor`) read-only with a *Change in Windows Settings* button. Rotation,
+mirroring, HDR, and enabling or disabling a display aren't offered in this MVP; *More in Windows Settings* opens
+the page. Modes are listed at the current colour depth; a display rotated to portrait reports its modes as Windows
+gives them.
+Cloned (mirrored) displays share one source mode: changing either one's resolution changes both, and the panel
+lists them as separate displays. Making or breaking a clone, like turning displays on or off, is left to Windows
+Settings.
+
+### KI-063
+**The Settings panels' writes are verified by code review and tests, not yet on a live machine** · S3 · Settings · Open
+
+Every panel was opened and read on Windows 11 25H2 (single display, laptop) and checked against Windows Settings,
+in light and dark mode at 125 %, but in `--safe` mode: to avoid changing the developer's machine, no display mode,
+default device, power plan value, power mode, time zone, wallpaper, accent, style, mouse, keyboard or snap value was
+written during development. The write paths follow the documented APIs, run off the UI thread, log Win32 errors and
+show the problem banner; Displays tests every mode before applying, records the previous and new settings first,
+applies the whole configuration atomically for the session only (`SetDisplayConfig` without `SDC_SAVE_TO_DATABASE`
+until *Keep Changes*) and always counts down to a revert. The refresh-rate rewrite (GDI's whole rates mapped to the path's
+fraction, 59 to 60000/1001, with the target timing left for Windows to choose) is the part most worth checking live;
+if Windows adjusts the configuration, the panel records and keeps what is really showing. Multi-display arrangement was exercised only through `DisplayArrangement` tests.
+*Next step:* a manual pass per panel on a test machine (acceptance criteria 2 of spec 0015): change, confirm it
+shows in Windows Settings, change back; for Displays, let the countdown revert, kill WinGnome during a countdown
+and restart it.
+
+### KI-064
+**Snap and Alt+Tab options may need a new sign-in to take effect** · S4 · Settings · Open
+
+The Multitasking panel writes `SnapAssist`, `EnableSnapAssistFlyout` and `VirtualDesktopAltTabFilter` under
+`HKCU\…\Explorer\Advanced`, the values Windows Settings writes, and broadcasts `WM_SETTINGCHANGE` ("TraySettings");
+Explorer may still read some of them only when it starts (the Streamline snap-flyout tweak restarts Explorer for
+that reason). *Snap Windows* uses
+`SPI_SETWINARRANGING` and applies at once. *Fix direction:* confirm live which values need a restart, and offer an
+Explorer restart for those as the Streamline page does.
+
+### KI-066
+**Input sources are listed but not switched or reordered in the Keyboard panel** · S4 · Settings · Open
+
+`ActivateKeyboardLayout` only switches the calling process, so the panel lists the session's input sources (from
+`GetKeyboardLayoutList`), marks the one in use, and leaves switching to Win+Space and adding or removing to Windows
+Settings (linked). Layout names are derived from the HKL (the layout's language), not the registry's layout text,
+so a variant shows as "Keyboard variant N". *Fix direction:* `ITfInputProcessorProfileMgr` for names, switching and
+order.
+
+### KI-067
+**Appearance style and accent are read-only while the matching Streamline tweak is on** · S4 · Settings · By design
+
+The *Dark mode* and *Adwaita blue accent* tweaks own those registry values and back up the originals to restore
+them when turned off. If the Appearance panel changed them too, reverting the tweak would silently undo the panel's
+change, so the rows are disabled with a note pointing to the Streamline page while the tweak is on. The same holds
+for *Snap Layouts* and the *Disable the snap layouts flyout* tweak.
+
+### KI-068
+**A few exit paths leave an unconfirmed display change until sign-out** · S4 · Settings · Open
+
+An unconfirmed display change is never saved to Windows' display database, so signing out or restarting always
+drops it, and the revert record makes the next WinGnome start revert it. Between those, the change stays showing
+when: WinGnome quits while the change is still being applied (the countdown hasn't started, so shutdown has nothing
+to revert; the record does it at the next start); the UI thread is hung, so neither the countdown nor *Revert* runs;
+WinGnome is force-killed and next started with a different `--settings-dir` (the record is per profile) or with
+`--safe` (which never changes system state, so it leaves the record for a normal start). *Workaround:* sign out, or
+start WinGnome normally with the same profile.
 ## Resolved
 
 | ID | Severity | Area | Summary | Fixed in |
@@ -296,3 +417,6 @@ instance alone is unaffected. Capture header bars with `PrintWindow` to see only
 | KI-020 | S3 | App | A graceful `taskkill` that reached the tray host window was ignored, so WinGnome didn't quit | 085fa14 |
 | KI-030 | S4 | Overview | The first overview open after start took about half a second (WPF's first full-screen frame) | 1e4522f (cloaked warm-up 3 s after start) |
 | KI-051 | S3 | Accessibility | The round window buttons weren't exposed to screen readers or the keyboard | fea478b |
+| KI-053 | S4 | Dock | An elevated launch played the launch animation even when the UAC prompt was cancelled | b09a222 (feedback posted back only after `ShellExecuteEx` succeeds) |
+| KI-054 | S3 | Dock | Full-trust packaged apps such as Windows Terminal couldn't be run as administrator | b09a222 (`PKEY_AppUserModel_HostEnvironment` in `AppCatalog`) |
+| KI-065 | S4 | Settings | Quick settings rows and the gear opened Windows Settings pages instead of the matching native panel | f5dcf13 (`TopBarActions` via `ShowSettings`; `--settings-panel` forwarded to a running instance; Win+I waits for shell-mode hotkeys, spec 0013) |

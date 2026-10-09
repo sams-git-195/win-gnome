@@ -11,12 +11,13 @@ namespace WinGnome.Services.Apps;
 
 /// <summary>
 /// Starts apps from dock pins and search results. Launch ids can be URIs, file paths, packaged AUMIDs,
-/// desktop AUMIDs or known-folder AppsFolder parsing names.
+/// desktop AUMIDs or known-folder AppsFolder parsing names. Everything is launched in-process; nothing goes
+/// through explorer.exe, so launching never starts Explorer (which matters when Explorer is not the shell).
 /// </summary>
 internal sealed class AppLauncher : IAppLauncher
 {
-    private static readonly string ExplorerPath =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
+    private const string AppsFolderPrefix = "shell:AppsFolder\\";
+    private const string RunAsVerb = "runas";
 
     private readonly Func<string, string> _resolvePath;
 
@@ -27,44 +28,66 @@ internal sealed class AppLauncher : IAppLauncher
         _resolvePath = resolvePath;
     }
 
-    public bool Launch(string launchId, string? arguments = null)
+    public bool Launch(string launchId, string? arguments = null) =>
+        Launch(new LaunchRequest(launchId ?? "", arguments, Elevate: false), started: null);
+
+    public bool Launch(LaunchRequest request, Action? started = null, nint owner = 0)
     {
-        if (string.IsNullOrWhiteSpace(launchId))
+        ArgumentNullException.ThrowIfNull(request);
+        if (string.IsNullOrWhiteSpace(request.LaunchId))
         {
             Log.Warn("AppLauncher: empty launch id");
             return false;
         }
 
-        var id = launchId.Trim();
+        var id = request.LaunchId.Trim();
+        var arguments = request.Arguments;
 
         // We are (usually) the foreground process right after a click; let the new app take focus.
         NativeMethods.AllowSetForegroundWindow(NativeMethods.ASFW_ANY);
         try
         {
-            if (IsUri(id))
+            if (LaunchPlanner.IsUri(id))
             {
-                return ShellExecute(id, arguments: null, workingDirectory: null);
+                // URIs go to their scheme's handler and are never elevated.
+                ShellExecute(id, arguments: null, workingDirectory: null);
+                started?.Invoke();
+                return true;
             }
 
-            if (Path.IsPathRooted(id) && File.Exists(id))
+            var path = ExistingFile(id);
+            if (request.Elevate)
             {
-                return StartFile(id, arguments);
+                // LaunchPlanner decided this (full-trust packaged apps need the catalogue's host, which this class
+                // doesn't have). Packaged apps are elevated through their AppsFolder item, as Start does.
+                BringOwnerToFront(owner);
+                RunOnShellThread(
+                    id,
+                    () => path is not null
+                        ? ShellExecuteElevated(path, arguments, WorkingDirectoryFor(path), owner)
+                        : OpenAppsFolderItem(id, RunAsVerb, owner),
+                    started);
+                return true;
             }
 
-            if (KnownFolderPath.TryParse(id, out _, out _) && _resolvePath(id) is { } resolved
-                && Path.IsPathRooted(resolved) && File.Exists(resolved)
-                && resolved.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            if (path is not null)
             {
-                return StartFile(resolved, arguments);
+                ShellExecute(path, arguments, WorkingDirectoryFor(path));
+                started?.Invoke();
+                return true;
             }
 
             if (id.Contains('!'))
             {
                 ActivatePackagedApp(id, arguments);
+                started?.Invoke();
                 return true;
             }
 
-            return StartViaAppsFolder(id);
+            // ShellExecuteEx on an ID list goes through the item's context-menu handler, which can take seconds and
+            // pumps messages while it waits, so it never runs on the dispatcher.
+            RunOnShellThread(id, () => OpenAppsFolderItem(id, verb: null, owner: 0), started);
+            return true;
         }
         catch (Exception ex) when (ex is Win32Exception or FileNotFoundException or COMException or InvalidOperationException)
         {
@@ -74,34 +97,41 @@ internal sealed class AppLauncher : IAppLauncher
     }
 
     /// <summary>
-    /// True for "scheme:rest" strings such as "ms-settings:", "shell:RecycleBinFolder" or "https://...".
-    /// A scheme is at least two characters, so drive-letter paths ("C:\...") never qualify.
+    /// UAC shows its prompt in front only when the window that asked for it is the foreground window; otherwise it
+    /// starts as a flashing taskbar button the user may never see (the dock is WS_EX_NOACTIVATE, so a click on it
+    /// leaves another app in front). We just received the user's click, so we may take the foreground.
     /// </summary>
-    private static bool IsUri(string id)
+    private static void BringOwnerToFront(nint owner)
     {
-        var colon = id.IndexOf(':', StringComparison.Ordinal);
-        if (colon < 2 || !char.IsAsciiLetter(id[0]))
+        if (owner == 0 || NativeMethods.GetForegroundWindow() == owner)
         {
-            return false;
+            return;
         }
 
-        foreach (var c in id.AsSpan(0, colon))
+        if (!NativeMethods.SetForegroundWindow(owner))
         {
-            if (!char.IsAsciiLetterOrDigit(c) && c is not ('+' or '-' or '.'))
-            {
-                return false;
-            }
+            Log.Warn($"AppLauncher: SetForegroundWindow(0x{owner:X}) failed; the UAC prompt may open behind other windows");
+        }
+    }
+
+    /// <summary>The file a launch id names: an existing path, or a known-folder "{GUID}\app.exe" that resolves to one.</summary>
+    private string? ExistingFile(string id)
+    {
+        if (Path.IsPathRooted(id) && File.Exists(id))
+        {
+            return id;
         }
 
-        return true;
+        return KnownFolderPath.TryParse(id, out _, out _) && _resolvePath(id) is { } resolved
+            && Path.IsPathRooted(resolved) && File.Exists(resolved)
+            && resolved.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                ? resolved
+                : null;
     }
 
-    /// <summary>Opens an existing file. Executables start in their own folder; shortcuts keep their "Start in".</summary>
-    private static bool StartFile(string path, string? arguments)
-    {
-        var workingDirectory = path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? Path.GetDirectoryName(path) : null;
-        return ShellExecute(path, arguments, workingDirectory);
-    }
+    /// <summary>Executables start in their own folder; shortcuts keep their "Start in".</summary>
+    private static string? WorkingDirectoryFor(string path) =>
+        path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? Path.GetDirectoryName(path) : null;
 
     private static bool ShellExecute(string target, string? arguments, string? workingDirectory)
     {
@@ -121,42 +151,128 @@ internal sealed class AppLauncher : IAppLauncher
         return true;
     }
 
-    /// <summary>
-    /// Asks Explorer to open the AppsFolder item, exactly like clicking it in Start. Explorer has no way to
-    /// pass arguments to such items, so any arguments are ignored.
-    /// </summary>
-    private static bool StartViaAppsFolder(string id)
+    private static bool ShellExecuteElevated(string path, string? arguments, string? workingDirectory, nint owner)
     {
-        var info = new ProcessStartInfo(ExplorerPath) { UseShellExecute = false };
-        info.ArgumentList.Add("shell:AppsFolder\\" + id);
-        using var process = Process.Start(info);
-        return true;
+        var info = NewExecuteInfo(RunAsVerb, owner);
+        info.lpFile = path;
+        info.lpParameters = string.IsNullOrEmpty(arguments) ? null : arguments;
+        info.lpDirectory = workingDirectory;
+        return Execute(ref info, path);
     }
 
     /// <summary>
-    /// Activates a packaged app through IApplicationActivationManager, falling back to Explorer.
-    /// ActivateApplication blocks until the app has started (seconds on a cold start), so it runs on a
-    /// worker thread to keep the dock responsive; failures are logged there.
+    /// Invokes an AppsFolder item like clicking it in Start, through its ID list, so it runs in this process
+    /// rather than via explorer.exe. AppsFolder items take no arguments, so any are ignored.
     /// </summary>
-    private static void ActivatePackagedApp(string aumid, string? arguments)
+    private static bool OpenAppsFolderItem(string id, string? verb, nint owner)
     {
-        _ = Task.Run(() =>
+        var hr = NativeMethods.SHParseDisplayName(AppsFolderPrefix + id, 0, out var idList, 0, out _);
+        if (hr < 0 || idList == 0)
         {
-            if (TryActivate(aumid, arguments))
+            Log.Warn($"AppLauncher: SHParseDisplayName('{AppsFolderPrefix}{id}') failed with 0x{hr:X8}");
+            return false;
+        }
+
+        try
+        {
+            var info = NewExecuteInfo(verb, owner);
+            info.fMask |= NativeMethods.SEE_MASK_INVOKEIDLIST;
+            if (verb is null)
             {
-                return;
+                // An error box for a normal launch would have no owner and outlive the click, so failures are only
+                // logged. Elevated launches keep the shell's UI, which must show the UAC prompt.
+                info.fMask |= NativeMethods.SEE_MASK_FLAG_NO_UI;
             }
 
+            info.lpIDList = idList;
+            return Execute(ref info, id);
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(idList);
+        }
+    }
+
+    /// <param name="owner">Window UAC treats as the requester; its being in front decides whether the prompt is too.</param>
+    private static SHELLEXECUTEINFO NewExecuteInfo(string? verb, nint owner) => new()
+    {
+        cbSize = Marshal.SizeOf<SHELLEXECUTEINFO>(),
+        // NOASYNC: the launch runs on a short-lived worker thread that exits straight after the call.
+        fMask = NativeMethods.SEE_MASK_NOASYNC,
+        hwnd = owner,
+        lpVerb = verb,
+        nShow = NativeMethods.SW_SHOWNORMAL,
+    };
+
+    /// <summary>Runs ShellExecuteEx. "No" on a UAC prompt is the user's choice, so it is logged at Info, not as a failure.</summary>
+    private static bool Execute(ref SHELLEXECUTEINFO info, string what)
+    {
+        var verb = info.lpVerb ?? "default";
+        if (info.lpVerb == RunAsVerb)
+        {
+            Log.Info($"AppLauncher: launching '{what}' elevated (verb {verb}, mask 0x{info.fMask:X})");
+        }
+
+        if (NativeMethods.ShellExecuteEx(ref info))
+        {
+            return true;
+        }
+
+        var error = Marshal.GetLastPInvokeError();
+        if (error == NativeMethods.ERROR_CANCELLED)
+        {
+            Log.Info($"AppLauncher: launch of '{what}' cancelled (verb {verb})");
+        }
+        else
+        {
+            Log.Warn($"AppLauncher: ShellExecuteEx('{what}', verb {verb}) failed with Win32 error {error}");
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Runs a blocking launch on its own STA thread: an elevated ShellExecuteEx waits until the UAC prompt is answered,
+    /// ID-list launches go through shell extensions, and packaged activation waits for a cold start, so none may run on
+    /// the dispatcher; the shell wants STA. When <paramref name="launch"/> succeeds, <paramref name="started"/> is
+    /// posted back to the caller's synchronisation context (the dispatcher).
+    /// </summary>
+    private static void RunOnShellThread(string what, Func<bool> launch, Action? started = null)
+    {
+        var context = SynchronizationContext.Current;
+        var thread = new Thread(() =>
+        {
             try
             {
-                StartViaAppsFolder(aumid);
+                if (launch() && started is not null)
+                {
+                    if (context is null)
+                    {
+                        started();
+                    }
+                    else
+                    {
+                        context.Post(_ => started(), null);
+                    }
+                }
             }
-            catch (Exception ex) when (ex is Win32Exception or FileNotFoundException or InvalidOperationException)
+            catch (Exception ex)
             {
-                Log.Warn($"AppLauncher: could not launch '{aumid}' through Explorer", ex);
+                // Thread boundary: an exception escaping here would end the shell process, so everything is logged.
+                Log.Warn($"AppLauncher: could not launch '{what}'", ex);
             }
-        });
+        })
+        {
+            IsBackground = true,
+            Name = "WinGnome launch",
+        };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
     }
+
+    /// <summary>Activates a packaged app through IApplicationActivationManager, falling back to its AppsFolder item.</summary>
+    private static void ActivatePackagedApp(string aumid, string? arguments) =>
+        RunOnShellThread(aumid, () => TryActivate(aumid, arguments) || OpenAppsFolderItem(aumid, verb: null, owner: 0));
 
     private static bool TryActivate(string aumid, string? arguments)
     {

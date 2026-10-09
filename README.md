@@ -21,9 +21,10 @@ the way it was when it exits.
 - **Workspace dots** for Windows virtual desktops. Click a dot to switch desktops.
 - **Focused app name** next to the dots, as in GNOME.
 - **Centred clock**, formatted GNOME-style (`Wed 8 Oct  14:05`). Click it for a calendar.
-- **System indicators**: network, volume (scroll on it to change the volume) and battery.
+- **System indicators**: network, volume (scroll on it to change the volume) and battery, drawn as GNOME-style symbolic icons.
+- **Crisp at any scaling**: bold **Adwaita Sans** text (GNOME's own typeface, bundled; switch to Segoe UI in Settings → Top Bar → Font), with text, icons and tray icons sized to whole screen pixels at 100%, 125%, 150% and up.
 - **Tray icons** (like macOS menu bar extras): the notification-area icons of your running apps (Discord, Steam, OneDrive, antivirus, ...) sit left of the system indicators, in the order they were added. Click, double-click, middle-click and right-click work as in the Windows tray, so app menus open right under the icon. Hover for the tooltip. Icons an app hides stay hidden. The Windows taskbar keeps its own copy of every icon, in both taskbar modes. Turn this off in Settings → Top Bar.
-- **Quick settings** menu: volume and screen-brightness sliders (brightness for a laptop's built-in display; scroll or use the arrow keys on it too), Wi-Fi and Bluetooth shortcuts, screenshot, Windows Settings, WinGnome settings, lock, and the power menu (sleep, restart, shut down, sign out). It also links to the hidden system tray and to Windows' own quick settings and notification centre.
+- **Quick settings** menu: volume and screen-brightness sliders (brightness for a laptop's built-in display; scroll or use the arrow keys on it too), Wi-Fi and Bluetooth shortcuts, screenshot, Settings, WinGnome settings, lock, and the power menu (sleep, restart, shut down, sign out). The chevrons on the sliders open the Sound and Displays panels, the battery row opens Power, and the calendar's *Date & time settings* opens Date & Time; Wi-Fi and Bluetooth open their Windows Settings pages. It also links to the hidden system tray and to Windows' own quick settings and notification centre.
 - Registered as an AppBar, so maximised windows sit below the bar instead of under it. The bar hides automatically when a full-screen app runs.
 - **Appearance**: you can set the background colour, text colour, opacity (0–100%), **blur or acrylic**, height, text size, the hover highlight's corner radius (square to pill), and a *floating* mode with a margin and rounded corners. The default is the classic solid black GNOME bar.
 
@@ -32,6 +33,7 @@ the way it was when it exits.
 - **Click** focuses an app (restoring it if minimised), or minimises it if it's already focused. Other click actions: *cycle windows* or *show previews*.
 - Running windows join their pinned icon, including Electron apps such as VS Code and Squirrel-installed apps such as GitHub Desktop and Discord.
 - **Middle-click** opens a new window. **Right-click** lists the app's windows plus *New window*, *Pin/Unpin* and *Quit*.
+- **Run as administrator** (right-click) starts an app elevated after the UAC prompt; pinned apps also get an *Always run as administrator* checkbox. As in Start, this works for desktop apps and full-trust Store apps such as Windows Terminal, but not for UWP apps such as Calculator or for File Explorer, which don't offer it. WinGnome itself never runs elevated.
 - **Super+1…9** activates the n-th dock item.
 - **Visibility modes**: *Always visible* (reserves screen space), *Intellihide* (hides only when a window overlaps it, the Ubuntu default) and *Autohide*.
 - Optional macOS-style **hover magnification**, panel mode (stretch to the screen edges), a *Show Applications* button and a recycle bin.
@@ -53,9 +55,27 @@ the way it was when it exits.
 - Full-screen overview with **live window thumbnails** (DWM). Click a thumbnail to focus that window, or hover and click × to close it.
   Thumbnails glide out of their windows when it opens and back when it closes (instant when Windows animations are off).
 - **Type to search** apps and windows. Press Enter to launch the top hit and Esc to close.
-- **Application grid** (from the dock's *Show Applications* button). Right-click an app to pin it to the dock.
+- **Application grid** (from the dock's *Show Applications* button). Right-click an app to pin it to the dock or run it as administrator.
+- **Ctrl+Shift+Enter** or **Ctrl+Shift+click** launches an app as administrator, as in Start.
 - **Hot corner**: top-left, with a configurable delay.
 - Optional: **Super key alone opens the overview** instead of the Start menu. Win+X, Win+E and other Win+key shortcuts keep working.
+
+### Settings (a GNOME Settings app for Windows)
+WinGnome's settings window works like GNOME Settings: a header bar, a **searchable sidebar** grouped like GNOME
+(Ctrl+F jumps to the search box; Enter opens the best match), and the panel on the right.
+- **Native panels** that change Windows itself, each read when you open it and released when you leave it:
+  - **Displays**: arrangement (drag displays in the preview; they snap edge to edge), primary display, resolution and refresh rate. Changes are collected and applied together with *Apply*, then GNOME's **"Keep these display settings?"** countdown reverts them after 15 seconds unless you keep them. Scale is shown, and changed in Windows Settings.
+  - **Sound**: output and input device, their volumes and mute, and per-app volume levels.
+  - **Power**: battery state, power mode (Performance / Balanced / Power Saver), screen blank and automatic suspend (separately on battery and plugged in on laptops).
+  - **Mouse & Touchpad**: primary button, pointer speed, mouse acceleration and scroll speed.
+  - **Keyboard**: key repeat delay and speed (with a test field) and the installed input sources.
+  - **Appearance**: Default (light) or Dark style, GNOME's accent colours (or automatic from the wallpaper), and the wallpaper (Windows' own pictures or your own).
+  - **Multitasking**: hot corner, workspace indicator, Windows snapping (snap, snap layouts, snap suggestions) and whether Alt+Tab shows windows from all workspaces.
+  - **Date & Time**: time zone (searchable) and the top bar clock's format.
+  - **About**: device name, hardware model, memory, processor, graphics, disk capacity and Windows version.
+- **Linked panels** open the matching Windows Settings page and are marked with an arrow: Wi-Fi, Network, Bluetooth, Printers, Removable Media, Colour (the colour management control panel), Notifications, Apps, Default Apps, Online Accounts, Sharing, Privacy & Security, Region & Language, Users, Accessibility and Windows Update.
+- **WinGnome's own pages** (General, Top Bar, Dock, Window Buttons, Activities, Streamline, About WinGnome) sit in their own group at the bottom.
+- In `--safe` mode the system panels are read-only. If Windows refuses a change (a policy, a missing API), the panel says so and offers the Windows Settings page.
 
 ### Streamline
 - **Centre new windows** (GNOME behaviour).
@@ -110,6 +130,7 @@ top right), or run `WinGnome.exe` again: a second launch opens the running insta
 | Switch | Effect |
 |---|---|
 | `--settings` | Open the settings window on start |
+| `--settings-panel <id>` | Start WinGnome with the settings window open at a panel, e.g. `displays`, `sound`, `power`, `appearance` or `wingnome-dock` (ids in `PanelIds`). If WinGnome is already running with the same profile, it opens that panel there. |
 | `--settings-dir <path>` | Use a separate profile folder (settings, tweak backups, log) |
 | `--safe` | Safe mode: no taskbar hiding, no registry writes, no keyboard hooks (tray icons still show in the top bar; nothing to undo) |
 | `--selftest` | Start every feature in safe mode, run for 5 s, exit with code 0 on success (used by CI and QA) |
@@ -124,6 +145,8 @@ WinGnome changes as little as possible, and it undoes everything it changes:
 - **Quitting**: use *Quit WinGnome* in quick settings or Settings → About. `taskkill /im WinGnome.exe` (without `/f`) also quits cleanly.
 - **Registry tweaks** only touch `HKEY_CURRENT_USER`. The original values (including "value did not exist") are stored in `tweaks-backup.json`, and **Settings → Streamline → Revert all** restores them.
 - **Tray icons**: WinGnome passes every tray-icon and AppBar message on to Explorer as it arrives, so Explorer always keeps all icons, even if WinGnome is killed. If Explorer ever fails to answer while WinGnome passes a message on, WinGnome asks apps to register their icons with Explorer again when it exits.
+- **Display changes** from Settings → Displays are applied only after Windows accepts the new mode in a test, and the previous and new settings are saved to `display-revert.json` first. Until you choose *Keep Changes* the change is temporary (a reboot or sign-out drops it, as it is not written to the registry), and it reverts after 15 seconds, when you leave the panel or close the window during the countdown, and on the next start if WinGnome was killed during it.
+- Other **Settings panels** change Windows settings on purpose (like Windows Settings does), so those changes are yours and stay after WinGnome exits. Nothing is changed in `--safe` mode.
 - WinGnome never touches elevated (administrator) windows.
 - Log file: `%APPDATA%\WinGnome\wingnome.log`.
 
@@ -189,3 +212,7 @@ dotnet test
 
 Issues and pull requests are welcome. Read [AGENTS.md](AGENTS.md) first. Please keep platform calls in `src/WinGnome` and logic in
 `WinGnome.Core` with tests, and run `dotnet build -warnaserror` and `dotnet test` before submitting.
+
+## Credits
+
+- [Adwaita Sans](https://gitlab.gnome.org/GNOME/adwaita-fonts) by the GNOME project (based on Inter by Rasmus Andersson), bundled unmodified under the SIL Open Font License 1.1; see [assets/fonts/OFL.txt](assets/fonts/OFL.txt).

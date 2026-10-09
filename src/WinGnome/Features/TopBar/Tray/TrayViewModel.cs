@@ -26,6 +26,8 @@ internal sealed class TrayViewModel : ObservableObject, IDisposable
     private PixelRect _barBounds;
     private TrayIconViewModel? _hovered;
     private PixelRect _hoveredBounds;
+    private int _iconSlotPx;
+    private double _iconScale = 1;
 
     /// <param name="onCloseRequested">Quits WinGnome when the tray host receives a polite close request.</param>
     public TrayViewModel(Dispatcher dispatcher, Action onCloseRequested)
@@ -78,6 +80,17 @@ internal sealed class TrayViewModel : ObservableObject, IDisposable
     {
         _barBounds = bounds;
         _host?.SetBarBounds(bounds);
+    }
+
+    /// <summary>Size of every icon's square slot: <paramref name="slotPx"/> device pixels on a monitor at <paramref name="scale"/>.</summary>
+    public void SetIconSlot(int slotPx, double scale)
+    {
+        _iconSlotPx = slotPx;
+        _iconScale = scale;
+        foreach (var icon in Icons)
+        {
+            icon.SetSlot(slotPx, scale);
+        }
     }
 
     /// <summary>Delivers a pointer event on <paramref name="icon"/>, whose on-screen rectangle is <paramref name="bounds"/>.</summary>
@@ -175,6 +188,7 @@ internal sealed class TrayViewModel : ObservableObject, IDisposable
         {
             case TrayChangeKind.Added:
                 var added = new TrayIconViewModel(change.Icon);
+                added.SetSlot(_iconSlotPx, _iconScale);
                 if (imageChanged)
                 {
                     added.Image = ToImage(image);
@@ -214,6 +228,7 @@ internal sealed class TrayViewModel : ObservableObject, IDisposable
 
         try
         {
+            // Empty size options keep the icon's own pixel size at 96 DPI; TrayIconPlacement decides how it is drawn.
             var image = Imaging.CreateBitmapSourceFromHIcon(icon.DangerousGetHandle(), Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
             image.Freeze();
             return image;

@@ -46,6 +46,13 @@ public static class AccentColorChanges
         ];
     }
 
+    /// <summary>The colour of a DWM <c>AccentColor</c> value (0xAABBGGRR); its alpha byte is ignored.</summary>
+    public static HexColor FromAbgr(int abgr) =>
+        HexColor.FromRgb((byte)(abgr & 0xFF), (byte)((abgr >> 8) & 0xFF), (byte)((abgr >> 16) & 0xFF));
+
+    /// <summary>The write that hands the accent colour back to Windows, which then picks it from the wallpaper.</summary>
+    public static IReadOnlyList<RegistryChange> Automatic() => [DWord(DesktopKey, "AutoColorization", 1)];
+
     private static HexColor Swatch(HexColor accent, (bool TowardWhite, double Amount) step) =>
         accent.Blend(step.TowardWhite ? new HexColor(255, 255, 255, 255) : new HexColor(255, 0, 0, 0), step.Amount);
 

@@ -46,6 +46,7 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | Namespace | Type | Purpose |
 |---|---|---|
 | Settings | `AppSettings`, `SettingsStore`, `SettingsSerializer` | Persisted config, JSON in `%APPDATA%\WinGnome` |
+| Settings | `SettingsActivationRequest` | Format and validation of the `settings-request.txt` a second launch leaves for the running instance (`--settings-panel`) |
 | Theming | `HexColor`, `TrafficLightPalette` | Colour parsing, presets → `TrafficLightColors` |
 | Input | `Hotkey`, `SuperKeyStateMachine`, `HotCornerDetector` | Hotkey parsing, the "Win alone" detector, corner dwell |
 | Geometry | `PixelRect`, `LayoutRect`, `LayoutSize`, `BackdropPlacement` | Integer screen rectangles, double layout rectangles, blur backdrop inset under rounded bodies |
@@ -53,12 +54,17 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | Dock | `DockModelBuilder`, `DockApp`, `RunningWindow`, `DockLayout`, `DockClickPlanner` | Dock items, geometry, magnification, click behaviour |
 | Overview | `OverviewLayout`, `SelectionNavigator`, `OverviewTransition`, `ThumbnailTrack`, `OverviewTransitionState` | Arranges window thumbnails in a grid that preserves aspect ratios, keyboard selection, open/close animation (ease-out-quad, retargetable tracks, dim alpha, the reversible open/close state machine) |
 | Search | `FuzzyMatcher` | Ranks apps and windows by a query |
-| Shell | `KnownFolderPath` | Resolves `{GUID}\path` AppsFolder parsing names |
-| TopBar | `ClockFormatter`, `BatteryStatus`, `BrightnessScale`, `BrightnessWheel`, `WriteCoalescer` | GNOME-style clock text, battery state and whether to poll it, brightness levels, wheel steps and coalesced writes |
+| Shell | `KnownFolderPath`, `LaunchPlanner`, `LaunchRequest`, `LaunchModifiers`, `AppHost` | Resolves `{GUID}\path` AppsFolder parsing names; classifies launch ids and decides elevation (Ctrl+Shift or a pin's `RunAsAdministrator`; desktop and full-trust packaged apps, never UWP apps or URIs) |
+| Shell | `ShellStartDecision`, `ShellStartInputs`, `CrashHistory`, `RestartBackoff`, `TrialConfirmation` | Shell-mode bootstrap decisions (spec 0013), unwired: fail-closed start/Explorer/give-up outcome, shell-value removal, trial handling, crash-loop detection (3 in 2 min or 5 in 30 min), restart backoff (1 s, 3 s, 10 s), trial confirmation (explicit and 5 min uptime) |
+| Shell | `StartupRunner`, `StartupEntry`, `StartupApprovedSet` | Ordered sign-in launch plan from Run/RunOnce/Startup folders: StartupApproved flags, RunOnce `!`/`*` prefixes, own-entry skip, command-line parsing (unwired) |
+| Shell | `AppBarNegotiator` | AppBar protocol geometry: QUERYPOS/SETPOS/REMOVE, one auto-hide bar per edge per monitor, per-monitor work areas in integer pixels (unwired) |
+| Shell | `ShellHotkeyMap` | Win+ hotkey defaults for shell mode (E, R, I, D, Shift+S, arrows), lookup by modifiers and key, conflicts with user hotkeys (unwired) |
+| TopBar | `ClockFormatter`, `BatteryStatus`, `BrightnessScale`, `BrightnessWheel`, `WriteCoalescer`, `BarMetrics`, `TrayIconPlacement` | GNOME-style clock text, battery state and whether to poll it, brightness levels, wheel steps and coalesced writes, whole-device-pixel text, symbolic icon and hover-pill sizes, how a tray icon bitmap is drawn in its slot (never upscaled by a non-integer factor) |
 | Tray | `ShellTrayData`, `TrayIconRegistry`, `TrayFrontCheckSchedule` | Tray-host message parsing, icon list, how often the host re-checks it is in front |
 | Collections | `LruCache`, `DeadlineSchedule` | Bounded least-recently-used cache; one deadline per key for debouncing on a single timer |
 | Workspaces | `VirtualDesktopState` | Parses Explorer's virtual-desktop registry blobs |
-| Tweaks | `TweakCatalog`, `TweakDefinition`, `RegistryChange`, `IRegistryStore`, `TweakEngine`, `TweakBackup`, `AccentColorChanges` | Reversible HKCU tweaks, accent-colour registry values |
+| ControlCenter | `SettingsPanelCatalog` (incl. `DirectLinkFor`), `SettingsPanel`, `PanelIds`, `DisplayArrangement`, `KeepChangesCountdown`, `DisplayRevertRecord`, `DisplayChangeFlow`, `DisplayModes`, `PowerTimeouts`, `TimeZoneList`, `InputTuning`, `SystemInfoText` | The GNOME Settings style app (spec 0015): sidebar panels, groups, links and search; display arrangement geometry (edge snapping, primary at the origin, preview fit), the 15-second keep-or-revert state machine, the crash-safe revert record and the order of apply, keep, revert and recovery; resolution and refresh choices; GNOME's power timeouts; time zone ordering and search; SystemParametersInfo value ranges; About and Sound text |
+| Tweaks | `TweakCatalog`, `TweakDefinition`, `RegistryChange`, `IRegistryStore`, `TweakEngine`, `TweakBackup`, `AccentColorChanges` | Reversible HKCU tweaks, accent-colour registry values (also read back and handed to Windows by the Appearance panel) |
 
 ## App modules (WinGnome)
 
@@ -67,20 +73,22 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | `Infrastructure/` | lead | `Log`, `IFeature`, `SettingsService`, `ObservableObject`, `RelayCommand`, `SessionRole` (one instance per session does a job, e.g. window buttons), theme resources |
 | `Interop/` | shared | `NativeMethods.*.cs` partials, `WinEventHook`, `AppBar`, `BlurBackdrop` (blur window under the dock and top bar bodies) |
 | `Services/WindowTracker.cs` | lead | Enumerates alt-tab windows, raises `WindowsChanged` and `ForegroundChanged`, plus raw location events |
-| `Services/Apps/` | dock agent | `AppCatalog` (shell:AppsFolder), `IconProvider`, `AppLauncher` |
+| `Services/Apps/` | dock agent | `AppCatalog` (shell:AppsFolder), `IconProvider`, `AppLauncher` (in-process `ShellExecuteEx`, never `explorer.exe`) |
 | `Features/Dock/` | dock agent | Dock window, intellihide, trigger strip, context menu, `TaskbarController` |
-| `Features/TopBar/` | top-bar agent | Top-bar AppBar, clock and calendar, indicators (network, volume, battery), quick settings, power menu, workspace dots |
+| `Features/TopBar/` | top-bar agent | Top-bar AppBar, clock and calendar, indicators (network, volume, battery), quick settings, power menu, workspace dots, `TopBarFonts` (bundled Adwaita Sans or Segoe UI), `SymbolicIcon` (draws `Theme/SymbolicIcons.xaml` on whole pixels) |
 | `Controls/TrafficLights/` | shared | `TrafficLightButtonsView`, its automation peers and `GlyphGeometry` (the circles, used by the overlay and header bars), `HeaderBarWindow` (WindowChrome header bar with round buttons and Snap Layouts for WinGnome's own windows) |
 | `Features/WindowButtons/` | traffic-light agent | Overlay manager and per-window overlay, custom title bar probing and click guard |
 | `Features/Overview/` | overview agent | Activities overview with DWM thumbnails and search, hot corner, Super key hook, global hotkey, centring new windows, focus-follows-mouse |
-| `Features/Settings/` | settings agent | Settings window (all pages, header bar), tweaks page with `RegistryStore` (HKCU), start-with-Windows |
+| `Features/Settings/` | settings agent | Settings window as a GNOME Settings style app (header bar, searchable grouped sidebar, links to Windows Settings, WinGnome's pages), tweaks page with `RegistryStore` (HKCU), start-with-Windows |
+| `Features/Settings/Panels/` | settings agent | Native system panels (Displays, Sound, Power, Mouse, Keyboard, Appearance, Multitasking, Date & Time, About): one folder per panel with its view, view model and service; `SystemPanelViewModel` (open/close lifecycle, safe-mode read-only, problem banner and Windows Settings link) and `SystemSettingWriter` (ordered off-UI-thread writes, none in safe mode) |
 
 ## Safety rules
 
 - Taskbar: restore on normal exit, on unhandled exceptions, on `SessionEnding`, and on `--restore-taskbar`.
 - Registry tweaks touch **HKCU only**, back up the previous value (including "absent"), and can be reverted one by one or all at once.
 - Never act on elevated windows (UIPI would block us anyway); skip them explicitly.
-- Command-line switches: `--settings-dir <path>` (isolated profile), `--safe` (no taskbar hiding, tweaks or hooks), `--selftest` (start every feature in safe mode, run for 5 s, exit 0 or 1), `--restore-taskbar`.
+- Settings panels change Windows settings on purpose and don't back them up, except Displays: a change is validated and applied atomically for the session only (`SetDisplayConfig` without saving), the previous and new settings are written to `display-revert.json` first, and the change is reverted unless kept within 15 s (also after a crash, at the next start, if it is still showing). Safe mode never writes system settings.
+- Command-line switches: `--settings-dir <path>` (isolated profile), `--safe` (no taskbar hiding, tweaks, hooks or system setting changes), `--selftest` (start every feature in safe mode, run for 5 s, exit 0 or 1), `--restore-taskbar`, `--settings` / `--settings-panel <id>`.
 
 ## QA plan
 

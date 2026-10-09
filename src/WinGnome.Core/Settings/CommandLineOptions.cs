@@ -18,12 +18,15 @@ public sealed record CommandLineOptions
     /// <summary>Open the settings window on start.</summary>
     public bool OpenSettings { get; init; }
 
+    /// <summary>The settings panel to show (a <c>ControlCenter.PanelIds</c> value), from <c>--settings-panel &lt;id&gt;</c>.</summary>
+    public string? SettingsPanel { get; init; }
+
     public IReadOnlyList<string> Unknown { get; init; } = [];
 
     public static CommandLineOptions Parse(IReadOnlyList<string> args)
     {
         ArgumentNullException.ThrowIfNull(args);
-        string? settingsDir = null;
+        string? settingsDir = null, settingsPanel = null;
         bool safe = false, selfTest = false, restore = false, openSettings = false;
         var unknown = new List<string>();
 
@@ -47,6 +50,10 @@ public sealed record CommandLineOptions
                 case "--settings":
                     openSettings = true;
                     break;
+                case "--settings-panel" when i + 1 < args.Count:
+                    openSettings = true;
+                    settingsPanel = args[++i];
+                    break;
                 default:
                     unknown.Add(arg);
                     break;
@@ -60,6 +67,7 @@ public sealed record CommandLineOptions
             SelfTest = selfTest,
             RestoreTaskbar = restore,
             OpenSettings = openSettings,
+            SettingsPanel = settingsPanel,
             Unknown = unknown,
         };
     }

@@ -11,7 +11,11 @@
         Topmost="True"
         SizeToContent="WidthAndHeight"
         WindowStartupLocation="CenterScreen"
-        UseLayoutRounding="True">
+        UseLayoutRounding="True"
+        FontFamily="{DynamicResource TopBarFont}"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Grayscale"
+        TextOptions.TextHintingMode="Auto">
     <Window.Resources>
         <ResourceDictionary Source="PopupStyles.xaml" />
     </Window.Resources>

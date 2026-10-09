@@ -1,0 +1,52 @@
+<UserControl x:Class="WinGnome.Features.Settings.Panels.DateAndTime.DateTimePanel" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls"
+             xmlns:p="clr-namespace:WinGnome.Features.Settings.Panels">
+    <StackPanel>
+        <p:PanelNotices />
+
+        <c:SettingsGroup Header="Time Zone" Description="{Binding AutomaticNote}">
+            <c:SettingsRow Title="Time Zone" Subtitle="{Binding TimeZoneName}">
+                <Button Content="Change&#x2026;" Style="{DynamicResource SettingsButton}" Command="{Binding ChooseZoneCommand}" />
+            </c:SettingsRow>
+            <StackPanel Margin="16,4,16,16" Visibility="{Binding IsChoosingZone, Converter={x:Static c:Converters.BoolToVisibility}}">
+                <TextBox Text="{Binding ZoneSearch, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"
+                         AutomationProperties.Name="Search time zones" />
+                <!-- Buttons rather than a selectable list: arrowing through the list must not change the time zone at each step. -->
+                <ScrollViewer Height="260" Style="{DynamicResource SettingsScrollViewer}" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding FilteredZones}" Focusable="False" AutomationProperties.Name="Time zones">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{DynamicResource FlatButton}" HorizontalContentAlignment="Left" Padding="10,7" FontSize="14"
+                                        Command="{Binding DataContext.SetZoneCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                        CommandParameter="{Binding}" Content="{Binding DisplayName}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </StackPanel>
+            <c:SettingsRow Title="Automatic Date, Time and Time Zone" Subtitle="Set from the internet and your location in Windows Settings.">
+                <Button Content="Open" Style="{DynamicResource SettingsButton}" Command="{Binding AutomaticCommand}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Clock and Calendar" Description="How the WinGnome top bar shows the time.">
+            <c:SettingsRow Title="Time Format">
+                <ListBox Style="{DynamicResource SegmentedListBox}" ItemsSource="{Binding ClockStyle.Options}"
+                         SelectedItem="{Binding ClockStyle.Selected}" DisplayMemberPath="Label" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Week Day">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding ShowWeekday.Value}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Date">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding ShowDate.Value}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Seconds">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding ShowSeconds.Value}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <p:PanelFooter />
+    </StackPanel>
+</UserControl>

@@ -122,7 +122,9 @@ internal sealed partial class WindowTracker : IDisposable
         var appPid = className == "ApplicationFrameWindow" ? FindCoreWindowProcess(hwnd) ?? pid : pid;
         var facts = GetProcessFacts(appPid);
 
-        var aumid = WindowProperties.GetAppUserModelId(hwnd) ?? facts.PackagedAppUserModelId;
+        var aumid = WindowProperties.GetAppUserModelId(hwnd)
+            ?? facts.PackagedAppUserModelId
+            ?? AppIdentity.ImpliedAppUserModelId(facts.Path, className);
 
         return new WindowInfo(
             Handle: hwnd,

@@ -22,16 +22,16 @@ internal sealed class SystemStatusViewModel : ObservableObject, IDisposable
         _audio = new AudioVolumeController(dispatcher);
         _brightness = new BrightnessController();
         _battery = new BatteryMonitor(dispatcher);
-        _network.Changed += (_, _) => RaiseAll(nameof(NetworkGlyph), nameof(IsWifiConnected), nameof(NetworkText), nameof(NetworkSummary), nameof(ToolTip));
-        _audio.Changed += (_, _) => RaiseAll(nameof(IsVolumeAvailable), nameof(VolumeGlyph), nameof(VolumePercent),
+        _network.Changed += (_, _) => RaiseAll(nameof(NetworkIcon), nameof(IsWifiConnected), nameof(NetworkText), nameof(NetworkSummary), nameof(ToolTip));
+        _audio.Changed += (_, _) => RaiseAll(nameof(IsVolumeAvailable), nameof(VolumeIcon), nameof(VolumePercent),
             nameof(VolumeText), nameof(IsMuted), nameof(ToolTip));
         _brightness.Changed += (_, _) => RaiseAll(nameof(IsBrightnessAvailable), nameof(BrightnessPercent), nameof(BrightnessText));
-        _battery.Changed += (_, _) => RaiseAll(nameof(HasBattery), nameof(BatteryGlyph), nameof(BatteryPercentText),
+        _battery.Changed += (_, _) => RaiseAll(nameof(HasBattery), nameof(BatteryIcon), nameof(BatteryPercentText),
             nameof(BatterySummary), nameof(ShowBatteryPercentage), nameof(ToolTip));
     }
 
     // ---- Network ----------------------------------------------------------------------------
-    public string NetworkGlyph => Glyphs.ForNetwork(_network.Connection);
+    public string NetworkIcon => StatusIcons.ForNetwork(_network.Connection);
 
     public bool IsWifiConnected => _network.Connection == NetworkConnection.Wireless;
 
@@ -55,7 +55,7 @@ internal sealed class SystemStatusViewModel : ObservableObject, IDisposable
 
     public bool IsMuted => _audio.IsMuted;
 
-    public string VolumeGlyph => Glyphs.ForVolume(VolumeLevel.IconFor(_audio.Level, _audio.IsMuted));
+    public string VolumeIcon => StatusIcons.ForVolume(VolumeLevel.IconFor(_audio.Level, _audio.IsMuted));
 
     /// <summary>0..100, bound two-way to the quick-settings slider.</summary>
     public double VolumePercent
@@ -94,7 +94,7 @@ internal sealed class SystemStatusViewModel : ObservableObject, IDisposable
     // ---- Battery ----------------------------------------------------------------------------
     public bool HasBattery => _battery.Status.HasBattery;
 
-    public string BatteryGlyph => Glyphs.ForBattery(_battery.Status);
+    public string BatteryIcon => StatusIcons.ForBattery(_battery.Status);
 
     public string BatteryPercentText => _battery.Status.PercentText;
 

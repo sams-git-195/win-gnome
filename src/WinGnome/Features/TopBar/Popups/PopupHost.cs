@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -61,6 +62,14 @@ internal sealed class PopupHost : IDisposable
             FocusVisualStyle = null,
         };
         frame.PreviewKeyDown += OnPreviewKeyDown;
+
+        // Same text as the bar: its font, and Ideal grayscale text (the popup is a layered window, so no ClearType).
+        // Regular weight: the popup would otherwise inherit the bar's bold through its placement target.
+        frame.SetResourceReference(TextElement.FontFamilyProperty, TopBarFonts.ResourceKey);
+        TextElement.SetFontWeight(frame, FontWeights.Normal);
+        TextOptions.SetTextFormattingMode(frame, TextFormattingMode.Ideal);
+        TextOptions.SetTextRenderingMode(frame, TextRenderingMode.Grayscale);
+        TextOptions.SetTextHintingMode(frame, TextHintingMode.Auto);
 
         var popup = new Popup
         {

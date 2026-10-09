@@ -22,12 +22,13 @@ namespace WinGnome.Features.TopBar;
 /// </summary>
 internal sealed partial class TopBarWindow : Window
 {
-    // GNOME's panel icons are 16 px next to ~13.5 px text; keep that ratio when the font size changes.
-    private const double IconToFontRatio = 16 / 13.5;
-    private const double DotToFontRatio = 7 / 13.5;
+    private const double DotToFontRatio = 7 / BarMetrics.DefaultFontSize;
 
     // The logo sits a little smaller than the other icons, like the Apple logo next to menu titles.
     private const double LogoToIconRatio = 0.875;
+
+    // Horizontal gap between neighbouring hover pills.
+    private const double PillGapDip = 2;
     private const byte HoverAlpha = 0x26;
     private const byte PressedAlpha = 0x40;
 
@@ -84,10 +85,11 @@ internal sealed partial class TopBarWindow : Window
         TrayIcons.IconPressed += OnTrayIconPressed;
     }
 
-    /// <summary>Applies colours, blur and sizes. Call after the window has a handle.</summary>
+    /// <summary>Applies the font, colours, blur and sizes. Call after the window has a handle.</summary>
     public void ApplySettings(TopBarSettings settings)
     {
         _settings = settings;
+        TopBarFonts.Apply(settings.FontFamily);
         ApplySizes();
         ApplyBackground();
     }
@@ -105,12 +107,7 @@ internal sealed partial class TopBarWindow : Window
         Body.Margin = new Thickness(inset, inset, inset, 0);
         Body.Height = geometry.BodyHeightPx / scale;
         Body.CornerRadius = new CornerRadius(geometry.CornerRadiusPx / scale);
-
-        // Pills keep a GNOME-like gap above and below that grows with the bar.
-        var pillInset = Math.Max(2, Math.Round(_settings.Height * 0.1));
-        Resources["BarPillMargin"] = new Thickness(2, pillInset, 2, pillInset);
-
-        _viewModel.FocusedApp.IconSizePx = (int)Math.Round(IconSize * scale);
+        ApplySizes();
         SyncBackdrop();
     }
 
@@ -138,15 +135,27 @@ internal sealed partial class TopBarWindow : Window
         base.OnClosing(e);
     }
 
-    private double IconSize => Math.Round(_settings.FontSize * IconToFontRatio);
-
+    /// <summary>
+    /// Text, icon and pill sizes for the bar's monitor, each a whole number of device pixels: grayscale text and
+    /// symbolic icons on fractional pixels look soft, and fractional pill margins round unevenly above and below.
+    /// </summary>
     private void ApplySizes()
     {
-        Resources["BarFontSize"] = _settings.FontSize;
-        Resources["BarIconSize"] = IconSize;
+        var iconPx = BarMetrics.SymbolicIconPx(_settings.FontSize, _scale);
+        var iconSize = iconPx / _scale;
+        Resources["BarFontSize"] = BarMetrics.SnapToDevice(_settings.FontSize, _scale);
+        Resources["BarIconSize"] = iconSize;
         Resources["TopBarItemCornerRadius"] = _settings.ItemCornerRadius;
-        Logo.Size = Math.Round(IconSize * LogoToIconRatio);
-        WorkspaceDots.DotSize = Math.Max(4, Math.Round(_settings.FontSize * DotToFontRatio));
+
+        // Pills keep a GNOME-like gap above and below that grows with the bar.
+        var pillInset = BarMetrics.PillInsetPx(_settings.Height, _scale) / _scale;
+        var pillGap = BarMetrics.SnapToDevice(PillGapDip, _scale);
+        Resources["BarPillMargin"] = new Thickness(pillGap, pillInset, pillGap, pillInset);
+
+        Logo.Size = BarMetrics.SnapToDevice(iconSize * LogoToIconRatio, _scale);
+        WorkspaceDots.DotSize = Math.Max(4, BarMetrics.SnapToDevice(_settings.FontSize * DotToFontRatio, _scale));
+        _viewModel.FocusedApp.IconSizePx = iconPx;
+        _viewModel.Tray.SetIconSlot(iconPx, _scale);
     }
 
     private void ApplyBackground()
