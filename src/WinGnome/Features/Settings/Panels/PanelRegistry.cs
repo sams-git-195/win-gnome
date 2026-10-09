@@ -1,5 +1,6 @@
 using WinGnome.Core.ControlCenter;
 using WinGnome.Features.Settings.Panels.About;
+using WinGnome.Features.Settings.Panels.Accessibility;
 using WinGnome.Features.Settings.Panels.Appearance;
 using WinGnome.Features.Settings.Panels.DateAndTime;
 using WinGnome.Features.Settings.Panels.Displays;
@@ -35,5 +36,6 @@ internal static class PanelRegistry
             [PanelIds.About] = context => new AboutPanelViewModel(context),
             [PanelIds.Printers] = context => new PrintersPanelViewModel(context),
             [PanelIds.RemovableMedia] = context => new RemovableMediaPanelViewModel(context),
+            [PanelIds.Accessibility] = context => new AccessibilityPanelViewModel(context),
         };
 }

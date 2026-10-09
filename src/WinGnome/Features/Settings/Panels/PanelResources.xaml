@@ -10,5 +10,6 @@
     <ResourceDictionary.MergedDictionaries>
         <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/Printers/PrintersPanelResources.xaml" />
         <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/RemovableMedia/RemovableMediaPanelResources.xaml" />
+        <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/Accessibility/AccessibilityPanelResources.xaml" />
     </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>
