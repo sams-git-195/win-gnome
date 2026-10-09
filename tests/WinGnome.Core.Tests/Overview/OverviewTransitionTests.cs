@@ -45,18 +45,6 @@ public class OverviewTransitionTests
         Assert.Equal(TimeSpan.FromMilliseconds(expectedMs), OverviewTransition.DurationFor(animationsEnabled, opening));
     }
 
-    [Theory]
-    [InlineData(0.5, 100)]
-    [InlineData(1, 200)]
-    [InlineData(0, 0)]
-    [InlineData(2, 200)]
-    [InlineData(-1, 0)]
-    [InlineData(double.NaN, 200)]
-    public void ReverseDuration_ScalesWithDistanceTravelled(double eased, double expectedMs)
-    {
-        Assert.Equal(TimeSpan.FromMilliseconds(expectedMs), OverviewTransition.ReverseDuration(TimeSpan.FromMilliseconds(200), eased));
-    }
-
     [Fact]
     public void At_Endpoints_ReturnFromAndTo()
     {

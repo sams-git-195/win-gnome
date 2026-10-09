@@ -90,14 +90,32 @@ internal sealed class ThumbnailLayer
         // DWM stacks thumbnails in registration order (the last on top), so registering bottom-up makes the
         // first frame, with every thumbnail over its window, look exactly like the desktop.
         var thumbnails = new Dictionary<nint, DwmThumbnail?>();
-        for (var i = windows.Count - 1; i >= 0; i--)
+        try
         {
-            thumbnails[windows[i].Handle] = DwmThumbnail.TryRegister(_host, windows[i].Handle);
-        }
+            for (var i = windows.Count - 1; i >= 0; i--)
+            {
+                if (!thumbnails.ContainsKey(windows[i].Handle))
+                {
+                    thumbnails[windows[i].Handle] = DwmThumbnail.TryRegister(_host, windows[i].Handle);
+                }
+            }
 
-        foreach (var window in windows)
+            // Each handle gets one slot; a slot owns its thumbnail from here on (Clear releases it).
+            foreach (var window in windows)
+            {
+                if (thumbnails.Remove(window.Handle, out var thumbnail))
+                {
+                    AddSlot(window, thumbnail);
+                }
+            }
+        }
+        finally
         {
-            AddSlot(window, thumbnails[window.Handle]);
+            // Only left over if AddSlot threw: release what no slot took.
+            foreach (var thumbnail in thumbnails.Values)
+            {
+                thumbnail?.Dispose();
+            }
         }
 
         Arrange();
@@ -134,8 +152,11 @@ internal sealed class ThumbnailLayer
         }
     }
 
-    /// <summary>Ends a glide into the grid: thumbnails rest in their slots and the captions fade in.</summary>
-    public void CompleteOpening() => Settle(fadeCaptions: true);
+    /// <summary>
+    /// Ends a glide into the grid: thumbnails rest in their slots and the captions fade in (shown straight away
+    /// when nothing was moving, e.g. with animations off or after a mode switch).
+    /// </summary>
+    public void CompleteOpening() => Settle(fadeCaptions: _moving);
 
     /// <summary>
     /// Points every thumbnail back at its window, starting from where it is now. Windows that are minimised
@@ -369,16 +390,17 @@ internal sealed class ThumbnailLayer
         return bounds.IsEmpty ? null : bounds.Offset(-_hostBounds.Left, -_hostBounds.Top);
     }
 
-    /// <summary>Re-registers a window's thumbnail so DWM draws it above the others.</summary>
+    /// <summary>Re-registers a window's thumbnail so DWM draws it above the others; keeps the old one if that fails.</summary>
     private void RaiseThumbnail(nint hwnd)
     {
-        if (_slots.Find(s => s.Window.Handle == hwnd) is not { Thumbnail: { } thumbnail } slot)
+        if (_slots.Find(s => s.Window.Handle == hwnd) is not { Thumbnail: { } old } slot
+            || DwmThumbnail.TryRegister(_host, hwnd) is not { } raised)
         {
             return;
         }
 
-        thumbnail.Dispose();
-        slot.Thumbnail = DwmThumbnail.TryRegister(_host, hwnd);
+        slot.Thumbnail = raised;
+        old.Dispose();
     }
 
     private void RefreshSelection()

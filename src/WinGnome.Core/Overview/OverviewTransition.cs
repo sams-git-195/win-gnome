@@ -64,12 +64,6 @@ public static class OverviewTransition
         !animationsEnabled ? TimeSpan.Zero : opening ? OpenDuration : CloseDuration;
 
     /// <summary>
-    /// Duration of a reversal that starts <paramref name="eased"/> of the way through: only the distance already
-    /// travelled has to be covered again, so the reversal takes that share of <paramref name="duration"/>.
-    /// </summary>
-    public static TimeSpan ReverseDuration(TimeSpan duration, double eased) => duration * Clamp01(eased);
-
-    /// <summary>
     /// A new track that starts where <paramref name="track"/> is at <paramref name="eased"/> progress and heads for
     /// <paramref name="to"/>, so a reversed or redirected animation never jumps.
     /// </summary>

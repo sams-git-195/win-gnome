@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -61,12 +62,8 @@ internal sealed partial class OverviewWindow : Window
     private int _resultIndex = -1;
     private int _gridIndex = -1;
     private bool _thumbnailsShown;
-    private bool _windowsChangedWhileMoving;
     private bool _closing;
     private double _dimLevel;
-    private double _dim;
-    private double _dimFrom;
-    private double _dimTo;
     private bool _activating;
     private bool _allowClose;
     private bool _closed;
@@ -130,7 +127,7 @@ internal sealed partial class OverviewWindow : Window
 
         if (IsOpen)
         {
-            // Switching modes: no transition, but a running one carries on with the dim layer.
+            // Switching modes: no transition; a running one carries on, using the new dim level.
             ClearQuery();
             ShowModeContent(fromWindows: false);
             if (!_animator.IsRunning)
@@ -141,18 +138,18 @@ internal sealed partial class OverviewWindow : Window
             return;
         }
 
+        var requestedAt = Stopwatch.GetTimestamp();
         var animate = NativeMethods.AreClientAreaAnimationsEnabled();
-
-        // Started first so the reveal timing covers all the preparation below; no frame can render before it ends.
-        _dimFrom = animate ? 0 : _dimLevel;
-        _dimTo = _dimLevel;
-        _animator.Run(OverviewTransition.DurationFor(animate, opening: true), OnTransitionFrame, OnOpened, reveal: () => SetCloaked(false));
-
         SetCloaked(true);
-        SetDim(_dimFrom);
+
+        // The first visible frame is the one WPF drew while cloaked: the start of the glide, or the end if instant.
+        SetDim(animate ? 0 : _dimLevel);
         ShowOnPrimaryMonitor();
         ClearQuery();
         ShowModeContent(fromWindows: animate);
+
+        // Last, so the reveal timeout doesn't count the preparation above; no frame renders before Open returns.
+        _animator.Run(opening: true, animate, OnTransitionFrame, OnOpened, reveal: () => SetCloaked(false), requestedAt);
     }
 
     /// <summary>
@@ -206,20 +203,12 @@ internal sealed partial class OverviewWindow : Window
             return;
         }
 
-        // Interrupting the opening glide: only the distance already covered has to be travelled back.
-        var duration = OverviewTransition.CloseDuration;
-        if (_animator.IsRunning)
-        {
-            duration = OverviewTransition.ReverseDuration(duration, _animator.Eased);
-        }
-
         // Input is ignored until hidden (see OnPreviewKeyDown); only Super or the hot corner turn it around (Open).
+        // Interrupting the opening glide only travels back the distance already covered (OverviewTransitionState).
         _closing = true;
         Root.IsHitTestVisible = false;
         _thumbnails.BeginClosing(focusTarget);
-        _dimFrom = _dim;
-        _dimTo = 0;
-        _animator.Run(duration, OnTransitionFrame, FinishClosing);
+        _animator.Run(opening: false, animationsEnabled: true, OnTransitionFrame, FinishClosing);
     }
 
     /// <summary>
@@ -250,8 +239,7 @@ internal sealed partial class OverviewWindow : Window
         }
 
         // After hiding: stopping an opening that is still waiting uncloaks the window, which must not flash.
-        _animator.Stop();
-        _windowsChangedWhileMoving = false;
+        _animator.Reset();
         _thumbnails.Clear();
         _thumbnailsShown = false;
         ClearQuery();
@@ -262,7 +250,6 @@ internal sealed partial class OverviewWindow : Window
     /// <summary>Turns a closing overview around: it takes focus again and the thumbnails head back to the grid.</summary>
     private void Reopen()
     {
-        var duration = OverviewTransition.ReverseDuration(OverviewTransition.OpenDuration, _animator.Eased);
         _closing = false;
         Root.IsHitTestVisible = true;
         RememberForeground();
@@ -270,6 +257,9 @@ internal sealed partial class OverviewWindow : Window
         try
         {
             IsOpen = true;
+
+            // The picked window was brought to the top when the close began; topmost again, as on every open.
+            PlaceOn(_bounds);
             TakeFocus();
         }
         finally
@@ -277,40 +267,37 @@ internal sealed partial class OverviewWindow : Window
             _activating = false;
         }
 
+        // Window changes during the close weren't watched; the state applies them once the grid settles (OnOpened).
         _context.Windows.WindowsChanged += OnWindowsChanged;
         _thumbnails.BeginReopening();
-        _dimFrom = _dim;
-        _dimTo = _dimLevel;
-        _animator.Run(duration, OnTransitionFrame, OnOpened);
+        _animator.Run(opening: true, animationsEnabled: true, OnTransitionFrame, OnOpened);
     }
 
-    private void OnTransitionFrame(double eased)
+    private void OnTransitionFrame(TransitionFrame frame)
     {
-        SetDim(_dimFrom, _dimTo, eased);
-        _thumbnails.SetProgress(eased);
+        // The dim follows the position, so it stays continuous through reversals and picks up a new level at once.
+        SetDim(_dimLevel * frame.Position);
+        _thumbnails.SetProgress(frame.SegmentEased);
     }
 
     private void OnOpened()
     {
+        var windowsChanged = _animator.State.TakeWindowChanges();
         if (!_thumbnailsShown)
         {
             return;
         }
 
         _thumbnails.CompleteOpening();
-        if (_windowsChangedWhileMoving)
+        if (windowsChanged)
         {
-            _windowsChangedWhileMoving = false;
             _thumbnails.Update(GetWindows());
         }
     }
 
-    private void SetDim(double opacity) => SetDim(opacity, opacity, 1);
-
-    private void SetDim(double from, double to, double eased)
+    private void SetDim(double opacity)
     {
-        var alpha = OverviewTransition.DimAlpha(from, to, eased);
-        _dim = alpha / 255.0;
+        var alpha = OverviewTransition.DimAlpha(opacity, opacity, 1);
         _dimBrush.Color = Color.FromArgb(alpha, 0, 0, 0);
     }
 
@@ -466,11 +453,7 @@ internal sealed partial class OverviewWindow : Window
         if (_thumbnailsShown)
         {
             // Rearranging mid-glide would make thumbnails jump; the grid catches up once it has settled (OnOpened).
-            if (_animator.IsRunning)
-            {
-                _windowsChangedWhileMoving = true;
-            }
-            else
+            if (_animator.State.NoteWindowsChanged())
             {
                 _thumbnails.Update(GetWindows());
             }
