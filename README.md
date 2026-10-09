@@ -29,7 +29,8 @@ the way it was when it exits.
 
 ### Dock
 - Pinned apps plus running apps, with **running-indicator dots** (one per window, up to four).
-- **Click** focuses an app, or minimises it if it's already focused. Other click actions: *cycle windows* or *show previews*.
+- **Click** focuses an app (restoring it if minimised), or minimises it if it's already focused. Other click actions: *cycle windows* or *show previews*.
+- Running windows join their pinned icon, including Electron apps such as VS Code and Squirrel-installed apps such as GitHub Desktop and Discord.
 - **Middle-click** opens a new window. **Right-click** lists the app's windows plus *New window*, *Pin/Unpin* and *Quit*.
 - **Super+1…9** activates the n-th dock item.
 - **Visibility modes**: *Always visible* (reserves screen space), *Intellihide* (hides only when a window overlaps it, the Ubuntu default) and *Autohide*.
@@ -44,10 +45,13 @@ the way it was when it exits.
 - Left or right placement, macOS or Windows button order, adjustable size and spacing.
 - Glyphs (× − +) appear on hover, and inactive windows can be dimmed, as on macOS.
 - **Unified title bars**: optionally paints every decorated window's title bar in an Adwaita header colour so the round buttons blend in seamlessly. The original colours come back on exit.
-- Per-app exclusions. Apps that draw their own title bars (Chrome, Edge, VS Code, Windows Terminal, WinUI 3 apps) are left alone automatically, unless you turn on *Decorate apps with custom title bars (experimental)*, which adds the circles to apps that report their buttons to Windows (Claude desktop, for example).
+- Per-app exclusions. Apps that draw their own title bars (Chrome, Edge, VS Code, Windows Terminal, WinUI 3 apps) are left alone automatically, unless you turn on *Decorate apps with custom title bars (experimental)*, which adds the circles to apps that report their buttons to Windows: Claude desktop, VS Code and Docker Desktop, for example. Under it, *Also decorate apps with web-drawn buttons* adds GitHub Desktop, whose buttons are part of its web page, from a built-in profile of their size, and Windows App SDK apps such as Dia that report only their maximise button. Before a click on such an app is passed on, WinGnome checks that the app still answers there as it did when its buttons were found (a strong check for apps that report their buttons, a weak one for web-drawn buttons).
+- WinGnome's own settings window has a GNOME-style **header bar** with the same round buttons in your style (even with the overlay turned off). Hovering its maximise button shows Windows 11 Snap Layouts.
+- Only one WinGnome instance per Windows session draws window buttons. A second instance (another `--settings-dir` profile) waits and takes over when the first one quits.
 
 ### Activities overview
 - Full-screen overview with **live window thumbnails** (DWM). Click a thumbnail to focus that window, or hover and click × to close it.
+  Thumbnails glide out of their windows when it opens and back when it closes (instant when Windows animations are off).
 - **Type to search** apps and windows. Press Enter to launch the top hit and Esc to close.
 - **Application grid** (from the dock's *Show Applications* button). Right-click an app to pin it to the dock.
 - **Hot corner**: top-left, with a configurable delay.
@@ -77,7 +81,7 @@ the way it was when it exits.
 
 ### Requirements
 - Windows 11 (x64)
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) to build, or the .NET 8 Desktop Runtime to run a build
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) 8.0.400 or a later 8.0 SDK to build (pinned in `global.json`), or the .NET 8 Desktop Runtime to run a build
 
 ### Build and run
 ```bash
@@ -164,11 +168,12 @@ src/WinGnome               WPF app (net8.0-windows): interop, services and featu
   Interop/                 P/Invoke (NativeMethods.*.cs), WinEvent hooks, AppBar, COM interfaces
   Services/                WindowTracker, TaskbarController, Apps (catalogue, icons, launcher)
   Features/                TopBar, Dock, Taskbar, WindowButtons, Overview, Behaviour, Settings
+  Controls/TrafficLights/  Round window buttons shared by the overlay and the settings header bar
   Theme/                   Adwaita light and dark palettes and shared control styles
 tests/WinGnome.Core.Tests  xUnit tests for Core
 docs/PLAN.md               Engineering plan and conventions
 docs/KNOWN_ISSUES.md       Known bugs, risks and limitations, by severity
-assets/logo/               App logo (SVG source for all icon sizes)
+assets/logo/               App logo (SVG source for all icon sizes; tools/Export-AppIcon.ps1 renders the .ico)
 AGENTS.md                  How to work on WinGnome: planning, code, tests, QA, git
 ```
 

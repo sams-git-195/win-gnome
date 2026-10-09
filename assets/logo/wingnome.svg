@@ -3,7 +3,9 @@
   <!--
     WinGnome app logo: a GNOME-style footprint whose heel is the four-pane Windows mark
     and whose toes are rounded window panes. Source of truth for the app icon; export
-    PNG/ICO sizes from this file rather than editing them by hand.
+    PNG/ICO sizes from this file rather than editing them by hand. WPF can't load SVG,
+    so src/WinGnome/Theme/Logo.xaml mirrors this drawing: change both, then run
+    tools/Export-AppIcon.ps1 to re-render the icon and wingnome-256.png from it.
   -->
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">

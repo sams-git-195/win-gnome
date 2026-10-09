@@ -57,6 +57,27 @@ public class SettingsSerializerTests
     }
 
     [Fact]
+    public void Deserialize_WindowButtonsWithoutWebTitleBarField_KeepsItOff()
+    {
+        // A settings file written before DecorateWebTitleBarButtons existed, with custom title bars on.
+        var settings = SettingsSerializer.Deserialize("""{ "WindowButtons": { "Enabled": true, "DecorateCustomTitleBars": true } }""");
+
+        Assert.False(settings.WindowButtons.DecorateWebTitleBarButtons);
+        Assert.True(settings.WindowButtons.DecorateCustomTitleBars);
+    }
+
+    [Fact]
+    public void RoundTrip_PreservesDecorateWebTitleBarButtons()
+    {
+        var original = new AppSettings();
+        original.WindowButtons.DecorateWebTitleBarButtons = true;
+
+        var copy = SettingsSerializer.Deserialize(SettingsSerializer.Serialize(original));
+
+        Assert.True(copy.WindowButtons.DecorateWebTitleBarButtons);
+    }
+
+    [Fact]
     public void RoundTrip_PreservesDecorateCustomTitleBars()
     {
         var original = new AppSettings();

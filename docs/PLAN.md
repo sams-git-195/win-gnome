@@ -49,14 +49,14 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | Theming | `HexColor`, `TrafficLightPalette` | Colour parsing, presets → `TrafficLightColors` |
 | Input | `Hotkey`, `SuperKeyStateMachine`, `HotCornerDetector` | Hotkey parsing, the "Win alone" detector, corner dwell |
 | Geometry | `PixelRect`, `LayoutRect`, `LayoutSize`, `BackdropPlacement` | Integer screen rectangles, double layout rectangles, blur backdrop inset under rounded bodies |
-| Windows | `WindowInfo`, `WindowFilter`, `AppIdentity`, `CaptionButtonLayout`, `CaptionButtonGeometry`, `CaptionHitTestProbe` | Alt-tab filtering, app grouping keys, traffic-light geometry, finding custom title bars' buttons from hit-test samples |
+| Windows | `WindowInfo`, `WindowFilter`, `AppIdentity`, `AppPathMatch`, `CaptionButtonLayout`, `CaptionButtonHitTest`, `CaptionButtonAccessibility`, `CaptionButtonGeometry`, `CaptionDecorationRules`, `CaptionHitTestProbe`, `CaptionHoleProbe`, `CaptionMaxAnchorProbe`, `ProbedClickCheck`, `CaptionProbeThrottle` | Alt-tab filtering, app grouping keys, matching a process to a shortcut's install (Squirrel `app-<version>` folders, generated AUMIDs), traffic-light geometry, hit-testing, accessible names and keyboard movement (overlays and WinGnome's own header bars via `ComputeForHeaderBar`/`FindInHeaderBar`), finding custom title bars' buttons from hit-test samples (button codes, HTCLIENT holes of a profiled width for web-drawn buttons, or a maximise zone between client zones in Windows App SDK windows), the click guard and probe rate limits for them |
 | Dock | `DockModelBuilder`, `DockApp`, `RunningWindow`, `DockLayout`, `DockClickPlanner` | Dock items, geometry, magnification, click behaviour |
-| Overview | `OverviewLayout` | Arranges window thumbnails in a grid that preserves aspect ratios |
+| Overview | `OverviewLayout`, `SelectionNavigator`, `OverviewTransition`, `ThumbnailTrack`, `OverviewTransitionState` | Arranges window thumbnails in a grid that preserves aspect ratios, keyboard selection, open/close animation (ease-out-quad, retargetable tracks, dim alpha, the reversible open/close state machine) |
 | Search | `FuzzyMatcher` | Ranks apps and windows by a query |
 | Shell | `KnownFolderPath` | Resolves `{GUID}\path` AppsFolder parsing names |
 | TopBar | `ClockFormatter`, `BatteryStatus`, `BrightnessScale`, `BrightnessWheel`, `WriteCoalescer` | GNOME-style clock text, battery state and whether to poll it, brightness levels, wheel steps and coalesced writes |
 | Tray | `ShellTrayData`, `TrayIconRegistry`, `TrayFrontCheckSchedule` | Tray-host message parsing, icon list, how often the host re-checks it is in front |
-| Collections | `LruCache` | Bounded least-recently-used cache |
+| Collections | `LruCache`, `DeadlineSchedule` | Bounded least-recently-used cache; one deadline per key for debouncing on a single timer |
 | Workspaces | `VirtualDesktopState` | Parses Explorer's virtual-desktop registry blobs |
 | Tweaks | `TweakCatalog`, `TweakDefinition`, `RegistryChange`, `IRegistryStore`, `TweakEngine`, `TweakBackup`, `AccentColorChanges` | Reversible HKCU tweaks, accent-colour registry values |
 
@@ -64,15 +64,16 @@ All Win32 work lives in the app project, and every decision that can be expresse
 
 | Folder | Owner | Contents |
 |---|---|---|
-| `Infrastructure/` | lead | `Log`, `IFeature`, `SettingsService`, `ObservableObject`, `RelayCommand`, theme resources |
+| `Infrastructure/` | lead | `Log`, `IFeature`, `SettingsService`, `ObservableObject`, `RelayCommand`, `SessionRole` (one instance per session does a job, e.g. window buttons), theme resources |
 | `Interop/` | shared | `NativeMethods.*.cs` partials, `WinEventHook`, `AppBar`, `BlurBackdrop` (blur window under the dock and top bar bodies) |
 | `Services/WindowTracker.cs` | lead | Enumerates alt-tab windows, raises `WindowsChanged` and `ForegroundChanged`, plus raw location events |
 | `Services/Apps/` | dock agent | `AppCatalog` (shell:AppsFolder), `IconProvider`, `AppLauncher` |
 | `Features/Dock/` | dock agent | Dock window, intellihide, trigger strip, context menu, `TaskbarController` |
 | `Features/TopBar/` | top-bar agent | Top-bar AppBar, clock and calendar, indicators (network, volume, battery), quick settings, power menu, workspace dots |
-| `Features/WindowButtons/` | traffic-light agent | Overlay manager and per-window overlay |
+| `Controls/TrafficLights/` | shared | `TrafficLightButtonsView`, its automation peers and `GlyphGeometry` (the circles, used by the overlay and header bars), `HeaderBarWindow` (WindowChrome header bar with round buttons and Snap Layouts for WinGnome's own windows) |
+| `Features/WindowButtons/` | traffic-light agent | Overlay manager and per-window overlay, custom title bar probing and click guard |
 | `Features/Overview/` | overview agent | Activities overview with DWM thumbnails and search, hot corner, Super key hook, global hotkey, centring new windows, focus-follows-mouse |
-| `Features/Settings/` | settings agent | Settings window (all pages), tweaks page with `RegistryStore` (HKCU), start-with-Windows |
+| `Features/Settings/` | settings agent | Settings window (all pages, header bar), tweaks page with `RegistryStore` (HKCU), start-with-Windows |
 
 ## Safety rules
 

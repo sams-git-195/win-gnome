@@ -9,12 +9,6 @@
     -->
 
     <!-- ================= Text ================= -->
-    <Style x:Key="PageTitleText" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="26" />
-        <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
-    </Style>
-
     <Style x:Key="GroupHeaderText" TargetType="TextBlock">
         <Setter Property="FontSize" Value="15" />
         <Setter Property="FontWeight" Value="SemiBold" />

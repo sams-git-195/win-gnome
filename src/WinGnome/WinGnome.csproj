@@ -7,6 +7,8 @@
     <UseWPF>true</UseWPF>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Rendered from Theme/Logo.xaml by tools/Export-AppIcon.ps1. -->
+    <ApplicationIcon>Assets\wingnome.ico</ApplicationIcon>
     <RootNamespace>WinGnome</RootNamespace>
     <AssemblyName>WinGnome</AssemblyName>
   </PropertyGroup>

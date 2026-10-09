@@ -34,4 +34,21 @@ internal static partial class NativeMethods
 
     [LibraryImport("gdi32.dll")]
     public static partial uint GetPixel(nint hdc, int x, int y);
+
+    // ---- Hit testing custom title bars ------------------------------------------------------
+    /// <summary>WM_NCHITTEST: the point belongs to a window underneath (same thread).</summary>
+    public const int HTTRANSPARENT = -1;
+
+    public const uint CWP_SKIPINVISIBLE = 0x0001;
+    public const uint CWP_SKIPTRANSPARENT = 0x0004;
+
+    /// <summary>Right-to-left mirrored window layout: its caption buttons are on the left.</summary>
+    public const long WS_EX_LAYOUTRTL = 0x00400000;
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool ScreenToClient(nint hwnd, ref POINT point);
+
+    [LibraryImport("user32.dll")]
+    public static partial nint ChildWindowFromPointEx(nint parent, POINT point, uint flags);
 }

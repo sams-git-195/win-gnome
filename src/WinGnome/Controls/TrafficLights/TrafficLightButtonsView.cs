@@ -1,11 +1,12 @@
 using System.Windows;
+using System.Windows.Automation.Peers;
 using System.Windows.Input;
 using System.Windows.Media;
 using WinGnome.Core.Settings;
 using WinGnome.Core.Theming;
 using WinGnome.Core.Windows;
 
-namespace WinGnome.Features.WindowButtons;
+namespace WinGnome.Controls.TrafficLights;
 
 /// <summary>
 /// Draws the three traffic-light circles and turns clicks into <see cref="ButtonClicked"/>. Everything is drawn
@@ -19,6 +20,12 @@ namespace WinGnome.Features.WindowButtons;
 /// </remarks>
 internal sealed class TrafficLightButtonsView : FrameworkElement
 {
+    /// <summary>Gap in target DIPs between a circle and its keyboard focus ring.</summary>
+    private const double FocusRingGap = 1.5;
+
+    /// <summary>Thickness of the keyboard focus ring in target DIPs.</summary>
+    private const double FocusRingThickness = 2;
+
     private readonly ScaleTransform _contentTransform = new(1, 1);
     private readonly Dictionary<HexColor, SolidColorBrush> _brushes = [];
     private CaptionOverlayLayout? _layout;
@@ -35,15 +42,45 @@ internal sealed class TrafficLightButtonsView : FrameworkElement
     private bool _isGroupHovered;
     private CaptionButtonKind? _hovered;
     private CaptionButtonKind? _pressed;
+    private CaptionButtonKind? _nonClientHovered;
+    private bool _nonClientPressed;
+    private Pen? _focusPen;
+    private int _keyboardIndex = -1;
 
     public TrafficLightButtonsView()
     {
         Focusable = false;
+        FocusVisualStyle = null;
         SnapsToDevicePixels = false;
     }
 
-    /// <summary>Raised when a circle is clicked (pressed and released over the same, available circle).</summary>
+    /// <summary>
+    /// Raised when a circle is clicked (pressed and released over the same, available circle), or invoked from the
+    /// keyboard or UI Automation.
+    /// </summary>
     public event Action<CaptionButtonKind>? ButtonClicked;
+
+    /// <summary>The target window is maximised, so the maximise circle is announced as "Restore".</summary>
+    public bool IsTargetMaximized { get; set; }
+
+    /// <summary>
+    /// Lets the circles take keyboard focus: Tab reaches the group, Left and Right move between circles, and Enter
+    /// or Space invokes one. Only for windows WinGnome owns; overlays on other apps' windows never take focus.
+    /// </summary>
+    public bool IsKeyboardNavigable
+    {
+        get => Focusable;
+        set => Focusable = value;
+    }
+
+    /// <summary>The current layout (target DIPs), for the automation peers.</summary>
+    internal CaptionOverlayLayout? Layout => _layout;
+
+    /// <summary>The circle with keyboard focus inside the group, or null.</summary>
+    internal CaptionButtonKind? KeyboardButton =>
+        IsKeyboardFocused && _layout is { } layout && _keyboardIndex >= 0 && _keyboardIndex < layout.Buttons.Count
+            ? layout.Buttons[_keyboardIndex].Kind
+            : null;
 
     /// <summary>Sets the circle geometry and which buttons the target window supports.</summary>
     /// <param name="layout">Layout in the target window's DIPs.</param>
@@ -70,6 +107,7 @@ internal sealed class TrafficLightButtonsView : FrameworkElement
         _colors = colors;
         _settings = settings;
         _brushes.Clear();
+        _focusPen = null;
         RebuildPens();
         InvalidateVisual();
     }
@@ -86,6 +124,26 @@ internal sealed class TrafficLightButtonsView : FrameworkElement
                 InvalidateVisual();
             }
         }
+    }
+
+    /// <summary>
+    /// Pointer state over a circle that the host window reports as non-client area. A header bar answers
+    /// HTMAXBUTTON over its maximise circle so Windows shows Snap Layouts, and WPF then never sees the mouse there,
+    /// so the host relays hover and press from its WM_NCMOUSEMOVE and WM_NCLBUTTONDOWN handling instead.
+    /// </summary>
+    /// <param name="hovered">The circle under the pointer, or null when the pointer left it.</param>
+    /// <param name="pressed">The left button went down on <paramref name="hovered"/> and hasn't been released.</param>
+    public void SetNonClientPointer(CaptionButtonKind? hovered, bool pressed)
+    {
+        pressed &= hovered is not null;
+        if (_nonClientHovered == hovered && _nonClientPressed == pressed)
+        {
+            return;
+        }
+
+        _nonClientHovered = hovered;
+        _nonClientPressed = pressed;
+        InvalidateVisual();
     }
 
     /// <summary>Physical pixels per DIP of the overlay window itself (changes when it moves between monitors).</summary>
@@ -105,7 +163,9 @@ internal sealed class TrafficLightButtonsView : FrameworkElement
             return;
         }
 
-        var showGlyphs = TrafficLightAppearance.ShowGlyphs(_colors, _settings, _isGroupHovered);
+        var focused = KeyboardButton;
+        var groupHovered = _isGroupHovered || _nonClientHovered is not null || focused is not null;
+        var showGlyphs = TrafficLightAppearance.ShowGlyphs(_colors, _settings, groupHovered);
         var radius = _layout.Diameter / 2;
 
         drawingContext.PushTransform(_contentTransform);
@@ -113,7 +173,7 @@ internal sealed class TrafficLightButtonsView : FrameworkElement
         {
             var slot = _layout.Buttons[i];
             var enabled = IsAvailable(slot.Kind);
-            var fill = TrafficLightAppearance.Fill(_colors, slot.Kind, enabled, _isWindowActive, _isGroupHovered,
+            var fill = TrafficLightAppearance.Fill(_colors, slot.Kind, enabled, _isWindowActive, groupHovered,
                 _settings.DimInactiveWindows, InteractionOf(slot.Kind));
 
             // Inset by half the ring's thickness so the ring sits inside the circle's footprint.
@@ -123,9 +183,111 @@ internal sealed class TrafficLightButtonsView : FrameworkElement
             {
                 drawingContext.DrawGeometry(null, _glyphPen, _glyphs[i]);
             }
+
+            if (focused == slot.Kind)
+            {
+                _focusPen ??= CreateFocusPen();
+                var focusRadius = radius + FocusRingGap + (_focusPen.Thickness / 2);
+                drawingContext.DrawEllipse(null, _focusPen, new Point(slot.CenterX, slot.CenterY), focusRadius, focusRadius);
+            }
         }
 
         drawingContext.Pop();
+    }
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new TrafficLightButtonsAutomationPeer(this);
+
+    protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e)
+    {
+        base.OnGotKeyboardFocus(e);
+        if (KeyboardButton is null)
+        {
+            _keyboardIndex = CaptionButtonAccessibility.MoveFocus(Availability(), -1, 1);
+        }
+
+        InvalidateVisual();
+    }
+
+    protected override void OnLostKeyboardFocus(KeyboardFocusChangedEventArgs e)
+    {
+        base.OnLostKeyboardFocus(e);
+        InvalidateVisual();
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        switch (e.Key)
+        {
+            case Key.Left or Key.Right:
+                _keyboardIndex = CaptionButtonAccessibility.MoveFocus(Availability(), _keyboardIndex, e.Key == Key.Left ? -1 : 1);
+                InvalidateVisual();
+                e.Handled = true;
+                break;
+            case Key.Enter or Key.Space when KeyboardButton is { } kind:
+                Invoke(kind);
+                e.Handled = true;
+                break;
+        }
+    }
+
+    /// <summary>Runs a circle's action, as a click would. Unavailable circles do nothing.</summary>
+    internal void Invoke(CaptionButtonKind kind)
+    {
+        if (IsAvailable(kind))
+        {
+            ButtonClicked?.Invoke(kind);
+        }
+    }
+
+    /// <summary>Moves keyboard focus to <paramref name="kind"/>'s circle (UI Automation SetFocus).</summary>
+    internal void FocusButton(CaptionButtonKind kind)
+    {
+        if (_layout is null || !Focusable)
+        {
+            return;
+        }
+
+        _keyboardIndex = _layout.Buttons.ToList().FindIndex(slot => slot.Kind == kind);
+        Focus();
+        InvalidateVisual();
+    }
+
+    /// <summary>A circle's bounds in physical screen pixels, or empty when the view isn't on screen.</summary>
+    internal Rect ScreenBoundsOf(CaptionButtonSlot slot)
+    {
+        if (_layout is null || PresentationSource.FromVisual(this) is null)
+        {
+            return Rect.Empty;
+        }
+
+        // The circles are drawn under the content transform (target DIPs to overlay DIPs).
+        var radius = _layout.Diameter / 2;
+        var scale = _contentTransform.ScaleX;
+        var topLeft = PointToScreen(new Point((slot.CenterX - radius) * scale, (slot.CenterY - radius) * scale));
+        var bottomRight = PointToScreen(new Point((slot.CenterX + radius) * scale, (slot.CenterY + radius) * scale));
+        return new Rect(topLeft, bottomRight);
+    }
+
+    internal bool IsAvailable(CaptionButtonKind kind) => kind switch
+    {
+        CaptionButtonKind.Minimize => _canMinimize,
+        CaptionButtonKind.Maximize => _canMaximize,
+        _ => true,
+    };
+
+    private bool[] Availability() => _layout?.Buttons.Select(slot => IsAvailable(slot.Kind)).ToArray() ?? [];
+
+    private Pen CreateFocusPen()
+    {
+        // The theme's accent, like the focus rings on the settings controls (Adwaita blue if there is none).
+        var brush = TryFindResource("AccentBrush") as Brush ?? new SolidColorBrush(Color.FromRgb(0x35, 0x84, 0xE4));
+        var pen = new Pen(brush, FocusRingThickness);
+        if (pen.CanFreeze)
+        {
+            pen.Freeze();
+        }
+        return pen;
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
@@ -203,6 +365,11 @@ internal sealed class TrafficLightButtonsView : FrameworkElement
 
     private CaptionButtonInteraction InteractionOf(CaptionButtonKind kind)
     {
+        if (_nonClientHovered == kind)
+        {
+            return _nonClientPressed ? CaptionButtonInteraction.Pressed : CaptionButtonInteraction.Hovered;
+        }
+
         if (_pressed is { } pressed)
         {
             return pressed == kind && _hovered == kind ? CaptionButtonInteraction.Pressed : CaptionButtonInteraction.None;
@@ -210,13 +377,6 @@ internal sealed class TrafficLightButtonsView : FrameworkElement
 
         return _hovered == kind ? CaptionButtonInteraction.Hovered : CaptionButtonInteraction.None;
     }
-
-    private bool IsAvailable(CaptionButtonKind kind) => kind switch
-    {
-        CaptionButtonKind.Minimize => _canMinimize,
-        CaptionButtonKind.Maximize => _canMaximize,
-        _ => true,
-    };
 
     private void UpdateContentScale()
     {

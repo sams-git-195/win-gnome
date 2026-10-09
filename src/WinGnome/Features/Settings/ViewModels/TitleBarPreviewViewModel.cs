@@ -1,5 +1,4 @@
 using System.Windows.Media;
-using WinGnome.Core.Geometry;
 using WinGnome.Core.Settings;
 using WinGnome.Core.Theming;
 using WinGnome.Core.Windows;
@@ -27,8 +26,6 @@ internal sealed class TitleBarPreviewViewModel : ObservableObject
     /// <summary>Height of the fake title bar.</summary>
     public const double BarHeight = 36;
 
-    private const int NativeButtonsWidth = 138;
-
     public TitleBarPreviewViewModel(WindowButtonSettings settings)
     {
         Bars = [];
@@ -41,9 +38,7 @@ internal sealed class TitleBarPreviewViewModel : ObservableObject
     public void Update(WindowButtonSettings settings)
     {
         var colors = TrafficLightPalette.For(settings);
-        var window = PixelRect.FromSize(0, 0, (int)BarWidth, (int)BarHeight);
-        var native = new PixelRect(window.Right - NativeButtonsWidth, 0, window.Right, window.Bottom);
-        var layout = CaptionButtonLayout.Compute(native, window, 1.0, settings);
+        var layout = CaptionButtonLayout.ComputeForHeaderBar(BarWidth, BarHeight, settings);
         if (layout is null)
         {
             Bars = [];

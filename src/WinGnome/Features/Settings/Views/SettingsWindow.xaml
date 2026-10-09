@@ -14,35 +14,43 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <Grid>
+    <!-- Row 0 is the header bar (HeaderBarWindow.CaptionHeight): drag area, titles and the round window buttons. -->
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="46" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="248" />
             <ColumnDefinition Width="1" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <DockPanel Grid.Column="0" Margin="12,16,12,12">
-            <TextBlock DockPanel.Dock="Top" Text="Settings" Style="{StaticResource GroupHeaderText}" FontSize="18" Margin="12,0,0,14" />
-            <ListBox Style="{StaticResource PlainListBox}" ItemContainerStyle="{StaticResource SidebarItem}"
-                     ItemsSource="{Binding Pages}" SelectedItem="{Binding SelectedPage}"
-                     AutomationProperties.Name="Settings pages">
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="16" Width="30"
-                                       VerticalAlignment="Center" Foreground="{DynamicResource SecondaryForegroundBrush}" />
-                            <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-        </DockPanel>
+        <TextBlock x:Name="SidebarTitle" Grid.Row="0" Grid.Column="0" Text="Settings" Style="{StaticResource GroupHeaderText}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding SelectedPage.Title}" Style="{StaticResource GroupHeaderText}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="160,0" />
 
-        <Border Grid.Column="1" Background="{DynamicResource BorderBrush}" />
+        <ListBox Grid.Row="1" Grid.Column="0" Margin="12,4,12,12" Style="{StaticResource PlainListBox}"
+                 ItemContainerStyle="{StaticResource SidebarItem}"
+                 ItemsSource="{Binding Pages}" SelectedItem="{Binding SelectedPage}"
+                 AutomationProperties.Name="Settings pages">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="16" Width="30"
+                                   VerticalAlignment="Center" Foreground="{DynamicResource SecondaryForegroundBrush}" />
+                        <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
 
-        <ScrollViewer x:Name="PageScroller" Grid.Column="2" Style="{StaticResource SettingsScrollViewer}"
+        <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Background="{DynamicResource BorderBrush}" />
+
+        <ScrollViewer x:Name="PageScroller" Grid.Row="1" Grid.Column="2" Style="{StaticResource SettingsScrollViewer}"
                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <Border MaxWidth="760" Margin="32,28,32,32">
+            <Border MaxWidth="760" Margin="32,12,32,32">
                 <StackPanel>
                     <Border Margin="0,0,0,20" Padding="16,12" CornerRadius="12" Background="#33E01B24" BorderBrush="#99E01B24" BorderThickness="1"
                             Visibility="{Binding StorageProblem, Converter={x:Static c:Converters.NotNullToVisibility}}"
@@ -52,7 +60,6 @@
                             <TextBlock Text="{Binding StorageProblem}" TextWrapping="Wrap" Style="{DynamicResource RowSubtitleText}" />
                         </StackPanel>
                     </Border>
-                    <TextBlock Text="{Binding SelectedPage.Title}" Style="{StaticResource PageTitleText}" Margin="0,0,0,20" />
                     <ContentControl x:Name="PageHost" Content="{Binding SelectedPage}" IsTabStop="False" Focusable="False" />
                 </StackPanel>
             </Border>

@@ -10,8 +10,10 @@ public static class DockModelBuilder
     /// <summary>
     /// Builds the dock model. Pinned apps come first in pinned order; unpinned running apps (when
     /// <paramref name="includeUnpinnedRunning"/> is true) follow in order of first appearance in
-    /// <paramref name="windows"/>. A window belongs to a pinned app when identities match, or failing that
-    /// when the pinned launch path's file name equals the window's process file name.
+    /// <paramref name="windows"/>. A window belongs to a pinned app when identities match; failing that when the
+    /// pin's target is the same install as the window's process (for named-AUMID pins, only windows with no AUMID
+    /// of their own; <see cref="AppPathMatch.IsSameInstall"/>); and failing that, for file-system pins, when the pinned file name equals the window's process file name.
+    /// Named-AUMID pins get their target from <paramref name="resolvePath"/>; generated AUMIDs never match by path.
     /// </summary>
     public static IReadOnlyList<DockApp> Build(
         IReadOnlyList<PinnedApp> pinned,
@@ -33,12 +35,18 @@ public static class DockModelBuilder
 
             var identity = AppIdentity.ForLaunchId(pin.LaunchId, resolvePath);
             var exeName = "";
+            string target;
             if (identity.StartsWith("path:", StringComparison.Ordinal))
             {
-                exeName = PathText.FileName(identity["path:".Length..]);
+                target = identity["path:".Length..];
+                exeName = PathText.FileName(target);
+            }
+            else
+            {
+                target = ResolveAumidTarget(pin.LaunchId, resolvePath);
             }
 
-            slots.Add(new PinnedSlot(pin, identity, exeName));
+            slots.Add(new PinnedSlot(pin, identity, target, exeName));
         }
 
         var unpinned = new List<UnpinnedGroup>();
@@ -111,6 +119,23 @@ public static class DockModelBuilder
             }
         }
 
+        var windowHasAumid = !string.IsNullOrWhiteSpace(window.AppUserModelId);
+        foreach (var slot in slots)
+        {
+            // A named-AUMID pin takes a window with a different AUMID of its own only by identity: a browser web
+            // app runs the browser's exe but must keep its own icon. Path pins match by install as before.
+            var isNamedAumidPin = slot.ExeName.Length == 0;
+            if (isNamedAumidPin && windowHasAumid)
+            {
+                continue;
+            }
+
+            if (AppPathMatch.IsSameInstall(slot.TargetPath, window.ProcessPath))
+            {
+                return slot;
+            }
+        }
+
         var processFile = PathText.FileName(window.ProcessPath);
         if (processFile.Length == 0)
         {
@@ -128,10 +153,22 @@ public static class DockModelBuilder
         return null;
     }
 
-    private static bool IsFocused(List<RunningWindow> windows, nint foreground) =>
-        foreground != 0 && windows.Any(w => w.Handle == foreground);
+    /// <summary>
+    /// The shortcut target behind a named-AUMID pin, or "" when there is no resolver or the id is one the shell
+    /// generated (its target is a generic launcher such as cmd.exe). An id the resolver doesn't know comes back
+    /// unchanged, which never equals a process path.
+    /// </summary>
+    private static string ResolveAumidTarget(string launchId, Func<string, string>? resolvePath) =>
+        resolvePath is null || AppPathMatch.IsGeneratedAumid(launchId) ? "" : resolvePath(launchId) ?? "";
 
-    private sealed record PinnedSlot(PinnedApp Pin, string Identity, string ExeName)
+    /// <summary>
+    /// A minimised foreground window is not focused: after a minimise the system often leaves it as the foreground
+    /// window, and treating it as focused would plan a second minimise instead of a restore.
+    /// </summary>
+    private static bool IsFocused(List<RunningWindow> windows, nint foreground) =>
+        foreground != 0 && windows.Any(w => w.Handle == foreground && !w.IsMinimized);
+
+    private sealed record PinnedSlot(PinnedApp Pin, string Identity, string TargetPath, string ExeName)
     {
         public List<RunningWindow> Windows { get; } = [];
     }

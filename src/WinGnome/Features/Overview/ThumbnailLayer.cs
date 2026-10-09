@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -20,12 +19,14 @@ namespace WinGnome.Features.Overview;
 /// Layout happens in DIPs; DWM wants physical pixels relative to the host window's client area, which for
 /// the borderless full-screen overview is the window itself. Every thumbnail is unregistered in
 /// <see cref="Clear"/>, which the overview calls whenever it hides.
+/// <para>
+/// Each slot has a <see cref="ThumbnailTrack"/> between its window's real position and its grid slot. The
+/// overview's <see cref="OverviewAnimator"/> moves every thumbnail along its track with
+/// <see cref="SetProgress"/>; once settled, tracks are still at the slot.
+/// </para>
 /// </remarks>
 internal sealed class ThumbnailLayer
 {
-    /// <summary>Duration of the "zoom out" from the real window positions into the grid.</summary>
-    private static readonly TimeSpan OpenDuration = TimeSpan.FromMilliseconds(220);
-
     /// <summary>Fade-in of captions and highlight rings once the thumbnails have landed.</summary>
     private static readonly TimeSpan CaptionFadeDuration = TimeSpan.FromMilliseconds(120);
 
@@ -46,7 +47,8 @@ internal sealed class ThumbnailLayer
     private LayoutRect _area;
     private int _selected = -1;
     private bool _visible = true;
-    private Stopwatch? _animationClock;
+    private bool _moving;
+    private double _progress = 1;
 
     public ThumbnailLayer(Canvas canvas, IIconProvider icons)
     {
@@ -63,14 +65,40 @@ internal sealed class ThumbnailLayer
     /// <summary>The keyboard-selected window, or 0.</summary>
     public nint SelectedWindow => _selected >= 0 && _selected < _slots.Count ? _slots[_selected].Window.Handle : 0;
 
-    /// <summary>Replaces all thumbnails with <paramref name="windows"/>, optionally animating them into place.</summary>
+    /// <summary>True while the grid is on screen (not replaced by search results).</summary>
+    public bool IsVisible => _visible;
+
+    /// <summary>
+    /// Lays out the grid for <paramref name="windows"/> with their icons in place of live thumbnails (no DWM
+    /// registration): used to warm WPF up before the first real open. <see cref="Clear"/> removes it again.
+    /// </summary>
+    public void ShowPlaceholders(PixelRect hostBounds, double scale, LayoutRect area, IReadOnlyList<WindowInfo> windows)
+    {
+        Clear();
+        _hostBounds = hostBounds;
+        _scale = scale;
+        _area = area;
+        _visible = true;
+        foreach (var window in windows.DistinctBy(w => w.Handle))
+        {
+            AddSlot(window, null);
+        }
+
+        Arrange();
+        Settle(fadeCaptions: false);
+    }
+
+    /// <summary>
+    /// Replaces all thumbnails with <paramref name="windows"/>. With <paramref name="fromWindows"/> each one is
+    /// put where its window really is, ready to glide into the grid through <see cref="SetProgress"/>.
+    /// </summary>
     /// <param name="host">The overview window that DWM draws into.</param>
     /// <param name="hostBounds">The host's screen rectangle in physical pixels.</param>
     /// <param name="scale">The host's DPI scale.</param>
     /// <param name="area">Area (DIPs, host-relative) to arrange the windows in.</param>
-    /// <param name="windows">Windows to show, in display order.</param>
-    /// <param name="animate">Glide thumbnails from their real positions into the grid.</param>
-    public void Show(nint host, PixelRect hostBounds, double scale, LayoutRect area, IReadOnlyList<WindowInfo> windows, bool animate)
+    /// <param name="windows">Windows to show, in display order (z-order, topmost first).</param>
+    /// <param name="fromWindows">Start at the windows' real positions instead of in the grid.</param>
+    public void Show(nint host, PixelRect hostBounds, double scale, LayoutRect area, IReadOnlyList<WindowInfo> windows, bool fromWindows)
     {
         Clear();
         _host = host;
@@ -78,28 +106,113 @@ internal sealed class ThumbnailLayer
         _scale = scale;
         _area = area;
         _visible = true;
-        _canvas.Visibility = Visibility.Visible;
 
-        foreach (var window in windows)
+        // DWM stacks thumbnails in registration order (the last on top), so registering bottom-up makes the
+        // first frame, with every thumbnail over its window, look exactly like the desktop.
+        var thumbnails = new Dictionary<nint, DwmThumbnail?>();
+        try
         {
-            AddSlot(window);
+            for (var i = windows.Count - 1; i >= 0; i--)
+            {
+                if (!thumbnails.ContainsKey(windows[i].Handle))
+                {
+                    thumbnails[windows[i].Handle] = DwmThumbnail.TryRegister(_host, windows[i].Handle);
+                }
+            }
+
+            // Each handle gets one slot; a slot owns its thumbnail from here on (Clear releases it).
+            foreach (var window in windows)
+            {
+                if (thumbnails.Remove(window.Handle, out var thumbnail))
+                {
+                    AddSlot(window, thumbnail);
+                }
+            }
+        }
+        finally
+        {
+            // Only left over if AddSlot threw: release what no slot took.
+            foreach (var thumbnail in thumbnails.Values)
+            {
+                thumbnail?.Dispose();
+            }
         }
 
         Arrange();
-        if (animate && _slots.Count > 0)
+        if (!fromWindows)
         {
-            StartAnimation();
+            Settle(fadeCaptions: false);
+            return;
         }
-        else
+
+        foreach (var slot in _slots)
         {
-            ApplyTargets();
+            // Minimised windows have no on-screen position to grow from, so they fade in at their slot.
+            slot.Track = OnScreenRect(slot) is { } onScreen
+                ? new ThumbnailTrack(onScreen, slot.TargetPx, 255, 255)
+                : new ThumbnailTrack(slot.TargetPx, slot.TargetPx, 0, 255);
         }
+
+        BeginMoving();
+    }
+
+    /// <summary>Puts every thumbnail at <paramref name="eased"/> progress (0..1) along its track.</summary>
+    public void SetProgress(double eased)
+    {
+        _progress = eased;
+        if (!_visible)
+        {
+            return;
+        }
+
+        foreach (var slot in _slots)
+        {
+            var frame = slot.Track.At(eased);
+            slot.Thumbnail?.Show(frame.Rect, frame.Opacity);
+        }
+    }
+
+    /// <summary>
+    /// Ends a glide into the grid: thumbnails rest in their slots and the captions fade in (shown straight away
+    /// when nothing was moving, e.g. with animations off or after a mode switch).
+    /// </summary>
+    public void CompleteOpening() => Settle(fadeCaptions: _moving);
+
+    /// <summary>
+    /// Points every thumbnail back at its window, starting from where it is now. Windows that are minimised
+    /// (or gone) fade out where they are. Captions hide for the glide.
+    /// </summary>
+    /// <param name="raised">The window being brought to the front (0: none); its thumbnail lands on top.</param>
+    public void BeginClosing(nint raised)
+    {
+        RaiseThumbnail(raised);
+        foreach (var slot in _slots)
+        {
+            var current = slot.Track.At(_progress);
+            slot.Track = OnScreenRect(slot) is { } onScreen
+                ? OverviewTransition.Retarget(slot.Track, _progress, onScreen, 255)
+                : OverviewTransition.Retarget(slot.Track, _progress, current.Rect, 0);
+        }
+
+        BeginMoving();
+    }
+
+    /// <summary>Turns a closing glide around: every thumbnail heads back to its slot from where it is now.</summary>
+    public void BeginReopening()
+    {
+        foreach (var slot in _slots)
+        {
+            slot.Track = OverviewTransition.Retarget(slot.Track, _progress, slot.TargetPx, 255);
+        }
+
+        BeginMoving();
     }
 
     /// <summary>
     /// Brings the grid in line with the current window list: closed windows disappear, new ones are added
     /// at the end and titles are refreshed. Surviving windows keep their order so the grid does not shuffle.
     /// </summary>
+    /// <remarks>Not for use during a glide: the overview applies window changes once it has settled.</remarks>
     public void Update(IReadOnlyList<WindowInfo> windows)
     {
         if (_host == 0)
@@ -107,7 +220,6 @@ internal sealed class ThumbnailLayer
             return;
         }
 
-        StopAnimation();
         var selectedWindow = SelectedWindow;
         var current = windows.ToDictionary(w => w.Handle);
         for (var i = _slots.Count - 1; i >= 0; i--)
@@ -126,12 +238,12 @@ internal sealed class ThumbnailLayer
 
         foreach (var window in windows.Where(w => current.ContainsKey(w.Handle)))
         {
-            AddSlot(window);
+            AddSlot(window, DwmThumbnail.TryRegister(_host, window.Handle));
         }
 
         _selected = _slots.FindIndex(s => s.Window.Handle == selectedWindow);
         Arrange();
-        ApplyTargets();
+        Settle(fadeCaptions: false);
         RefreshSelection();
     }
 
@@ -144,18 +256,16 @@ internal sealed class ThumbnailLayer
         }
 
         _visible = visible;
-        StopAnimation();
-        _canvas.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        UpdateCanvasVisibility();
+        if (visible)
+        {
+            SetProgress(_progress);
+            return;
+        }
+
         foreach (var slot in _slots)
         {
-            if (visible)
-            {
-                slot.Thumbnail?.Show(slot.TargetPx);
-            }
-            else
-            {
-                slot.Thumbnail?.Hide();
-            }
+            slot.Thumbnail?.Hide();
         }
     }
 
@@ -169,7 +279,6 @@ internal sealed class ThumbnailLayer
     /// <summary>Unregisters every thumbnail and removes every slot.</summary>
     public void Clear()
     {
-        StopAnimation();
         foreach (var slot in _slots)
         {
             slot.Thumbnail?.Dispose();
@@ -179,11 +288,12 @@ internal sealed class ThumbnailLayer
         _canvas.Children.Clear();
         _selected = -1;
         _host = 0;
+        _moving = false;
+        _progress = 1;
     }
 
-    private void AddSlot(WindowInfo window)
+    private void AddSlot(WindowInfo window, DwmThumbnail? thumbnail)
     {
-        var thumbnail = DwmThumbnail.TryRegister(_host, window.Handle);
         var sourceSize = thumbnail?.QuerySourceSize();
         if (thumbnail is not null && sourceSize is not { Width: >= MinUsableSourcePx, Height: >= MinUsableSourcePx })
         {
@@ -253,17 +363,64 @@ internal sealed class ThumbnailLayer
         }
     }
 
-    private void ApplyTargets()
+    /// <summary>Rests every thumbnail in its slot and shows the captions, optionally fading them in.</summary>
+    private void Settle(bool fadeCaptions)
     {
-        if (!_visible)
+        foreach (var slot in _slots)
+        {
+            slot.Track = ThumbnailTrack.Still(slot.TargetPx);
+        }
+
+        _moving = false;
+        SetProgress(1);
+        UpdateCanvasVisibility();
+        _canvas.BeginAnimation(UIElement.OpacityProperty, fadeCaptions && _visible ? new DoubleAnimation(0, 1, CaptionFadeDuration) : null);
+    }
+
+    /// <summary>Starts a glide: thumbnails go to the start of their tracks and the captions hide.</summary>
+    private void BeginMoving()
+    {
+        // Captions and highlight rings are ordinary WPF content. They stay hidden while the thumbnails glide and
+        // fade in once they have landed (as in GNOME): fading the full-screen canvas during the glide made WPF
+        // re-render an overview-sized layer every frame, which halved the glide's frame rate (measured on a
+        // 2560x1440 screen: 8 instead of 16 frames per glide, 5 with software rendering).
+        _moving = true;
+        _canvas.BeginAnimation(UIElement.OpacityProperty, null);
+        UpdateCanvasVisibility();
+        SetProgress(0);
+    }
+
+    private void UpdateCanvasVisibility() =>
+        _canvas.Visibility = !_visible ? Visibility.Collapsed : _moving ? Visibility.Hidden : Visibility.Visible;
+
+    /// <summary>
+    /// Where the slot's window is on screen, relative to the host, as the whole window rectangle: DWM thumbnails
+    /// draw the invisible resize borders too, so the visible frame bounds would make the first frame jump.
+    /// Null for minimised or closed windows.
+    /// </summary>
+    private PixelRect? OnScreenRect(WindowSlot slot)
+    {
+        var hwnd = slot.Window.Handle;
+        if (!NativeMethods.IsWindow(hwnd) || NativeMethods.IsIconic(hwnd))
+        {
+            return null;
+        }
+
+        var bounds = NativeMethods.GetWindowBounds(hwnd);
+        return bounds.IsEmpty ? null : bounds.Offset(-_hostBounds.Left, -_hostBounds.Top);
+    }
+
+    /// <summary>Re-registers a window's thumbnail so DWM draws it above the others; keeps the old one if that fails.</summary>
+    private void RaiseThumbnail(nint hwnd)
+    {
+        if (_slots.Find(s => s.Window.Handle == hwnd) is not { Thumbnail: { } old } slot
+            || DwmThumbnail.TryRegister(_host, hwnd) is not { } raised)
         {
             return;
         }
 
-        foreach (var slot in _slots)
-        {
-            slot.Thumbnail?.Show(slot.TargetPx);
-        }
+        slot.Thumbnail = raised;
+        old.Dispose();
     }
 
     private void RefreshSelection()
@@ -274,78 +431,11 @@ internal sealed class ThumbnailLayer
         }
     }
 
-    private void StartAnimation()
-    {
-        foreach (var slot in _slots)
-        {
-            // Minimised windows have no on-screen position to grow from, so they fade in at their slot.
-            var onScreen = slot.Window.IsMinimized || slot.Window.Bounds.IsEmpty
-                ? (PixelRect?)null
-                : slot.Window.Bounds.Offset(-_hostBounds.Left, -_hostBounds.Top);
-            slot.StartPx = onScreen ?? slot.TargetPx;
-            slot.StartOpacity = onScreen is null ? (byte)0 : (byte)255;
-            slot.Thumbnail?.Show(slot.StartPx, slot.StartOpacity);
-        }
-
-        // Captions and highlight rings are ordinary WPF content. They stay hidden while the thumbnails glide and
-        // fade in once they have landed (as in GNOME): fading the full-screen canvas during the glide made WPF
-        // re-render an overview-sized layer every frame, which halved the glide's frame rate (measured on a
-        // 2560x1440 screen: 8 instead of 16 frames per glide, 5 with software rendering).
-        _canvas.BeginAnimation(UIElement.OpacityProperty, null);
-        _canvas.Visibility = Visibility.Hidden;
-        _animationClock = Stopwatch.StartNew();
-        CompositionTarget.Rendering += OnRendering;
-    }
-
-    private void OnRendering(object? sender, EventArgs e)
-    {
-        if (_animationClock is null)
-        {
-            return;
-        }
-
-        var progress = _animationClock.Elapsed.TotalMilliseconds / OpenDuration.TotalMilliseconds;
-        if (progress >= 1)
-        {
-            StopAnimation();
-            ApplyTargets();
-            if (_visible)
-            {
-                _canvas.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, CaptionFadeDuration));
-            }
-
-            return;
-        }
-
-        var eased = ThumbnailTransition.EaseOut(progress);
-        foreach (var slot in _slots)
-        {
-            slot.Thumbnail?.Show(
-                ThumbnailTransition.Interpolate(slot.StartPx, slot.TargetPx, eased),
-                ThumbnailTransition.FadeIn(slot.StartOpacity, eased));
-        }
-    }
-
-    /// <summary>
-    /// Ends a running opening animation immediately (thumbnails are left where they were) and shows the captions.
-    /// </summary>
-    private void StopAnimation()
-    {
-        if (_animationClock is null)
-        {
-            return;
-        }
-
-        _animationClock = null;
-        CompositionTarget.Rendering -= OnRendering;
-        _canvas.Visibility = _visible ? Visibility.Visible : Visibility.Collapsed;
-    }
-
     private sealed class WindowSlot(WindowInfo window, DwmThumbnail? thumbnail, WindowSlotView view, ImageSource? icon, LayoutSize naturalSize)
     {
         public WindowInfo Window { get; set; } = window;
 
-        public DwmThumbnail? Thumbnail { get; } = thumbnail;
+        public DwmThumbnail? Thumbnail { get; set; } = thumbnail;
 
         public WindowSlotView View { get; } = view;
 
@@ -357,8 +447,6 @@ internal sealed class ThumbnailLayer
 
         public PixelRect TargetPx { get; set; }
 
-        public PixelRect StartPx { get; set; }
-
-        public byte StartOpacity { get; set; }
+        public ThumbnailTrack Track { get; set; }
     }
 }

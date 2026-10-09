@@ -253,8 +253,11 @@ or something failed, say so with the output.
   compiles.
 - **Parallel test instances.** Each agent runs WinGnome only with `--safe` and its own `--settings-dir`, and
   turns off every feature it isn't testing in that profile's `settings.json` (for example
-  `{"Dock":{"Enabled":false},"WindowButtons":{"Enabled":false}}`). Only one instance at a time may have window
-  buttons on: two draw over each other and fight over title-bar colours (KI-015). Quit instances gracefully
+  `{"Dock":{"Enabled":false},"WindowButtons":{"Enabled":false}}`). Only one instance per session decorates
+  windows (it holds `Local\WinGnome-WindowButtons`); others with window buttons on wait and take over when it
+  quits, so check the log for which one is drawing. Builds from before that role (such as an older everyday copy
+  in `publish\`) still draw alongside and fight over title-bar colours (KI-042), so with one of those running keep
+  window buttons off in test profiles. Quit instances gracefully
   (`taskkill /PID <pid>`, never `/f`) and never touch another agent's instance.
 - **Launch the everyday WinGnome outside any sandbox.** A copy started from a sandboxed agent shell may see
   a private copy of `%APPDATA%\WinGnome`, so its settings never reach the real profile, and the sandbox may

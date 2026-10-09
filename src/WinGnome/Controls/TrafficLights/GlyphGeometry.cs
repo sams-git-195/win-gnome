@@ -2,7 +2,7 @@ using System.Windows;
 using System.Windows.Media;
 using WinGnome.Core.Windows;
 
-namespace WinGnome.Features.WindowButtons;
+namespace WinGnome.Controls.TrafficLights;
 
 /// <summary>
 /// Vector glyphs (×, −, +) drawn inside the circles. Built from line segments rather than font characters so

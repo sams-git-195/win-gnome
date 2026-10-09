@@ -83,8 +83,11 @@
     </Window.Resources>
 
     <Grid x:Name="Root" Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseDown">
-        <!-- Darkens the blurred desktop; strength follows the Activities backdrop opacity setting. -->
-        <Rectangle x:Name="Dimmer" Fill="Black" IsHitTestVisible="False" />
+        <!--
+            Darkens the blurred desktop; strength follows the Activities backdrop opacity setting. Its fill is a
+            black brush whose alpha OverviewWindow animates when opening and closing.
+        -->
+        <Rectangle x:Name="Dimmer" IsHitTestVisible="False" />
 
         <Canvas x:Name="ThumbnailCanvas" />
 
