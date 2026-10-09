@@ -1,0 +1,77 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                    xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
+                    mc:Ignorable="po">
+    <!--
+        WinGnome's own GNOME-style symbolic icons for the top bar's status area and popups, drawn for this project
+        (not copied from Adwaita's icon theme). Every shape sits on a 16-unit grid and uses solid fills or 2-unit
+        strokes; SymbolicIcon scales them to whole device pixels and snaps their corners to the pixel grid.
+        F0 = even-odd fill (outlines with holes, the battery bolt cut out of the charge), F1 = non-zero.
+        StatusIcons maps network, volume and battery state to these keys.
+    -->
+    <!-- Wi-Fi connected: solid signal wedge. -->
+    <StreamGeometry x:Key="NetworkWireless" po:Freeze="True">F1 M8,14 L0.22,6.22 A11,11 0 0 1 15.78,6.22 Z</StreamGeometry>
+    <!-- No network: the wedge, hollow. -->
+    <StreamGeometry x:Key="NetworkOffline" po:Freeze="True">F0 M8,14 L0.22,6.22 A11,11 0 0 1 15.78,6.22 Z M8,11.17 L3.21,6.38 A9,9 0 0 1 12.79,6.38 Z</StreamGeometry>
+    <!-- Wired: three linked boxes. -->
+    <StreamGeometry x:Key="NetworkWired" po:Freeze="True">F1 M6,1 H10 V5 H6 Z M7,5 H9 V8 H7 Z M1,8 H15 V10 H1 Z M1,10 H3 V11 H1 Z M13,10 H15 V11 H13 Z M0,11 H4 V15 H0 Z M12,11 H16 V15 H12 Z</StreamGeometry>
+    <!-- Volume muted: speaker and a cross. -->
+    <StreamGeometry x:Key="AudioVolumeMuted" po:Freeze="True">F1 M0,5 H3 L7,1 V15 L3,11 H0 Z M8.79,6.21 L13.79,11.21 L15.21,9.79 L10.21,4.79 Z M10.21,11.21 L15.21,6.21 L13.79,4.79 L8.79,9.79 Z</StreamGeometry>
+    <!-- Volume low: speaker and one wave. -->
+    <StreamGeometry x:Key="AudioVolumeLow" po:Freeze="True">F1 M0,5 H3 L7,1 V15 L3,11 H0 Z M8.97,5.53 A3.5,3.5 0 0 1 8.97,10.47 L7.56,9.06 A1.5,1.5 0 0 0 7.56,6.94 Z</StreamGeometry>
+    <!-- Volume medium: two waves. -->
+    <StreamGeometry x:Key="AudioVolumeMedium" po:Freeze="True">F1 M0,5 H3 L7,1 V15 L3,11 H0 Z M8.97,5.53 A3.5,3.5 0 0 1 8.97,10.47 L7.56,9.06 A1.5,1.5 0 0 0 7.56,6.94 Z M11.1,3.4 A6.5,6.5 0 0 1 11.1,12.6 L9.68,11.18 A4.5,4.5 0 0 0 9.68,4.82 Z</StreamGeometry>
+    <!-- Volume high: three waves. -->
+    <StreamGeometry x:Key="AudioVolumeHigh" po:Freeze="True">F1 M0,5 H3 L7,1 V15 L3,11 H0 Z M8.97,5.53 A3.5,3.5 0 0 1 8.97,10.47 L7.56,9.06 A1.5,1.5 0 0 0 7.56,6.94 Z M11.1,3.4 A6.5,6.5 0 0 1 11.1,12.6 L9.68,11.18 A4.5,4.5 0 0 0 9.68,4.82 Z M13.22,1.28 A9.5,9.5 0 0 1 13.22,14.72 L11.8,13.3 A7.5,7.5 0 0 0 11.8,2.7 Z</StreamGeometry>
+    <!-- Battery 0 %. -->
+    <StreamGeometry x:Key="BatteryLevel0" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z</StreamGeometry>
+    <!-- Battery 0 %, charging: the bolt is cut out of the charge. -->
+    <StreamGeometry x:Key="BatteryLevel0Charging" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M9,5 L5.5,10 H7.5 L7,13 L10.5,8 H8.5 Z</StreamGeometry>
+    <!-- Battery 10 %. -->
+    <StreamGeometry x:Key="BatteryLevel10" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,12.2 H10 V13 H6 Z</StreamGeometry>
+    <!-- Battery 10 %, charging: the bolt is cut out of the charge. -->
+    <StreamGeometry x:Key="BatteryLevel10Charging" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,12.2 H10 V13 H6 Z M9,5 L5.5,10 H7.5 L7,13 L10.5,8 H8.5 Z</StreamGeometry>
+    <!-- Battery 20 %. -->
+    <StreamGeometry x:Key="BatteryLevel20" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,11.4 H10 V13 H6 Z</StreamGeometry>
+    <!-- Battery 20 %, charging: the bolt is cut out of the charge. -->
+    <StreamGeometry x:Key="BatteryLevel20Charging" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,11.4 H10 V13 H6 Z M9,5 L5.5,10 H7.5 L7,13 L10.5,8 H8.5 Z</StreamGeometry>
+    <!-- Battery 30 %. -->
+    <StreamGeometry x:Key="BatteryLevel30" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,10.6 H10 V13 H6 Z</StreamGeometry>
+    <!-- Battery 30 %, charging: the bolt is cut out of the charge. -->
+    <StreamGeometry x:Key="BatteryLevel30Charging" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,10.6 H10 V13 H6 Z M9,5 L5.5,10 H7.5 L7,13 L10.5,8 H8.5 Z</StreamGeometry>
+    <!-- Battery 40 %. -->
+    <StreamGeometry x:Key="BatteryLevel40" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,9.8 H10 V13 H6 Z</StreamGeometry>
+    <!-- Battery 40 %, charging: the bolt is cut out of the charge. -->
+    <StreamGeometry x:Key="BatteryLevel40Charging" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,9.8 H10 V13 H6 Z M9,5 L5.5,10 H7.5 L7,13 L10.5,8 H8.5 Z</StreamGeometry>
+    <!-- Battery 50 %. -->
+    <StreamGeometry x:Key="BatteryLevel50" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,9 H10 V13 H6 Z</StreamGeometry>
+    <!-- Battery 50 %, charging: the bolt is cut out of the charge. -->
+    <StreamGeometry x:Key="BatteryLevel50Charging" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,9 H10 V13 H6 Z M9,5 L5.5,10 H7.5 L7,13 L10.5,8 H8.5 Z</StreamGeometry>
+    <!-- Battery 60 %. -->
+    <StreamGeometry x:Key="BatteryLevel60" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,8.2 H10 V13 H6 Z</StreamGeometry>
+    <!-- Battery 60 %, charging: the bolt is cut out of the charge. -->
+    <StreamGeometry x:Key="BatteryLevel60Charging" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,8.2 H10 V13 H6 Z M9,5 L5.5,10 H7.5 L7,13 L10.5,8 H8.5 Z</StreamGeometry>
+    <!-- Battery 70 %. -->
+    <StreamGeometry x:Key="BatteryLevel70" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,7.4 H10 V13 H6 Z</StreamGeometry>
+    <!-- Battery 70 %, charging: the bolt is cut out of the charge. -->
+    <StreamGeometry x:Key="BatteryLevel70Charging" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,7.4 H10 V13 H6 Z M9,5 L5.5,10 H7.5 L7,13 L10.5,8 H8.5 Z</StreamGeometry>
+    <!-- Battery 80 %. -->
+    <StreamGeometry x:Key="BatteryLevel80" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,6.6 H10 V13 H6 Z</StreamGeometry>
+    <!-- Battery 80 %, charging: the bolt is cut out of the charge. -->
+    <StreamGeometry x:Key="BatteryLevel80Charging" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,6.6 H10 V13 H6 Z M9,5 L5.5,10 H7.5 L7,13 L10.5,8 H8.5 Z</StreamGeometry>
+    <!-- Battery 90 %. -->
+    <StreamGeometry x:Key="BatteryLevel90" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,5.8 H10 V13 H6 Z</StreamGeometry>
+    <!-- Battery 90 %, charging: the bolt is cut out of the charge. -->
+    <StreamGeometry x:Key="BatteryLevel90Charging" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,5.8 H10 V13 H6 Z M9,5 L5.5,10 H7.5 L7,13 L10.5,8 H8.5 Z</StreamGeometry>
+    <!-- Battery 100 %. -->
+    <StreamGeometry x:Key="BatteryLevel100" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,5 H10 V13 H6 Z</StreamGeometry>
+    <!-- Battery 100 %, charging: the bolt is cut out of the charge. -->
+    <StreamGeometry x:Key="BatteryLevel100Charging" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M6,5 H10 V13 H6 Z M9,5 L5.5,10 H7.5 L7,13 L10.5,8 H8.5 Z</StreamGeometry>
+    <!-- Battery state unknown: an exclamation mark in the outline. -->
+    <StreamGeometry x:Key="BatteryMissing" po:Freeze="True">F0 M5,2 H11 A2,2 0 0 1 13,4 V14 A2,2 0 0 1 11,16 H5 A2,2 0 0 1 3,14 V4 A2,2 0 0 1 5,2 Z M5,4 H11 V14 H5 Z M6,0 H10 V2 H6 Z M7,5 H9 V10 H7 Z M7,11 H9 V13 H7 Z</StreamGeometry>
+    <!-- Power: an open ring and a bar. -->
+    <StreamGeometry x:Key="SystemShutdown" po:Freeze="True">F1 M12.5,3.64 A7,7 0 1 1 3.5,3.64 L4.79,5.17 A5,5 0 1 0 11.21,5.17 Z M8,0 H8 A1,1 0 0 1 9,1 V7 A1,1 0 0 1 8,8 H8 A1,1 0 0 1 7,7 V1 A1,1 0 0 1 8,0 Z</StreamGeometry>
+    <!-- Caret pointing down; rotate for left and right. -->
+    <StreamGeometry x:Key="PanDown" po:Freeze="True">F1 M2.59,5.59 L8,11 L13.41,5.59 L12,4.17 L8,8.17 L4,4.17 Z</StreamGeometry>
+</ResourceDictionary>

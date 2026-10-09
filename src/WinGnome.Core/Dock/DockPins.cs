@@ -106,6 +106,33 @@ public static class DockPins
         return new PinnedApp { Name = AppIdentity.DisplayNameFromPath(path), LaunchId = path.Trim() };
     }
 
+    /// <summary>The pin with <paramref name="launchId"/> (case-insensitive), or null.</summary>
+    public static PinnedApp? Find(IReadOnlyList<PinnedApp> pins, string launchId)
+    {
+        ArgumentNullException.ThrowIfNull(pins);
+        var index = IndexOf(pins, launchId);
+        return index >= 0 ? pins[index] : null;
+    }
+
+    /// <summary>
+    /// Sets "Always run as administrator" on the pin with <paramref name="launchId"/>. The changed pin is a copy, so
+    /// the input list and its pins are untouched. Returns the new list (an unchanged copy when the id is not pinned).
+    /// </summary>
+    public static List<PinnedApp> SetRunAsAdministrator(IReadOnlyList<PinnedApp> pins, string launchId, bool value)
+    {
+        ArgumentNullException.ThrowIfNull(pins);
+        var result = pins.ToList();
+        var index = IndexOf(result, launchId);
+        if (index >= 0)
+        {
+            var pin = result[index].Clone();
+            pin.RunAsAdministrator = value;
+            result[index] = pin;
+        }
+
+        return result;
+    }
+
     private static int IndexOf(IReadOnlyList<PinnedApp> pins, string launchId)
     {
         for (var i = 0; i < pins.Count; i++)

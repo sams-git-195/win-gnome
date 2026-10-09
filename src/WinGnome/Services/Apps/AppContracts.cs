@@ -1,4 +1,5 @@
 using System.Windows.Media;
+using WinGnome.Core.Shell;
 
 namespace WinGnome.Services.Apps;
 
@@ -11,7 +12,8 @@ namespace WinGnome.Services.Apps;
 /// </param>
 /// <param name="AppUserModelId">PKEY_AppUserModel_ID of the item, used to match running windows.</param>
 /// <param name="TargetPath">Resolved executable path for desktop apps (PKEY_Link_TargetParsingPath), if any.</param>
-internal sealed record AppEntry(string Name, string ParsingName, string? AppUserModelId, string? TargetPath)
+/// <param name="Host">PKEY_AppUserModel_HostEnvironment: tells full-trust packaged apps (elevatable) from UWP ones.</param>
+internal sealed record AppEntry(string Name, string ParsingName, string? AppUserModelId, string? TargetPath, AppHost Host)
 {
     /// <summary>Value stored in <c>PinnedApp.LaunchId</c> when this app is pinned.</summary>
     public string LaunchId => ParsingName;
@@ -60,4 +62,14 @@ internal interface IAppLauncher
     /// or a URI (ms-settings:, shell:...). Returns false (and logs) on failure.
     /// </summary>
     bool Launch(string launchId, string? arguments = null);
+
+    /// <summary>
+    /// Launches as planned by <see cref="LaunchPlanner"/>; <see cref="LaunchRequest.Elevate"/> asks for UAC ("runas").
+    /// <paramref name="started"/> runs on the calling (UI) thread once the app has been started: straight away for a
+    /// normal launch, and only after the UAC prompt is accepted for an elevated one. "No" on the prompt is logged,
+    /// and <paramref name="started"/> is not called. Returns false when the launch failed immediately.
+    /// <paramref name="owner"/> is the WinGnome window the user clicked (dock, overview): for an elevated launch it is
+    /// brought to the front and passed to UAC, so the prompt opens in front instead of as a flashing taskbar button.
+    /// </summary>
+    bool Launch(LaunchRequest request, Action? started = null, nint owner = 0);
 }

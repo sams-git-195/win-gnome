@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace WinGnome.Core.Settings;
 
@@ -12,7 +11,7 @@ public static class SettingsSerializer
         PropertyNameCaseInsensitive = true,
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
-        Converters = { new JsonStringEnumConverter() },
+        Converters = { new LenientEnumConverterFactory() },
     };
 
     public static string Serialize(AppSettings settings) => JsonSerializer.Serialize(settings, Options);

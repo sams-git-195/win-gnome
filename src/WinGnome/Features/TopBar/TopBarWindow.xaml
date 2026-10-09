@@ -16,14 +16,20 @@
         Focusable="False"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
-        TextOptions.TextFormattingMode="Display"
-        FontFamily="{StaticResource ShellFont}"
-        FontWeight="SemiBold"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Grayscale"
+        TextOptions.TextHintingMode="Auto"
+        FontFamily="{DynamicResource TopBarFont}"
+        FontWeight="Bold"
         FontSize="{DynamicResource BarFontSize}"
         Foreground="{DynamicResource BarForeground}">
     <!--
         The bar ignores the light/dark palette on purpose: like GNOME's panel it uses its own colours
         (TopBarSettings), published by code-behind as the Bar* resources below.
+        Text: the bar is a translucent layered window, so ClearType is unavailable and glyphs are grayscale-smoothed.
+        Display formatting would then snap each glyph to whole pixels without ClearType's subpixel positions, which
+        spaces letters unevenly; Ideal keeps the font's own spacing, and code-behind sizes text to whole device pixels.
+        Bold everywhere, like GNOME's panel buttons.
     -->
     <Window.Resources>
         <SolidColorBrush x:Key="BarForeground" Color="White" />
@@ -74,10 +80,8 @@
             </Style.Triggers>
         </Style>
 
-        <Style x:Key="BarIcon" TargetType="TextBlock">
-            <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
-            <Setter Property="FontWeight" Value="Normal" />
-            <Setter Property="FontSize" Value="{DynamicResource BarIconSize}" />
+        <Style x:Key="BarIcon" TargetType="controls:SymbolicIcon">
+            <Setter Property="Size" Value="{DynamicResource BarIconSize}" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
     </Window.Resources>
@@ -131,11 +135,11 @@
                         Style="{StaticResource BarButton}" Click="OnStatusClick" MouseWheel="OnStatusWheel"
                         DataContext="{Binding Status}" ToolTip="{Binding ToolTip}">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Style="{StaticResource BarIcon}" Text="{Binding NetworkGlyph}" />
-                        <TextBlock Style="{StaticResource BarIcon}" Text="{Binding VolumeGlyph}" Margin="12,0,0,0"
-                                   Visibility="{Binding IsVolumeAvailable, Converter={StaticResource VisibleWhen}}" />
-                        <TextBlock Style="{StaticResource BarIcon}" Text="{Binding BatteryGlyph}" Margin="12,0,0,0"
-                                   Visibility="{Binding HasBattery, Converter={StaticResource VisibleWhen}}" />
+                        <controls:SymbolicIcon Style="{StaticResource BarIcon}" Icon="{Binding NetworkIcon}" />
+                        <controls:SymbolicIcon Style="{StaticResource BarIcon}" Icon="{Binding VolumeIcon}" Margin="12,0,0,0"
+                                               Visibility="{Binding IsVolumeAvailable, Converter={StaticResource VisibleWhen}}" />
+                        <controls:SymbolicIcon Style="{StaticResource BarIcon}" Icon="{Binding BatteryIcon}" Margin="12,0,0,0"
+                                               Visibility="{Binding HasBattery, Converter={StaticResource VisibleWhen}}" />
                         <TextBlock Text="{Binding BatteryPercentText}" Margin="5,0,0,0" VerticalAlignment="Center"
                                    Visibility="{Binding ShowBatteryPercentage, Converter={StaticResource VisibleWhen}}" />
                     </StackPanel>

@@ -42,6 +42,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-042](#ki-042) | S4 | Window buttons | WinGnome builds from before the window-buttons role still decorate alongside newer ones | Open |
 | [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
 | [KI-052](#ki-052) | S4 | Dock | Explorer windows other than folder windows don't join the File Explorer pin | Open |
+| [KI-055](#ki-055) | S4 | Top bar | The Wi-Fi icon doesn't show signal strength | Open |
 | [KI-060](#ki-060) | S4 | Settings | Choosing the default sound device uses the undocumented `IPolicyConfig` | Open |
 | [KI-061](#ki-061) | S4 | Settings | The power mode uses undocumented powrprof functions | Open |
 | [KI-062](#ki-062) | S4 | Settings | Display scale, orientation and turning displays on or off are left to Windows Settings | By design |
@@ -300,6 +301,15 @@ window, have no AUMID and still show as a separate unpinned "Explorer" icon, whe
 under File Explorer. *Fix direction:* list the classes seen live (for example `OperationStatusWindow`) and add
 them to the rule, keeping the desktop, taskbar and other shell windows out.
 
+### KI-055
+**The Wi-Fi icon doesn't show signal strength** · S4 · Top bar · Open
+
+`NetworkMonitor` only knows whether the connection is wired, wireless or absent, so the bar shows one
+"connected" Wi-Fi wedge (spec 0012) where GNOME shows 0–4 bars. Signal strength changes without a network-change
+event, so adding it means either polling (WLAN API or `ConnectionProfile.GetSignalBars`) or refreshing it only on
+network changes and when quick settings opens. Draw the 0–3 bar icons in `Theme/SymbolicIcons.xaml` (GNOME dims
+the unlit part of the wedge) when a source is added.
+
 ### KI-060
 **Choosing the default sound device uses the undocumented `IPolicyConfig`** · S4 · Settings · Open
 
@@ -388,3 +398,5 @@ for *Snap Layouts* and the *Disable the snap layouts flyout* tweak.
 | KI-020 | S3 | App | A graceful `taskkill` that reached the tray host window was ignored, so WinGnome didn't quit | 085fa14 |
 | KI-030 | S4 | Overview | The first overview open after start took about half a second (WPF's first full-screen frame) | 1e4522f (cloaked warm-up 3 s after start) |
 | KI-051 | S3 | Accessibility | The round window buttons weren't exposed to screen readers or the keyboard | fea478b |
+| KI-053 | S4 | Dock | An elevated launch played the launch animation even when the UAC prompt was cancelled | b09a222 (feedback posted back only after `ShellExecuteEx` succeeds) |
+| KI-054 | S3 | Dock | Full-trust packaged apps such as Windows Terminal couldn't be run as administrator | b09a222 (`PKEY_AppUserModel_HostEnvironment` in `AppCatalog`) |

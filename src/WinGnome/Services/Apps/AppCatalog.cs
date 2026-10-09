@@ -25,6 +25,16 @@ internal sealed class AppCatalog : IAppCatalog, IDisposable
         pid = 2,
     };
 
+    /// <summary>
+    /// PKEY_AppUserModel_HostEnvironment: 0 Win32, 1 UWP, 2 full-trust packaged. Tells Windows Terminal (elevatable)
+    /// from Calculator (not) without asking PackageManager or reading manifests.
+    /// </summary>
+    private static readonly WindowProperties.PROPERTYKEY HostEnvironmentKey = new()
+    {
+        fmtid = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"),
+        pid = 14,
+    };
+
     /// <summary>Documents and web links that show up in "All apps" but are not applications.</summary>
     private static readonly string[] NonAppExtensions = [".url", ".chm", ".txt", ".pdf", ".htm", ".html", ".rtf"];
 
@@ -312,10 +322,12 @@ internal sealed class AppCatalog : IAppCatalog, IDisposable
 
         string? appUserModelId = null;
         string? targetPath = null;
+        var host = AppHost.Unknown;
         if (item is IShellItem2 item2) // QueryInterface on the same RCW; released with the item.
         {
             appUserModelId = GetStringProperty(item2, WindowProperties.AppUserModelIdKey);
             targetPath = GetStringProperty(item2, LinkTargetParsingPathKey);
+            host = LaunchPlanner.HostFromProperty(GetUInt32Property(item2, HostEnvironmentKey));
         }
 
         // Classic apps without a shortcut are listed as "{KNOWNFOLDERID}\relative\app.exe": expand that so
@@ -331,7 +343,7 @@ internal sealed class AppCatalog : IAppCatalog, IDisposable
             targetPath = null;
         }
 
-        return new AppEntry(name.Trim(), parsingName, appUserModelId, targetPath);
+        return new AppEntry(name.Trim(), parsingName, appUserModelId, targetPath, host);
     }
 
     private static bool IsJunk(string name, string parsingName) =>
@@ -346,6 +358,19 @@ internal sealed class AppCatalog : IAppCatalog, IDisposable
         try
         {
             return item.GetString(ref key, out var value) == 0 && !string.IsNullOrWhiteSpace(value) ? value.Trim() : null;
+        }
+        catch (COMException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Reads an optional UInt32 property; missing properties and per-item failures yield null.</summary>
+    private static uint? GetUInt32Property(IShellItem2 item, WindowProperties.PROPERTYKEY key)
+    {
+        try
+        {
+            return item.GetUInt32(ref key, out var value) == 0 ? value : null;
         }
         catch (COMException)
         {

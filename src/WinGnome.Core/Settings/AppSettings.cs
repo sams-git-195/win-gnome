@@ -144,6 +144,9 @@ public sealed class TopBarSettings
     /// <summary>Show notification-area (system tray) icons in the top bar, like macOS menu bar extras.</summary>
     public bool ShowTrayIcons { get; set; } = true;
 
+    /// <summary>Typeface of the bar and its popups: GNOME's bundled Adwaita Sans, or Windows' own Segoe UI.</summary>
+    public TopBarFont FontFamily { get; set; } = TopBarFont.AdwaitaSans;
+
     internal void Normalize()
     {
         Height = Math.Clamp(double.IsFinite(Height) ? Height : 32, 24, 48);
@@ -156,8 +159,11 @@ public sealed class TopBarSettings
         ForegroundColor = ColorSetting.Normalize(ForegroundColor, "#FFFFFF");
         Blur = EnumSetting.Normalize(Blur, BlurEffect.None);
         ClockStyle = EnumSetting.Normalize(ClockStyle, ClockStyle.TwentyFourHour);
+        FontFamily = EnumSetting.Normalize(FontFamily, TopBarFont.AdwaitaSans);
     }
 }
+
+public enum TopBarFont { AdwaitaSans, SegoeUI }
 
 public enum DockPosition { Bottom, Left, Right }
 
@@ -278,6 +284,15 @@ public sealed class PinnedApp
 
     /// <summary>Optional command-line arguments (file-system launches only).</summary>
     public string? Arguments { get; set; }
+
+    /// <summary>
+    /// Launch this pin elevated (UAC prompt) on every click. Ignored for packaged apps and URIs, which cannot be
+    /// elevated this way. Files written before this field existed load as false.
+    /// </summary>
+    public bool RunAsAdministrator { get; set; }
+
+    /// <summary>A shallow copy with every field (all are immutable values), so fields added later are kept too.</summary>
+    public PinnedApp Clone() => (PinnedApp)MemberwiseClone();
 }
 
 public enum TrafficLightPreset { MacOS, Gnome, Graphite, Pastel, Custom }

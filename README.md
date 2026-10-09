@@ -21,7 +21,8 @@ the way it was when it exits.
 - **Workspace dots** for Windows virtual desktops. Click a dot to switch desktops.
 - **Focused app name** next to the dots, as in GNOME.
 - **Centred clock**, formatted GNOME-style (`Wed 8 Oct  14:05`). Click it for a calendar.
-- **System indicators**: network, volume (scroll on it to change the volume) and battery.
+- **System indicators**: network, volume (scroll on it to change the volume) and battery, drawn as GNOME-style symbolic icons.
+- **Crisp at any scaling**: bold **Adwaita Sans** text (GNOME's own typeface, bundled; switch to Segoe UI in Settings → Top Bar → Font), with text, icons and tray icons sized to whole screen pixels at 100%, 125%, 150% and up.
 - **Tray icons** (like macOS menu bar extras): the notification-area icons of your running apps (Discord, Steam, OneDrive, antivirus, ...) sit left of the system indicators, in the order they were added. Click, double-click, middle-click and right-click work as in the Windows tray, so app menus open right under the icon. Hover for the tooltip. Icons an app hides stay hidden. The Windows taskbar keeps its own copy of every icon, in both taskbar modes. Turn this off in Settings → Top Bar.
 - **Quick settings** menu: volume and screen-brightness sliders (brightness for a laptop's built-in display; scroll or use the arrow keys on it too), Wi-Fi and Bluetooth shortcuts, screenshot, Windows Settings, WinGnome settings, lock, and the power menu (sleep, restart, shut down, sign out). It also links to the hidden system tray and to Windows' own quick settings and notification centre.
 - Registered as an AppBar, so maximised windows sit below the bar instead of under it. The bar hides automatically when a full-screen app runs.
@@ -32,6 +33,7 @@ the way it was when it exits.
 - **Click** focuses an app (restoring it if minimised), or minimises it if it's already focused. Other click actions: *cycle windows* or *show previews*.
 - Running windows join their pinned icon, including Electron apps such as VS Code and Squirrel-installed apps such as GitHub Desktop and Discord.
 - **Middle-click** opens a new window. **Right-click** lists the app's windows plus *New window*, *Pin/Unpin* and *Quit*.
+- **Run as administrator** (right-click) starts an app elevated after the UAC prompt; pinned apps also get an *Always run as administrator* checkbox. As in Start, this works for desktop apps and full-trust Store apps such as Windows Terminal, but not for UWP apps such as Calculator or for File Explorer, which don't offer it. WinGnome itself never runs elevated.
 - **Super+1…9** activates the n-th dock item.
 - **Visibility modes**: *Always visible* (reserves screen space), *Intellihide* (hides only when a window overlaps it, the Ubuntu default) and *Autohide*.
 - Optional macOS-style **hover magnification**, panel mode (stretch to the screen edges), a *Show Applications* button and a recycle bin.
@@ -53,7 +55,8 @@ the way it was when it exits.
 - Full-screen overview with **live window thumbnails** (DWM). Click a thumbnail to focus that window, or hover and click × to close it.
   Thumbnails glide out of their windows when it opens and back when it closes (instant when Windows animations are off).
 - **Type to search** apps and windows. Press Enter to launch the top hit and Esc to close.
-- **Application grid** (from the dock's *Show Applications* button). Right-click an app to pin it to the dock.
+- **Application grid** (from the dock's *Show Applications* button). Right-click an app to pin it to the dock or run it as administrator.
+- **Ctrl+Shift+Enter** or **Ctrl+Shift+click** launches an app as administrator, as in Start.
 - **Hot corner**: top-left, with a configurable delay.
 - Optional: **Super key alone opens the overview** instead of the Start menu. Win+X, Win+E and other Win+key shortcuts keep working.
 
@@ -209,3 +212,7 @@ dotnet test
 
 Issues and pull requests are welcome. Read [AGENTS.md](AGENTS.md) first. Please keep platform calls in `src/WinGnome` and logic in
 `WinGnome.Core` with tests, and run `dotnet build -warnaserror` and `dotnet test` before submitting.
+
+## Credits
+
+- [Adwaita Sans](https://gitlab.gnome.org/GNOME/adwaita-fonts) by the GNOME project (based on Inter by Rasmus Andersson), bundled unmodified under the SIL Open Font License 1.1; see [assets/fonts/OFL.txt](assets/fonts/OFL.txt).
