@@ -143,4 +143,27 @@ public class HotCornerDetectorTests
 
         Assert.Equal(3, fired);
     }
+
+    [Fact]
+    public void Reset_RestartsTheDwell()
+    {
+        var d = new HotCornerDetector(150);
+        Assert.False(d.Update(0, 0, Monitor, 1000));
+
+        d.Reset();
+
+        Assert.False(d.Update(0, 0, Monitor, 1150));
+        Assert.True(d.Update(0, 0, Monitor, 1300));
+    }
+
+    [Fact]
+    public void Reset_AfterFiring_AllowsTheNextVisitToFire()
+    {
+        var d = new HotCornerDetector(0);
+        Assert.True(d.Update(0, 0, Monitor, 1));
+
+        d.Reset();
+
+        Assert.True(d.Update(0, 0, Monitor, 2));
+    }
 }

@@ -1,14 +1,17 @@
 ﻿using System.Windows.Threading;
 using WinGnome.Core.Geometry;
 using WinGnome.Core.Input;
+using WinGnome.Core.Monitors;
 using WinGnome.Core.Windows;
 using WinGnome.Interop;
+using WinGnome.Services;
 
 namespace WinGnome.Features.Overview;
 
 /// <summary>
-/// Watches the primary monitor's top-left corner and raises <see cref="Triggered"/> when the pointer rests
-/// there for the configured delay. Polls the cursor instead of installing a mouse hook: a 50 ms timer is
+/// Watches the top-left corner of every monitor where that is a real screen corner (<see cref="HotCornerRules"/>)
+/// and raises <see cref="Triggered"/> when the pointer rests there for the configured delay. The overview opens on
+/// the primary monitor whichever corner fired (KI-072). Polls the cursor instead of installing a mouse hook: a 50 ms timer is
 /// cheap, cannot slow down system-wide mouse input, and needs no special privileges.
 /// </summary>
 internal sealed class HotCornerWatcher : IDisposable
@@ -16,12 +19,14 @@ internal sealed class HotCornerWatcher : IDisposable
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
 
     private readonly DispatcherTimer _timer;
+    private readonly DisplayLayoutService _displays;
     private readonly uint _ownProcessId = NativeMethods.GetCurrentProcessId();
     private HotCornerDetector _detector = new(0);
     private int _delayMs;
 
-    public HotCornerWatcher(Dispatcher dispatcher)
+    public HotCornerWatcher(Dispatcher dispatcher, DisplayLayoutService displays)
     {
+        _displays = displays;
         _timer = new DispatcherTimer(PollInterval, DispatcherPriority.Input, (_, _) => Poll(), dispatcher)
         {
             IsEnabled = false,
@@ -59,7 +64,16 @@ internal sealed class HotCornerWatcher : IDisposable
             return;
         }
 
-        var (monitor, _) = NativeMethods.GetPrimaryMonitorRects();
+        // A monitor whose corner continues into another monitor has no hot corner: the pointer only passes through
+        // there on its way to the other screen (GNOME disables those too).
+        var layout = _displays.Current;
+        if (layout.At(cursor.X, cursor.Y) is not { } under || !HotCornerRules.IsTrueCorner(under, layout))
+        {
+            _detector.Reset();
+            return;
+        }
+
+        var monitor = under.Bounds;
         if (_detector.Update(cursor.X, cursor.Y, monitor, Environment.TickCount64) && ShouldTrigger(monitor))
         {
             Triggered?.Invoke(this, EventArgs.Empty);
@@ -67,16 +81,12 @@ internal sealed class HotCornerWatcher : IDisposable
     }
 
     /// <summary>
-    /// Stays quiet while the user is dragging something into the corner, when a full-screen app
-    /// (game, video, presentation) is in front (there the corner is part of the app), and when another
-    /// monitor continues past the corner: the pointer only passes through such a "corner" on its way to
-    /// the other screen (GNOME disables those hot corners too).
+    /// Stays quiet while the user is dragging something into the corner, and when a full-screen app
+    /// (game, video, presentation) is in front on that monitor (there the corner is part of the app).
     /// </summary>
     private bool ShouldTrigger(PixelRect monitor)
     {
-        if (NativeMethods.IsKeyDown(NativeMethods.VK_LBUTTON)
-            || IsOnAnyMonitor(monitor.Left - 1, monitor.Top)
-            || IsOnAnyMonitor(monitor.Left, monitor.Top - 1))
+        if (NativeMethods.IsKeyDown(NativeMethods.VK_LBUTTON))
         {
             return false;
         }
@@ -98,9 +108,6 @@ internal sealed class HotCornerWatcher : IDisposable
         return !WindowGeometry.IsFullScreenApp(
             NativeMethods.GetWindowBounds(foreground), monitor, NativeMethods.IsZoomed(foreground), hasCaption);
     }
-
-    private static bool IsOnAnyMonitor(int x, int y) =>
-        NativeMethods.MonitorFromPoint(new POINT { X = x, Y = y }, NativeMethods.MONITOR_DEFAULTTONULL) != 0;
 
     public void Dispose() => _timer.Stop();
 }
