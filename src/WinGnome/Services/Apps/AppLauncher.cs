@@ -232,43 +232,11 @@ internal sealed class AppLauncher : IAppLauncher
     }
 
     /// <summary>
-    /// Runs a blocking launch on its own STA thread: an elevated ShellExecuteEx waits until the UAC prompt is answered,
-    /// ID-list launches go through shell extensions, and packaged activation waits for a cold start, so none may run on
-    /// the dispatcher; the shell wants STA. When <paramref name="launch"/> succeeds, <paramref name="started"/> is
-    /// posted back to the caller's synchronisation context (the dispatcher).
+    /// Runs a blocking launch on its own STA thread (see <see cref="ShellThread"/>). When <paramref name="launch"/>
+    /// succeeds, <paramref name="started"/> is posted back to the caller's synchronisation context (the dispatcher).
     /// </summary>
-    private static void RunOnShellThread(string what, Func<bool> launch, Action? started = null)
-    {
-        var context = SynchronizationContext.Current;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                if (launch() && started is not null)
-                {
-                    if (context is null)
-                    {
-                        started();
-                    }
-                    else
-                    {
-                        context.Post(_ => started(), null);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // Thread boundary: an exception escaping here would end the shell process, so everything is logged.
-                Log.Warn($"AppLauncher: could not launch '{what}'", ex);
-            }
-        })
-        {
-            IsBackground = true,
-            Name = "WinGnome launch",
-        };
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-    }
+    private static void RunOnShellThread(string what, Func<bool> launch, Action? started = null) =>
+        ShellThread.Run($"AppLauncher: could not launch '{what}'", launch, started);
 
     /// <summary>Activates a packaged app through IApplicationActivationManager, falling back to its AppsFolder item.</summary>
     private static void ActivatePackagedApp(string aumid, string? arguments) =>
