@@ -40,6 +40,16 @@ internal static class DisplayWork
     /// </summary>
     public static void RunAtShutdown(string what, Action work)
     {
+        WaitAtShutdown();
+        Run(what, work);
+    }
+
+    /// <summary>
+    /// At WinGnome shutdown: waits (at most <see cref="ShutdownWait"/>) for queued display work such as a save or a
+    /// revert, so quitting doesn't cut it off half way.
+    /// </summary>
+    public static void WaitAtShutdown()
+    {
         Task tail;
         lock (Gate)
         {
@@ -48,10 +58,8 @@ internal static class DisplayWork
 
         if (!tail.Wait(ShutdownWait))
         {
-            Log.Warn($"Display work still running at shutdown; going ahead to {what}");
+            Log.Warn("Display work was still running when WinGnome quit");
         }
-
-        Run(what, work);
     }
 
     private static void Run(string what, Action work)

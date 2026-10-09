@@ -24,6 +24,19 @@ internal static class SettingsActivationFile
         }
     }
 
+    /// <summary>Owning instance at start-up: deletes a stale request no running instance read.</summary>
+    public static void Discard(string settingsDirectory)
+    {
+        var path = Path.Combine(settingsDirectory, SettingsActivationRequest.FileName);
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Warn($"Could not delete the stale settings request {path}", ex);
+        }
+    }
     /// <summary>Running instance: the requested panel id, or null; the file is deleted so a later launch starts clean.</summary>
     public static string? Take(string settingsDirectory)
     {

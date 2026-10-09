@@ -48,6 +48,9 @@ internal sealed class SettingsFeature : IFeature
     {
         _context.Commands.SettingsRequested -= OnSettingsRequested;
         _window?.CloseForShutdown();
+
+        // Even with no window, a save, revert or start-up recovery may still be running on the display queue.
+        DisplayWork.WaitAtShutdown();
     }
 
     /// <summary>

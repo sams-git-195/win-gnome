@@ -271,6 +271,8 @@ public partial class App : Application
         }
 
         _ownsInstance = true;
+        // A request left by a launch that signalled an instance which then quit must not steer this one later.
+        SettingsActivationFile.Discard(_settingsDirectory);
         _activationWait = ThreadPool.RegisterWaitForSingleObject(_activationEvent,
             (_, _) => ShowRequestedSettings(),
             null, Timeout.Infinite, executeOnlyOnce: false);
