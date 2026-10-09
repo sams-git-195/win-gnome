@@ -144,14 +144,22 @@ internal static partial class TaskbarController
         return hidden;
     }
 
-    /// <summary>Shows the taskbar windows without changing the auto-hide setting. Returns how many were shown.</summary>
+    /// <summary>
+    /// Shows the taskbar windows without changing the auto-hide setting. Returns how many were made visible
+    /// (windows that were already visible are re-shown but not counted, so the peek's "showed N" line means what
+    /// <see cref="HideWindows"/>'s count means: N windows changed).
+    /// </summary>
     public static int ShowWindows()
     {
         var shown = 0;
         foreach (var hwnd in FindTaskbarWindows())
         {
+            var wasVisible = NativeMethods.IsWindowVisible(hwnd);
             NativeMethods.ShowWindow(hwnd, NativeMethods.SW_SHOWNA);
-            shown++;
+            if (!wasVisible)
+            {
+                shown++;
+            }
         }
 
         return shown;
