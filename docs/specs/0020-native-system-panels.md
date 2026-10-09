@@ -1,6 +1,6 @@
 # 0020 — More native system panels
 
-Status: Agreed — user decisions 2026-10-09; advisor review (Fable) applied 2026-10-09. Ready for implementation after spec 0010; WP0 first.
+Status: Implemented (merged in 1f0c26b WP0, bc37621 WP2/WP7, 826ee86 WP4, 070753f WP1/WP6, 85fc5ba WP5/WP8, 56dc6ed WP3) — live checks pending: high-contrast spike and cursor size (WP4), Notifications AC 3 and Privacy AC 7 (live pick-up without sign-out), Apps uninstall, Printers on real printers, AutoPlay on real media and the Memory card registry location, Region/long date/times/Reset, Task Manager display and next-sign-in start-up (WP3). See KI-085 to KI-092.
 
 ## Problem
 Spec 0015 shipped nine native panels; the other GNOME panels are arrows that open Windows Settings. In shell mode
@@ -110,7 +110,12 @@ General → *Start with Windows*).
   calls `show` on the dispatcher only if the panel is still open from the same `Open` (a generation counter), logging
   exceptions and setting `Problem`. `longRunning` is required for WUA, `EnumPrinters` and the uninstall-key walk, so
   a stuck RPC or COM call never starves the pool. Replaces the ad-hoc `Task.Run(...).ContinueWith` in About/Displays
-  for new panels only (existing panels untouched).
+  for new panels only (existing panels untouched). *As built, two additions (WP0, WP3):* an optional
+  `channel` argument — loads on the same channel replace each other (only the newest is shown, so a re-read after each
+  write can't be overwritten by an older read that finishes late), while loads on different channels (independent
+  lists on one panel, e.g. Apps' `installed`, `startup` and per-package channels) never drop each other; and the
+  failure path: a throwing `read` is logged and sets `Problem` but does not call `show`, so a panel that set a busy flag
+  before loading must clear it itself (KI-091).
 - **`ShellThread`** (`Services/Apps/ShellThread.cs`): `AppLauncher.RunOnShellThread` extracted unchanged into a
   shared helper (`ShellThread.Run(string what, Func<bool> work, Action? done)`: STA background thread, logs every
   exception, posts `done` to the caller's context). `AppLauncher` calls it; this extraction is its own refactor
@@ -173,7 +178,8 @@ verified-set (write through the service, re-read, show the re-read value).
   ordinal-ignore-case.
 - After a write, `WM_SETTINGCHANGE` is not needed. Per-app `Enabled` is expected to be picked up live by the
   notification platform (AC 3 checks it); needing sign-out is the failure case, and then the row says "Takes effect
-  after you sign out" and KI-085 records it.
+  after you sign out" and KI-085 records it. *Result (WP1):* the registry writes round-trip through the panel, but AC 3
+  (a disabled app stops showing toasts without sign-out) was not demonstrated; it stays open in KI-085.
 
 **2. Printers** — `Panels/Printers/`, `PrinterService`, `Interop/NativeMethods.Printing.cs` (winspool:
 `EnumPrintersW` level 2 with `PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS`, `GetDefaultPrinterW`,
@@ -272,8 +278,18 @@ of `SystemParametersInfoW`).
   `CursorSizeStore`, KI-087). The row is disabled with a link to `ms-settings:easeofaccess-mousepointer` when
   `Accessibility\CursorType` ≠ 0 (black, inverted or custom colour: Windows regenerates those cursor files through
   a private API) or a custom cursor scheme is active (`Control Panel\Cursors` `Scheme Source` = 1, a user scheme).
-- *High contrast*: `SPI_SETHIGHCONTRAST` with `HCF_HIGHCONTRASTON` and the theme's scheme name; off clears the flag
-  (Windows restores the previous theme). Windows shows its own "Please wait" for several seconds during the switch,
+- *High contrast*: **as built (WP4) a read-only row with a link to `ms-settings:easeofaccess-highcontrast`**, because
+  the spike below could not be run during development (it turns the whole desktop to a contrast theme; KI-087). The
+  row shows the theme Windows reports (Aquatic = `hcblack.theme`, Desert = `hcwhite.theme`, Dusk = `hc1.theme`, Night
+  sky = `hc2.theme`, matched by the files' colours; the read accepts the Windows 11 name, the legacy name, the file name
+  or a path). The write was removed from the UI (no dead code) and returns once the spike passes. What the write was:
+  `SPI_SETHIGHCONTRAST` (0x0043) with `uiParam = cbSize = Marshal.SizeOf<HIGHCONTRASTW>()` (16 on x64) and
+  `SPIF_UPDATEINIFILE | SPIF_SENDCHANGE`, on the writer thread, read-modify-write from a fresh `SPI_GETHIGHCONTRAST`:
+  keep every flag, set or clear `HCF_HIGHCONTRASTON` (0x1), and point `lpszDefaultScheme` at a
+  `Marshal.StringToHGlobalUni` copy of the theme's `Scheme` (or, for off, of the scheme Windows reported), freed after
+  the call. `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\LastHighContrastTheme` holds the path of the last
+  contrast theme file applied, which suggests Windows 11 applies contrast themes by file. Original design: `SPI_SETHIGHCONTRAST`
+  with `HCF_HIGHCONTRASTON` and the theme's scheme name; off clears the flag (Windows restores the previous theme). Windows shows its own "Please wait" for several seconds during the switch,
   and WinGnome's own `SystemParameters.HighContrast` (and WPF's system resources) flip mid-write. So the write runs on
   the writer thread, the row stays busy until the writer returns, and the panel re-reads only then (verified-set),
   ignoring intermediate change notifications. **Spike first** (WP4 step 1): on 25H2, check which
@@ -281,6 +297,16 @@ of `SystemParametersInfoW`).
   Night sky) or the file names (`%WINDIR%\Resources\Ease of Access Themes\hc*.theme`) — and that WinGnome's
   windows survive the flip. If none works cleanly, the row becomes a link to `ms-settings:easeofaccess-highcontrast`
   and the spike result goes in KI-087.
+  *Spike steps (for the user; save work first; recover with Left Alt + Left Shift + Print Screen or Windows Settings →
+  Accessibility → Contrast themes → None):* (1) note the current theme; (2) put the write back in a local build and run
+  a test instance with `--settings-dir "$env:TEMP\wingnome-a11y" --settings-panel accessibility` and every other
+  feature off; (3) High contrast → Aquatic: expect Windows' "Please wait", then a #202020 background with cyan links,
+  Windows Settings → Contrast themes showing Aquatic, the WinGnome settings window still responding, the row showing
+  Aquatic once "Applying the change in Windows…" goes, and `Settings: turn high contrast on with Aquatic` in the log;
+  (4) switch directly to Desert (cream), Dusk (#2D3236, teal links) and Night sky (black, violet links), checking the
+  same; (5) choose None: the theme from step 1 comes back; (6) if a theme comes out wrong, change that theme's `Scheme`
+  in `ContrastThemes` to its file path (`%WINDIR%\Resources\Ease of Access Themes\<file>`) and repeat, else keep the link
+  and record the result in KI-087.
 - *Text size* (`TextScaleFactor`) evaluated: undocumented, and Windows applies it through a private broadcast; a raw
   write shows up only after sign-out in many apps. **Link row** showing the current percentage read-only. *Text
   cursor indicator* is run by Windows (no API): link row.
@@ -301,9 +327,15 @@ of `SystemParametersInfoW`).
   LOCALE_SSHORTTIME | LOCALE_STIMEFORMAT | LOCALE_IFIRSTDAYOFWEEK, …)` and `SetUserGeoName`, then
   `SystemBroadcast.SettingChanged("intl")` on the writer thread. *Reset to defaults* writes each value's
   `LOCALE_NOUSEROVERRIDE` value. Samples come from `GetDateFormatEx`/`GetTimeFormatEx` with the picture.
-- The process caches culture data: on `WM_SETTINGCHANGE "intl"` the app calls
-  `CultureInfo.CurrentCulture.ClearCachedData()`, which suffices (no other cache to drop, no restart), as one line
-  in the app's settings-change handling (part of WP5).
+- The process caches culture data. *Correction (WP5, checked live):* `ClearCachedData()` alone does **not** suffice,
+  because .NET keeps the user's formats on the `CurrentCulture` instance it already built (a clear alone left the old
+  short date in the process for 1.5 s and more). On `WM_SETTINGCHANGE "intl"` (`SystemEvents.UserPreferenceChanged`,
+  `Locale` category) `SettingsFeature` calls `ClearCachedData()` and then, on the dispatcher, replaces
+  `CultureInfo.CurrentCulture` and `DefaultThreadCurrentCulture` with a fresh read-only
+  `CultureInfo(name, useUserOverride: true)`, where `name` is `GetUserDefaultLocaleName` (so a format-locale change in
+  Windows Settings is followed too). Verified live: the date, the first day of the week and pool threads follow in both
+  directions. Live tests of these writes must run outside an agent sandbox (launch through `explorer.exe`): from a
+  sandboxed shell the HKCU writes are virtualised and Windows' locale code never sees them.
 - Core: `RegionFormatChoices.Build(patterns, current)` (dedupe, current first if not in the list), `FirstDayOfWeek`
   (Win32 0 = Monday … 6 = Sunday ↔ `DayOfWeek`), `GeoList` (sort and search by display name). Tests: mapping both
   ways, out-of-range values, custom current pattern kept.
@@ -335,9 +367,9 @@ of `SystemParametersInfoW`).
   for each, including a handler named only in HKCU and an HKCU name overriding HKLM.
 
 **8. Windows Update** — `Panels/WindowsUpdate/`, `UpdateStatusService`, `Interop/WindowsUpdateApi.cs`
-(`[ComImport]` `IAutomaticUpdates2`, `IAutomaticUpdatesResults`, `IUpdateSession`, `IUpdateSearcher`, `ISearchJob`,
-`ISearchCompletedCallback`, `ISearchResult`, `IUpdateCollection`, `IUpdate`, `ISystemInformation` — only the members
-used).
+(as designed: `[ComImport]` `IAutomaticUpdates2`, `IAutomaticUpdatesResults`, `IUpdateSession`, `IUpdateSearcher`,
+`ISearchJob`, `ISearchCompletedCallback`, `ISearchResult`, `IUpdateCollection`, `IUpdate`, `ISystemInformation` — only
+the members used; as built, only `ISearchCompletedCallback`, see below).
 - Documented WUA: `Microsoft.Update.AutoUpdate` → `Results.LastSearchSuccessDate`, `LastInstallationSuccessDate`;
   `Microsoft.Update.SystemInfo.RebootRequired`; `Microsoft.Update.Session` → searcher with **`Online = false`**
   (cached results only: no network, no scan) and `"IsInstalled=0 and IsHidden=0"`.
@@ -347,9 +379,14 @@ used).
   set within 20 s, the worker calls `ISearchJob.RequestAbort()`, waits briefly for completion, releases everything and
   reports *Couldn't read updates* with the link. No abandoned blocking call is left on a thread. Closing the panel
   drops late results via the generation counter. Service stopped/disabled or `0x8024xxxx` → Core message.
-- Core: `UpdateStatusText.Build(lastChecked, lastInstalled, pending, rebootRequired, error, now)` — relative times
-  ("Today at 14:05", "3 days ago"), "Never", `DateTime.MinValue` handling, HRESULT → message table. Tests with a
-  fixed `now` and culture.
+- Core: `UpdateStatusText.Build(status, now, culture)` over an `UpdateStatus` record (*as built; the spec had six
+  loose arguments*) — relative times ("Today at 14:05", "3 days ago"), "Never", `DateTime.MinValue` handling, HRESULT →
+  message table, `TimedOut`. Tests with a fixed `now` and culture.
+- *As built (WP8):* WUA is called late-bound (`dynamic` over the IDispatch objects, by ProgID) instead of nine
+  hand-written `[ComImport]` interfaces; only `ISearchCompletedCallback` is declared in `WindowsUpdateApi.cs`. WUA
+  returns UTC dates, which the service converts to local time. Checked live: the offline read took about 2.7 s and
+  listed the 3 cached driver updates; with a 50 ms timeout the search aborted and returned the timeout code in 0.45 s
+  with nothing left running.
 
 ### Threading, DPI and hostile cases
 - UI thread only reads cheap registry/SPI values; anything that can block (EnumPrinters, WUA, uninstall registry
@@ -390,8 +427,9 @@ line lands, WP0's fallback keeps it a working link.
   (user Startup-folder shortcut to the Recycle Bin, restorable from there). Startup items are otherwise only
   disabled, which Windows' own StartupApproved value records and Task Manager can undo; no Run value is deleted.
 - Uninstall never runs a command that could be resolved through the search path: `msiexec`/`rundll32` are rooted at
-  System32 and every other executable must be a fully qualified path, otherwise WinGnome hands over to Windows
-  Settings.
+  System32 and every other executable must be a fully qualified path to a `.exe` (as built; an unquoted
+  `C:\Program Files\App\uninst /S` would split at the first space and could resolve to a planted `C:\Program.exe`),
+  otherwise WinGnome hands over to Windows Settings.
 - Accessibility: switching sticky/filter keys preserves Windows' own hotkey flags (Shift ×5, hold right Shift), and
   a read with no `AVAILABLE` bit falls back to Windows' defaults, so the user can always turn them off from the
   keyboard; *Bounce*/*Slow keys* timings are clamped to Windows' ranges so a mis-set value can't make typing
@@ -401,7 +439,8 @@ line lands, WP0's fallback keeps it a working link.
 - `--safe`: every write is skipped by `SystemSettingWriter`; *Uninstall*, *Remove*, *Add* and *Set as default* are
   disabled; links and tool launches (OSK, Magnifier, Narrator, print queue) still work. `--selftest` doesn't open
   the Settings window; Core tests cover the decisions.
-- KNOWN_ISSUES entries (added by WP9; each WP hands over its text):
+- KNOWN_ISSUES entries (written in [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) by WP9, which has the final text; this is
+  the plan they started from):
   - KI-085 S4 Settings — Notifications use undocumented HKCU values (`NOC_GLOBAL_SETTING_TOASTS_ENABLED`,
     `ToastEnabled`, `NOC_GLOBAL_SETTING_ALLOW_TOASTS_ABOVE_LOCK`, per-app `Enabled`); the app list is the registry
     subset of Windows' own list (`wpndatabase.db`), so registered apps without a key are missing; sign-out if live
@@ -417,8 +456,10 @@ line lands, WP0's fallback keeps it a working link.
     leave the list stale until Refresh; desktop apps with a non-rooted uninstall command link to Windows Settings.
   - KI-090 S4 Settings — Startup apps: machine-wide items and packaged startup tasks are read-only/linked; HKCU Run
     values can be disabled but not removed (deferred); the HKLM-approval check result.
-  - KI-091 S4 Settings — `LegacyDefaultPrinterMode` and AutoPlay handler keys are undocumented.
-  - KI-092 S4 Settings — The format locale and display language are changed in Windows Settings (By design).
+  - KI-091 S4 Settings — `LegacyDefaultPrinterMode` and AutoPlay handler keys are undocumented (as written it also
+    covers the Printers and Removable Media limits and the `LoadAsync` failure path that leaves a busy flag set).
+  - KI-092 S4 Settings — The format locale and display language are changed in Windows Settings (By design; as
+    written it also covers the Windows Update panel's cached-only status).
   - KI-063 extended to the new panels until each write is checked live.
 
 ## Footprint
