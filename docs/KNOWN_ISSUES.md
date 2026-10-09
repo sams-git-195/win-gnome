@@ -37,7 +37,6 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-023](#ki-023) | S4 | Dock | Two pins with the same target group the app's windows into the first one | Open |
 | [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
 | [KI-051](#ki-051) | S3 | Accessibility | The round window buttons aren't exposed to screen readers or keyboard | Open |
-| [KI-030](#ki-030) | S4 | Overview | The first overview open after start takes about half a second | Open |
 | [KI-031](#ki-031) | S4 | Overview | Overview animation details not verified on every path | Open |
 | [KI-032](#ki-032) | S4 | Overview | The overview's close glide gets 8–13 frames | Open |
 | [KI-033](#ki-033) | S4 | Overview | A dock request for some windows doesn't narrow an open overview | Open |
@@ -214,15 +213,6 @@ can't be focused. The settings window still closes with Alt+F4 and its system me
 Maximise and Close. *Fix direction:* an `AutomationPeer` for the view with one child peer per circle
 (`IInvokeProvider`), named from `CaptionButtonKind`.
 
-### KI-030
-**The first overview open after start takes about half a second** · S4 · Overview · Open
-
-The first time the overview opens, WPF's first full-screen software-rendered frame takes ~430 ms (JIT, glyph and
-layout caches). Since spec 0008 the window stays cloaked until that frame is presented, so nothing appears for
-~470 ms instead of a bare backdrop flashing up; later opens appear 60–120 ms after the key. The 250 ms reveal
-timeout can't help while the UI thread is busy rendering. *Fix direction:* render the overview once, cloaked
-and inactive, shortly after start-up, then hide and shrink it again.
-
 ### KI-031
 **Overview animation details not verified on every path** · S4 · Overview · Open
 
@@ -286,3 +276,4 @@ decorates windows" once while the previous thread releases the mutex.
 | KI-017 | S3 | Window buttons | The patch behind the circles didn't match Mica title bars and hid the window border | 45ae75a |
 | KI-002 | S4 | App | The executable had no app icon | 2f7c44b |
 | KI-020 | S3 | App | A graceful `taskkill` that reached the tray host window was ignored, so WinGnome didn't quit | 085fa14 |
+| KI-030 | S4 | Overview | The first overview open after start took about half a second (WPF's first full-screen frame) | 1e4522f (cloaked warm-up 3 s after start) |
