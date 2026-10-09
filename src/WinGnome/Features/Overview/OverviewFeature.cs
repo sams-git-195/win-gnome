@@ -38,7 +38,7 @@ internal sealed class OverviewFeature : IFeature
         _apps = new AppTileCatalog(_context.Apps, _context.Icons, _context.Dispatcher);
         _window = new OverviewWindow(_context, _apps);
 
-        _hotCorner = new HotCornerWatcher(_context.Dispatcher);
+        _hotCorner = new HotCornerWatcher(_context.Dispatcher, _context.Displays);
         _hotCorner.Triggered += (_, _) => Toggle();
 
         _hotkey = new GlobalHotkey();

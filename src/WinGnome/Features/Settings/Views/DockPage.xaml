@@ -58,6 +58,14 @@
             <c:SettingsRow Title="Show dock" Subtitle="Pinned and running apps in a dock, in the style of Dash to Dock.">
                 <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding Enabled.Value}" />
             </c:SettingsRow>
+            <c:SettingsRow Title="Show on" Subtitle="Super+1 to 9 always use the main display's dock.">
+                <ListBox Style="{DynamicResource SegmentedListBox}" ItemsSource="{Binding Monitors.Options}"
+                         SelectedItem="{Binding Monitors.Selected}" DisplayMemberPath="Label" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Only show windows on the same display" Subtitle="Pinned apps appear on every dock."
+                           IsEnabled="{Binding CanIsolateMonitors}">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding IsolateMonitors.Value}" />
+            </c:SettingsRow>
             <c:SettingsRow Title="Position">
                 <ListBox Style="{DynamicResource SegmentedListBox}" ItemsSource="{Binding Position.Options}"
                          SelectedItem="{Binding Position.Selected}" DisplayMemberPath="Label" />

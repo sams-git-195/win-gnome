@@ -4,7 +4,7 @@
              xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls">
     <StackPanel>
         <c:SettingsGroup Header="Hot corner">
-            <c:SettingsRow Title="Hot corner" Subtitle="Push the pointer into the top-left corner to open the overview.">
+            <c:SettingsRow Title="Hot corner" Subtitle="Push the pointer into the top-left corner of each display to open the overview.">
                 <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding HotCorner.Value}" />
             </c:SettingsRow>
             <c:SettingsRow Title="Hot corner delay" Subtitle="How long the pointer must rest in the corner."

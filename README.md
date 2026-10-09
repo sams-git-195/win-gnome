@@ -16,8 +16,9 @@ the way it was when it exits.
 ## Features
 
 ### Top bar
+- **On every display**: each monitor gets its own full bar, laid out at that monitor's scale, showing the app focused on that monitor. Menus open on the display you clicked, and only one is open at a time. Choose *Main display only* in Settings → Top Bar → Show on.
 - **Logo menu**: a Windows logo at the far left opens a menu like the macOS Apple menu: About This PC, System Settings, WinGnome Settings, Microsoft Store, the Start menu, Task Manager, Sleep, Restart, Shut Down, Lock Screen, Log Out and Quit WinGnome. Restart, shut down and log out ask first. Use the arrow keys and Enter, or Esc to close.
-- **Activities** button (or press **Alt+F1**, the Super key, or flick the pointer into the top-left hot corner) opens the overview.
+- **Activities** button (or press **Alt+F1**, the Super key, or flick the pointer into the top-left hot corner of a display) opens the overview (on the main display).
 - **Workspace dots** for Windows virtual desktops. Click a dot to switch desktops.
 - **Focused app name** next to the dots, as in GNOME.
 - **Centred clock**, formatted GNOME-style (`Wed 8 Oct  14:05`). Click it for a calendar.
@@ -30,11 +31,12 @@ the way it was when it exits.
 
 ### Dock
 - Pinned apps plus running apps, with **running-indicator dots** (one per window, up to four).
+- On the main display by default, or on **every display** (Settings → Dock → Show on), optionally with each dock showing only the windows on its own display. Pinned apps appear on every dock.
 - **Click** focuses an app (restoring it if minimised), or minimises it if it's already focused. Other click actions: *cycle windows* or *show previews*.
 - Running windows join their pinned icon, including Electron apps such as VS Code, Squirrel-installed apps such as GitHub Desktop and Discord, and launcher-stub apps such as Docker Desktop, whose UI runs from a folder beside the launcher the shortcut points at.
 - **Middle-click** opens a new window. **Right-click** lists the app's windows plus *New window*, *Pin/Unpin* and *Quit*.
 - **Run as administrator** (right-click) starts an app elevated after the UAC prompt; pinned apps also get an *Always run as administrator* checkbox. As in Start, this works for desktop apps and full-trust Store apps such as Windows Terminal, but not for UWP apps such as Calculator or for File Explorer, which don't offer it. WinGnome itself never runs elevated.
-- **Super+1…9** activates the n-th dock item.
+- **Super+1…9** activates the n-th item of the main display's dock.
 - **Visibility modes**: *Always visible* (reserves screen space), *Intellihide* (hides only when a window overlaps it, the Ubuntu default) and *Autohide*.
 - Optional macOS-style **hover magnification**, panel mode (stretch to the screen edges), a *Show Applications* button and a recycle bin.
 - Bottom, left or right placement.
@@ -57,7 +59,7 @@ the way it was when it exits.
 - **Type to search** apps and windows. Press Enter to launch the top hit and Esc to close.
 - **Application grid** (from the dock's *Show Applications* button). Right-click an app to pin it to the dock or run it as administrator.
 - **Ctrl+Shift+Enter** or **Ctrl+Shift+click** launches an app as administrator, as in Start.
-- **Hot corner**: top-left, with a configurable delay.
+- **Hot corner**: the top-left corner of the main display, and of every other display where that is a real screen corner (GNOME's rule: not where another display continues to the left or above), with a configurable delay. If another display continues past the main display's corner, rest the pointer in the corner a moment (at least 0.3 s) so that moving on to the other display doesn't open the overview.
 - Optional: **Super key alone opens the overview** instead of the Start menu. Win+X, Win+E and other Win+key shortcuts keep working.
 
 ### Settings (a GNOME Settings app for Windows)
@@ -149,6 +151,7 @@ top right), or run `WinGnome.exe` again: a second launch opens the running insta
 WinGnome changes as little as possible, and it undoes everything it changes:
 
 - **Taskbar**: the original auto-hide state is saved to `%APPDATA%\WinGnome\taskbar.state` *before* the taskbar is hidden. It is restored on exit, on crash, and on the next start if WinGnome was killed. As a last resort, run `WinGnome.exe --restore-taskbar`, or restart Explorer from Task Manager.
+- **Work areas**: bars and always-visible docks are registered as AppBars, so maximised windows stop short of them. When Windows grants a strip but doesn't apply it — it can leave that for tens of seconds after the taskbar is hidden, or drop it when a display is unplugged — WinGnome sets that display's work area itself, saving the original to `%APPDATA%\WinGnome\workareas.state` first and giving it back on exit, on crash and on the next start. The change is never written to your Windows profile, is capped so it can't fight Windows or another bar app, and `--safe` never makes it.
 - **Title-bar colours and focus-follows-mouse** last for the session only. They are restored on exit or crash. If WinGnome is force-killed, they are restored on its next start, because WinGnome records what it changed before changing it.
 - **Quitting**: use *Quit WinGnome* in quick settings or Settings → About. `taskkill /im WinGnome.exe` (without `/f`) also quits cleanly.
 - **Registry tweaks** only touch `HKEY_CURRENT_USER`. The original values (including "value did not exist") are stored in `tweaks-backup.json`, and **Settings → Streamline → Revert all** restores them.
@@ -164,7 +167,8 @@ WinGnome changes as little as possible, and it undoes everything it changes:
 - WinGnome shows tray icons only when it runs without administrator rights, and only one WinGnome at a time hosts them. A second copy takes over when the first one exits. If another tray host is running (RetroBar, for example), WinGnome doesn't compete with it for icons.
 - WinGnome doesn't restyle the native taskbar itself (rounded, floating or translucent). That would mean injecting code into Explorer, which breaks with Windows updates. If you want that, tools like Windhawk's *Taskbar Styler* can run alongside WinGnome in native taskbar mode.
 - Apps that draw their own title bars keep their own buttons.
-- The dock and top bar appear on the primary monitor only (multi-monitor support is on the roadmap).
+- The overview opens on the main display, also from another display's Activities button or hot corner.
+- A few apps place their tray menus from the Windows taskbar's position rather than from the clicked icon, so those menus open on the main display even when clicked on another display's bar.
 - Workspace switching works by sending Ctrl+Win+←/→, because Windows has no public API for switching virtual desktops.
 - If the Super-key option is on and an elevated window has focus, Windows opens Start instead. Windows blocks hooks from seeing keys sent to elevated windows.
 
@@ -172,7 +176,7 @@ WinGnome changes as little as possible, and it undoes everything it changes:
 
 Ideas for making Windows feel even more like GNOME, roughly in order of value:
 
-1. **Multi-monitor**: a top bar and dock on every monitor, with per-monitor window lists.
+1. **Multi-monitor overview**: the Activities overview on every monitor.
 2. **Workspace thumbnails** in the overview, plus drag-a-window-to-another-desktop.
 3. **Super+arrow quarter tiling** and Super+drag to move or resize windows (GNOME and KDE muscle memory).
 4. **Notification list** inside the calendar popup, as in GNOME's message tray.

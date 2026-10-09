@@ -21,6 +21,10 @@ internal sealed class DockPageViewModel : SettingsPageViewModel
         theme.ThemeChanged += OnThemeChanged;
 
         Enabled = Toggle(s => s.Dock.Enabled, (s, v) => s.Dock.Enabled = v);
+        Monitors = Choice(s => s.Dock.Monitors, (s, v) => s.Dock.Monitors = v,
+            ChoiceOption.Of(BarMonitors.Primary, "Main display"),
+            ChoiceOption.Of(BarMonitors.All, "All displays"));
+        IsolateMonitors = Toggle(s => s.Dock.IsolateMonitors, (s, v) => s.Dock.IsolateMonitors = v);
         Position = Choice(s => s.Dock.Position, (s, v) => s.Dock.Position = v,
             ChoiceOption.Of(DockPosition.Bottom, "Bottom"),
             ChoiceOption.Of(DockPosition.Left, "Left"),
@@ -59,6 +63,13 @@ internal sealed class DockPageViewModel : SettingsPageViewModel
     public PinnedAppsViewModel PinnedApps { get; }
 
     public ToggleSetting Enabled { get; }
+
+    public ChoiceSetting Monitors { get; }
+
+    public ToggleSetting IsolateMonitors { get; }
+
+    /// <summary>"Only show windows on the same display" applies only with a dock on every display.</summary>
+    public bool CanIsolateMonitors => Settings.Current.Dock.Monitors == BarMonitors.All;
 
     public ChoiceSetting Position { get; }
 
@@ -101,7 +112,11 @@ internal sealed class DockPageViewModel : SettingsPageViewModel
         base.Dispose();
     }
 
-    protected override void OnSettingsApplied(AppSettings settings) => Preview.Update(settings);
+    protected override void OnSettingsApplied(AppSettings settings)
+    {
+        Preview.Update(settings);
+        OnPropertyChanged(nameof(CanIsolateMonitors));
+    }
 
     private static string FormatMagnification(double value) =>
         value < 1.005 ? "Off" : string.Create(System.Globalization.CultureInfo.CurrentCulture, $"{value:0.00}×");

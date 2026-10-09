@@ -4,20 +4,22 @@ using WinGnome.Infrastructure;
 
 namespace WinGnome.Features.TopBar.ViewModels;
 
-/// <summary>Root view model of the bar: the per-area view models plus the settings-driven visibility toggles.</summary>
+/// <summary>
+/// Root view model of one bar: the shared clock, workspace and status view models, this bar's focused app and tray
+/// icons, plus the settings-driven visibility toggles.
+/// </summary>
 internal sealed class TopBarViewModel : ObservableObject, IDisposable
 {
     private TopBarSettings _settings;
 
-    public TopBarViewModel(ShellContext context, TopBarSettings settings)
+    public TopBarViewModel(ShellContext context, TopBarServices services, TopBarSettings settings)
     {
         _settings = settings;
-        Clock = new ClockViewModel(context.Dispatcher, settings);
-        Workspaces = new WorkspacesViewModel(context.Dispatcher);
+        Clock = services.Clock;
+        Workspaces = services.Workspaces;
+        Status = services.Status;
         FocusedApp = new FocusedAppViewModel(context.Windows, context.Apps, context.Icons);
-        Status = new SystemStatusViewModel(context.Dispatcher, settings.ShowBatteryPercentage);
-        Tray = new TrayViewModel(context.Dispatcher, context.Commands.Quit);
-        Tray.SetEnabled(settings.ShowTrayIcons);
+        Tray = new TrayBarIcons(services.Tray);
     }
 
     public ClockViewModel Clock { get; }
@@ -28,7 +30,7 @@ internal sealed class TopBarViewModel : ObservableObject, IDisposable
 
     public SystemStatusViewModel Status { get; }
 
-    public TrayViewModel Tray { get; }
+    public TrayBarIcons Tray { get; }
 
     public bool ShowLogoMenu => _settings.ShowLogoMenu;
 
@@ -38,24 +40,20 @@ internal sealed class TopBarViewModel : ObservableObject, IDisposable
 
     public bool ShowFocusedAppName => _settings.ShowFocusedAppName;
 
+    /// <summary>Per-bar toggles only; the shared view models get their settings from <see cref="TopBarServices"/>.</summary>
     public void ApplySettings(TopBarSettings settings)
     {
         _settings = settings;
-        Clock.ApplySettings(settings);
-        Status.ApplySettings(settings.ShowBatteryPercentage);
-        Tray.SetEnabled(settings.ShowTrayIcons);
         OnPropertyChanged(nameof(ShowLogoMenu));
         OnPropertyChanged(nameof(ShowActivitiesButton));
         OnPropertyChanged(nameof(ShowWorkspaceIndicator));
         OnPropertyChanged(nameof(ShowFocusedAppName));
     }
 
+    /// <summary>Disposes only what this bar owns; the shared view models belong to <see cref="TopBarServices"/>.</summary>
     public void Dispose()
     {
-        Clock.Dispose();
-        Workspaces.Dispose();
         FocusedApp.Dispose();
-        Status.Dispose();
         Tray.Dispose();
     }
 }

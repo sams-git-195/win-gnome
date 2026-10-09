@@ -147,6 +147,9 @@ public sealed class TopBarSettings
     /// <summary>Typeface of the bar and its popups: GNOME's bundled Adwaita Sans, or Windows' own Segoe UI.</summary>
     public TopBarFont FontFamily { get; set; } = TopBarFont.AdwaitaSans;
 
+    /// <summary>Which displays get a top bar: every display (each a full copy), or only the main one.</summary>
+    public BarMonitors Monitors { get; set; } = BarMonitors.All;
+
     internal void Normalize()
     {
         Height = Math.Clamp(double.IsFinite(Height) ? Height : 32, 24, 48);
@@ -160,10 +163,20 @@ public sealed class TopBarSettings
         Blur = EnumSetting.Normalize(Blur, BlurEffect.None);
         ClockStyle = EnumSetting.Normalize(ClockStyle, ClockStyle.TwentyFourHour);
         FontFamily = EnumSetting.Normalize(FontFamily, TopBarFont.AdwaitaSans);
+        Monitors = EnumSetting.Normalize(Monitors, BarMonitors.All);
     }
 }
 
 public enum TopBarFont { AdwaitaSans, SegoeUI }
+
+/// <summary>Which displays a top bar or a dock appears on.</summary>
+public enum BarMonitors
+{
+    /// <summary>Every connected display.</summary>
+    All,
+    /// <summary>Only the main (primary) display.</summary>
+    Primary,
+}
 
 public enum DockPosition { Bottom, Left, Right }
 
@@ -232,6 +245,15 @@ public sealed class DockSettings
 
     public DockClickAction ClickAction { get; set; } = DockClickAction.FocusOrMinimize;
 
+    /// <summary>Which displays get a dock. Super+1..9 always acts on the main display's dock.</summary>
+    public BarMonitors Monitors { get; set; } = BarMonitors.Primary;
+
+    /// <summary>
+    /// With a dock on every display, each shows only the windows on its own display (pinned apps appear on all).
+    /// Ignored when <see cref="Monitors"/> is <see cref="BarMonitors.Primary"/>.
+    /// </summary>
+    public bool IsolateMonitors { get; set; }
+
     /// <summary>Pinned launchers in display order.</summary>
     public List<PinnedApp> PinnedApps { get; set; } = DefaultPinnedApps();
 
@@ -257,6 +279,7 @@ public sealed class DockSettings
         Position = EnumSetting.Normalize(Position, DockPosition.Bottom);
         Visibility = EnumSetting.Normalize(Visibility, DockVisibility.Intellihide);
         ClickAction = EnumSetting.Normalize(ClickAction, DockClickAction.FocusOrMinimize);
+        Monitors = EnumSetting.Normalize(Monitors, BarMonitors.Primary);
 
         PinnedApps = (PinnedApps ?? [])
             .Where(p => p is not null && !string.IsNullOrWhiteSpace(p.LaunchId))

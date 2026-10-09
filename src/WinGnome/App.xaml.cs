@@ -5,8 +5,10 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using WinGnome.Core.Monitors;
 using WinGnome.Core.Settings;
 using WinGnome.Infrastructure;
+using WinGnome.Interop;
 using WinGnome.Services;
 using WinGnome.Services.Apps;
 using WinGnome.Theme;
@@ -31,6 +33,8 @@ public partial class App : Application
     private WindowTracker? _tracker;
     private AppCatalog? _catalog;
     private ShellContext? _context;
+    private DisplayLayoutService? _displays;
+    private MonitorLayout? _selfTestLayout;
     private ControlWindow? _controlWindow;
     private string _settingsDirectory = SettingsStore.DefaultDirectory;
     private int _failures;
@@ -62,9 +66,18 @@ public partial class App : Application
         Log.Info($"WinGnome {typeof(App).Assembly.GetName().Version} starting. Args: {string.Join(' ', e.Args)}");
         InstallCrashHandlers();
 
+        // The work-area fallback changes system state, so it is off in safe mode and in the self-test (which runs
+        // safe); recovering an earlier run's change is a repair and runs either way.
+        WorkAreaController.Initialize(_settingsDirectory, enabled: !options.Safe && !options.SelfTest);
+
         if (options.RestoreTaskbar)
         {
+            // Work areas first: recovering them while the taskbar is still hidden is what makes "the taskbar marker
+            // is present, so a monitor's correct work area is its full bounds" true for the repair of an unreadable
+            // record. RestoreFromMarker shows the taskbar and deletes that marker, after which Explorer recomputes.
+            WorkAreaController.RecoverFromMarker(_settingsDirectory);
             TaskbarController.RestoreFromMarker(_settingsDirectory);
+            AppBarJanitor.Nudge();
             Shutdown(0);
             return;
         }
@@ -76,8 +89,16 @@ public partial class App : Application
             return;
         }
 
-        // A previous run that crashed (or was killed) may have left the taskbar hidden.
+        // A previous run that crashed (or was killed) may have left the taskbar hidden, and strips reserved.
+        // Work areas are recovered before the taskbar is restored; see the --restore-taskbar path for why.
+        WorkAreaController.RecoverFromMarker(_settingsDirectory);
         TaskbarController.RestoreFromMarker(_settingsDirectory);
+        AppBarJanitor.Nudge();
+        if (options.SelfTest)
+        {
+            // Every work area must be back to this when the features have gone (see FinishSelfTest).
+            _selfTestLayout = DisplayLayoutService.Read();
+        }
 
         try
         {
@@ -121,7 +142,8 @@ public partial class App : Application
         commands.QuitRequested += (_, _) => Shutdown(0);
         _controlWindow = new ControlWindow(() => Dispatcher.BeginInvoke(() => Shutdown(0)));
 
-        _context = new ShellContext(Dispatcher, options, settings, _theme, _tracker, _catalog, icons, launcher, commands);
+        _displays = new DisplayLayoutService(Dispatcher);
+        _context = new ShellContext(Dispatcher, options, settings, _theme, _tracker, _catalog, icons, launcher, commands, _displays);
 
         _tracker.Start();
         _ = _catalog.RefreshAsync();
@@ -143,6 +165,10 @@ public partial class App : Application
         }
 
         settings.Changed += OnSettingsChanged;
+
+        // Explorer may drop our strips from the work area after we docked (it recomputes them once the taskbar is
+        // hidden); the bars and docks re-check theirs on these passes.
+        _displays.VerifyAfterStart();
     }
 
     private void OnSettingsChanged(object? sender, AppSettings settings)
@@ -173,9 +199,44 @@ public partial class App : Application
             _context!.Settings.Update(_ => { });
             var featureNames = string.Join(", ", _features.Select(f => f.Name));
             Log.Info($"Self-test finished. Features: [{featureNames}]. Failures: {_failures}.");
-            Shutdown(_failures == 0 ? 0 : 1);
+            StopShell();
+            CheckWorkAreasRestored(attemptsLeft: 3);
         };
         timer.Start();
+    }
+
+    /// <summary>
+    /// Self-test: after every feature has gone, every monitor's work area must be what it was before any feature
+    /// started, which fails whenever a strip is really left behind. Explorer applies ABM_REMOVE promptly but not
+    /// synchronously, so a difference is re-read a few times over 500 ms before it counts.
+    /// </summary>
+    private void CheckWorkAreasRestored(int attemptsLeft)
+    {
+        var before = _selfTestLayout!;
+        var after = DisplayLayoutService.Read();
+        if (!MonitorLayoutDiff.Compute(before, after).IsEmpty)
+        {
+            Log.Info($"Self-test: the monitor layout changed during the run; work areas not compared. Before: {DisplayLayoutService.Describe(before)}. After: {DisplayLayoutService.Describe(after)}");
+        }
+        else if (before.Monitors.Any(m => after.Find(m.Key)?.WorkArea != m.WorkArea))
+        {
+            if (attemptsLeft > 0)
+            {
+                var retry = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(167) };
+                retry.Tick += (_, _) =>
+                {
+                    retry.Stop();
+                    CheckWorkAreasRestored(attemptsLeft - 1);
+                };
+                retry.Start();
+                return;
+            }
+
+            _failures++;
+            Log.Error($"Self-test: a work area was not restored. Before: {DisplayLayoutService.Describe(before)}. After: {DisplayLayoutService.Describe(after)}");
+        }
+
+        Shutdown(_failures == 0 ? 0 : 1);
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -212,6 +273,7 @@ public partial class App : Application
         }
 
         _features.Clear();
+        _displays?.Dispose();
         _controlWindow?.Dispose();
         _catalog?.Dispose();
         _tracker?.Dispose();
@@ -331,6 +393,16 @@ public partial class App : Application
         if (!_ownsInstance)
         {
             return;
+        }
+
+        // First, while the tray host is still alive: each ABM_REMOVE is forwarded through it to Explorer.
+        try
+        {
+            AppBar.UndockAll();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Emergency AppBar removal failed", ex);
         }
 
         foreach (var feature in _features.OfType<IEmergencyRestore>())

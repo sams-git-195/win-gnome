@@ -7,7 +7,7 @@
         <p:PanelNotices />
 
         <c:SettingsGroup Header="General">
-            <c:SettingsRow Title="Hot Corner" Subtitle="Touch the top-left corner to open the Activities overview.">
+            <c:SettingsRow Title="Hot Corner" Subtitle="Touch the top-left corner of each display to open the Activities overview.">
                 <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding HotCorner.Value}" />
             </c:SettingsRow>
         </c:SettingsGroup>

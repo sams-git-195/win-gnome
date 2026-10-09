@@ -1,13 +1,15 @@
 using System.Windows.Media;
 using WinGnome.Core.Windows;
 using WinGnome.Infrastructure;
-using WinGnome.Interop;
 using WinGnome.Services;
 using WinGnome.Services.Apps;
 
 namespace WinGnome.Features.TopBar.ViewModels;
 
-/// <summary>Name and icon of the application that owns the foreground window (GNOME's app menu label).</summary>
+/// <summary>
+/// Name and icon of the focused application of one bar's monitor (GNOME's app menu label). The top bar coordinator
+/// decides which window that is (see <c>MonitorFocusTracker</c>) and calls <see cref="Show"/>.
+/// </summary>
 internal sealed class FocusedAppViewModel : ObservableObject, IDisposable
 {
     private readonly WindowTracker _windows;
@@ -23,9 +25,7 @@ internal sealed class FocusedAppViewModel : ObservableObject, IDisposable
         _windows = windows;
         _apps = apps;
         _icons = icons;
-        _windows.ForegroundChanged += OnForegroundChanged;
         _apps.Changed += OnCatalogChanged;
-        Update(_windows.Foreground);
     }
 
     public string Name
@@ -61,32 +61,26 @@ internal sealed class FocusedAppViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void OnForegroundChanged(object? sender, nint hwnd) => Update(hwnd);
+    /// <summary>Shows the app of task-switcher window <paramref name="hwnd"/>, or nothing for 0 (as on the desktop).</summary>
+    public void Show(nint hwnd)
+    {
+        if (hwnd != _window || hwnd == 0)
+        {
+            Update(hwnd);
+        }
+    }
 
     // The catalogue loads asynchronously after start-up and gives better names than file descriptions.
     private void OnCatalogChanged(object? sender, EventArgs e) => Update(_window);
 
     private void Update(nint hwnd)
     {
-        if (hwnd == 0)
-        {
-            return;
-        }
-
-        // GNOME shows no app while the desktop is focused.
-        if (NativeMethods.GetClassName(hwnd) is "Progman" or "WorkerW")
+        var info = hwnd == 0 ? null : _windows.Inspect(hwnd);
+        if (info is null)
         {
             _window = 0;
             Name = "";
             Icon = null;
-            return;
-        }
-
-        // WinGnome's own windows (Inspect returns null), the taskbar, Start, and an app's owned dialogs are not
-        // task-switcher windows: keep showing the app that was focused before them.
-        var info = _windows.Inspect(hwnd);
-        if (info is null || !WindowFilter.IsTaskSwitcherWindow(info))
-        {
             return;
         }
 
@@ -114,7 +108,6 @@ internal sealed class FocusedAppViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
-        _windows.ForegroundChanged -= OnForegroundChanged;
         _apps.Changed -= OnCatalogChanged;
     }
 }

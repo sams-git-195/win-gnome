@@ -6,7 +6,7 @@ using WinGnome.Core.Tray;
 
 namespace WinGnome.Features.TopBar.Tray;
 
-/// <summary>The bar's notification area: turns WPF pointer events on each icon into tray callbacks.</summary>
+/// <summary>One bar's notification area: turns WPF pointer events on each icon into tray callbacks from this bar.</summary>
 internal sealed partial class TrayIconsView : UserControl
 {
     public TrayIconsView()
@@ -60,7 +60,7 @@ internal sealed partial class TrayIconsView : UserControl
 
     private void Send(object sender, TrayPointerAction action)
     {
-        if (sender is FrameworkElement { DataContext: TrayIconViewModel icon } element && DataContext is TrayViewModel tray
+        if (sender is FrameworkElement { DataContext: TrayIconViewModel icon } element && DataContext is TrayBarIcons tray
             && PresentationSource.FromVisual(element) is not null)
         {
             tray.Send(icon, action, ScreenBounds(element));

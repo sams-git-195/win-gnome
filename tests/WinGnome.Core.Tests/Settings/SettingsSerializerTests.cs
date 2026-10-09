@@ -315,4 +315,55 @@ public class SettingsSerializerTests
     {
         Assert.ThrowsAny<JsonException>(() => SettingsSerializer.Deserialize(json));
     }
+
+    [Fact]
+    public void Deserialize_FileWithoutMonitorFields_UsesTheirDefaults()
+    {
+        // A settings file written before spec 0010 added per-monitor bars and docks.
+        var settings = SettingsSerializer.Deserialize("""{ "TopBar": { "Height": 36 }, "Dock": { "IconSize": 40 } }""");
+
+        Assert.Equal(BarMonitors.All, settings.TopBar.Monitors);
+        Assert.Equal(BarMonitors.Primary, settings.Dock.Monitors);
+        Assert.False(settings.Dock.IsolateMonitors);
+        Assert.Equal(36, settings.TopBar.Height);
+        Assert.Equal(40, settings.Dock.IconSize);
+    }
+
+    [Fact]
+    public void RoundTrip_PreservesMonitorFields()
+    {
+        var original = new AppSettings();
+        original.TopBar.Monitors = BarMonitors.Primary;
+        original.Dock.Monitors = BarMonitors.All;
+        original.Dock.IsolateMonitors = true;
+
+        var copy = SettingsSerializer.Deserialize(SettingsSerializer.Serialize(original));
+
+        Assert.Equal(BarMonitors.Primary, copy.TopBar.Monitors);
+        Assert.Equal(BarMonitors.All, copy.Dock.Monitors);
+        Assert.True(copy.Dock.IsolateMonitors);
+    }
+
+    [Theory]
+    [InlineData("42")]
+    [InlineData("\"Everywhere\"")]
+    public void Deserialize_UndefinedMonitorsValue_UsesEachPropertysOwnDefault(string value)
+    {
+        var settings = SettingsSerializer.Deserialize($$"""{ "TopBar": { "Monitors": {{value}} }, "Dock": { "Monitors": {{value}}, "IsolateMonitors": true } }""");
+
+        Assert.Equal(BarMonitors.All, settings.TopBar.Monitors);
+        Assert.Equal(BarMonitors.Primary, settings.Dock.Monitors);
+        Assert.True(settings.Dock.IsolateMonitors);
+    }
+
+    [Fact]
+    public void Deserialize_IsolateWithPrimaryDock_IsKeptAsWritten()
+    {
+        // Ignored while the dock is on the main display only, but not rewritten, so switching to all displays
+        // brings the user's choice back.
+        var settings = SettingsSerializer.Deserialize("""{ "Dock": { "Monitors": "Primary", "IsolateMonitors": true } }""");
+
+        Assert.Equal(BarMonitors.Primary, settings.Dock.Monitors);
+        Assert.True(settings.Dock.IsolateMonitors);
+    }
 }

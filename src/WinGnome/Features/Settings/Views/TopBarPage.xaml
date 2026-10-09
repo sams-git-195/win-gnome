@@ -46,6 +46,10 @@
             <c:SettingsRow Title="Show top bar" Subtitle="A GNOME-style bar across the top of the screen.">
                 <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding Enabled.Value}" />
             </c:SettingsRow>
+            <c:SettingsRow Title="Show on" Subtitle="Every display gets its own full bar; menus open on the display you clicked.">
+                <ListBox Style="{DynamicResource SegmentedListBox}" ItemsSource="{Binding Monitors.Options}"
+                         SelectedItem="{Binding Monitors.Selected}" DisplayMemberPath="Label" />
+            </c:SettingsRow>
         </c:SettingsGroup>
 
         <c:SettingsGroup Header="Appearance">

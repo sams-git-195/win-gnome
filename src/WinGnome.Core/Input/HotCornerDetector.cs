@@ -22,6 +22,16 @@ public sealed class HotCornerDetector
     }
 
     /// <summary>
+    /// The pointer is somewhere without a hot corner (e.g. a monitor whose corner continues into another monitor):
+    /// same as a sample outside the box, so the next visit to a corner starts its dwell afresh.
+    /// </summary>
+    public void Reset()
+    {
+        _enteredAt = null;
+        _fired = false;
+    }
+
+    /// <summary>
     /// Feeds a pointer sample (screen pixels) and the monitor under it. Returns true exactly once per visit
     /// to the corner, when the dwell time has elapsed.
     /// </summary>

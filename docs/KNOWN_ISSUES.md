@@ -24,7 +24,6 @@ spec 0010, and KI-100 by the Docker Desktop dock-grouping fix. The next free ID 
 
 | ID | Severity | Area | Summary | Status |
 |---|---|---|---|---|
-| [KI-001](#ki-001) | S3 | Dock, Top bar | Dock and top bar appear on the primary monitor only | Open |
 | [KI-003](#ki-003) | S4 | Workspaces | Desktop switching relies on simulated Ctrl+Win+arrow keys | By design |
 | [KI-004](#ki-004) | S4 | Overview | Super key opens Start when an elevated window has focus | By design |
 | [KI-005](#ki-005) | S4 | Tray | Some tray icons only appear in the Windows tray | By design |
@@ -57,6 +56,10 @@ spec 0010, and KI-100 by the Docker Desktop dock-grouping fix. The next free ID 
 | [KI-066](#ki-066) | S4 | Settings | Input sources are listed but not switched or reordered in the Keyboard panel | Open |
 | [KI-067](#ki-067) | S4 | Settings | Appearance style and accent are read-only while the matching Streamline tweak is on | By design |
 | [KI-068](#ki-068) | S4 | Settings | A few exit paths leave an unconfirmed display change until sign-out | Open |
+| [KI-069](#ki-069) | S4 | Tray | Some apps open tray flyouts on the primary monitor when clicked on another monitor's bar | By design |
+| [KI-070](#ki-070) | S4 | Top bar, Dock | Reclaiming a force-killed instance's strips relies on undocumented Explorer behaviour | Open |
+| [KI-071](#ki-071) | S4 | Dock | Edge reveal is unreliable for a dock on an inner edge between two monitors | Open |
+| [KI-072](#ki-072) | S4 | Overview | Activities and hot corners on other monitors open the overview on the primary | By design |
 | [KI-085](#ki-085) | S4 | Settings | Notifications use undocumented registry values, and the app list is only the part Windows keeps in the registry | Open |
 | [KI-086](#ki-086) | S4 | Settings | Privacy switches write the undocumented `ConsentStore`; device-wide switches are read-only | Open |
 | [KI-087](#ki-087) | S4 | Settings | Accessibility: cursor size uses undocumented values, and high contrast is read-only until a live spike passes | Open |
@@ -65,15 +68,9 @@ spec 0010, and KI-100 by the Docker Desktop dock-grouping fix. The next free ID 
 | [KI-090](#ki-090) | S4 | Settings | Startup apps: machine-wide items are read-only, packaged startup tasks aren't listed | Open |
 | [KI-091](#ki-091) | S4 | Settings | Printers and Removable Media: undocumented values, no change notifications, a limited event list, little tested on real devices | Open |
 | [KI-092](#ki-092) | S4 | Settings | Region & Language formats and Windows Update status are partly left to Windows Settings | By design |
+| [KI-098](#ki-098) | S4 | Top bar, Dock | `MonitorKeyOf` can map a recycled HMONITOR to the wrong monitor for up to 250 ms | Open |
+| [KI-099](#ki-099) | S3 | Top bar, Dock | WinGnome sets monitor work areas directly when Explorer doesn't apply a strip it granted | Open |
 | [KI-101](#ki-101) | S4 | Settings | About and Displays bypass the shared load gate; a failed About read shows nothing at all | Open |
-
-### KI-001
-**Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
-
-On multi-monitor setups the dock and top bar exist only on the primary monitor. Secondary monitors have
-no top bar or dock.
-*Workaround:* none; use the Windows taskbar mode if per-monitor taskbars are needed.
-*Fix direction:* planned in spec [0010](specs/0010-per-monitor-top-bar-and-dock.md) (draft, needs decisions).
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -421,6 +418,43 @@ WinGnome is force-killed and next started with a different `--settings-dir` (the
 `--safe` (which never changes system state, so it leaves the record for a normal start). *Workaround:* sign out, or
 start WinGnome normally with the same profile.
 
+### KI-069
+**Some apps open tray flyouts on the primary monitor when clicked on another monitor's bar** · S4 · Tray · By design
+
+Every bar shows the same tray icons, and a click passes that bar's anchor (version 4 apps) and, through
+`Shell_NotifyIconGetRect`, that icon's rectangle, so most menus open beside the icon that was clicked. Apps that
+place their flyout from the taskbar instead (`ABM_GETTASKBARPOS`, or the rectangle of `Shell_TrayWnd`) still get the
+primary's: Explorer answers `ABM_GETTASKBARPOS`, and WinGnome's hidden tray host window stays on the primary bar's
+strip. `Shell_NotifyIconGetRect` also has one answer per icon (the bar it was last used on), so a flyout the app
+opens on its own later appears there. *Fix direction:* none planned (spec 0010 non-goal).
+
+### KI-070
+**Reclaiming a force-killed instance's strips relies on undocumented Explorer behaviour** · S4 · Top bar, Dock · Open
+
+A force-killed WinGnome cannot send `ABM_REMOVE`. Spike 0 of spec 0010 (Windows 11 build 26200, taskbar auto-hidden
+by another WinGnome instance, a primary at 125 % and an upper secondary at 100 %): Explorer gave back a killed
+process's left-edge strips on both monitors within about 300 ms, before any further AppBar traffic, and a 1×1
+`ABM_NEW` + `ABM_REMOVE` from another process changed nothing more. `AppBarJanitor` makes that nudge at every start
+and on `--restore-taskbar` and logs every work area before and after; `--selftest` fails if a work area differs
+after shutdown. Neither the automatic reclaim nor the nudge is documented. Not yet verified with Explorer's taskbar
+visible (the user's everyday instance hides it). *Workaround:* `--restore-taskbar`, or sign out. *Since outcome B of
+spec 0010 (KI-099)* a work area WinGnome set itself is recorded and recovered from `workareas.state`, so what still
+relies on this undocumented behaviour is only a strip Explorer applied on its own and then failed to reclaim.
+
+### KI-071
+**Edge reveal is unreliable for a dock on an inner edge between two monitors** · S4 · Dock · Open
+
+With docks on every display, a dock whose edge borders another monitor (for example the bottom of a monitor placed
+above the primary) is revealed by pushing the pointer against that edge, but the pointer crosses to the other
+monitor instead of stopping. Always-visible docks are unaffected. The dock logs its monitor and edge on layout; no
+detection or Settings hint. *Workaround:* use Always visible, or move the dock to an outer edge.
+
+### KI-072
+**Activities and hot corners on other monitors open the overview on the primary** · S4 · Overview · By design
+
+Every bar has an Activities button and every monitor with a true top-left corner a hot corner, but the overview,
+its thumbnails and backdrop still cover only the primary monitor. *Fix direction:* a per-monitor overview spec.
+
 ### KI-085
 **Notifications use undocumented registry values, and the app list is only the part Windows keeps in the registry** · S4 · Settings · Open
 
@@ -564,6 +598,57 @@ differ from Windows Settings', which also merges Microsoft Store and driver sour
 A standard user may be refused by policy on managed machines; the panel then shows the error with the Windows Settings
 link.
 
+### KI-098
+**`MonitorKeyOf` can map a recycled HMONITOR to the wrong monitor for up to 250 ms** · S4 · Top bar, Dock · Open
+
+`DisplayLayoutService.MonitorKeyOf` maps a `MonitorFromWindow` handle through the handle→key table built by the last
+monitor read. HMONITORs are not stable across display changes and Windows can reuse a value for a different monitor,
+so a window can be given the wrong key until the next pass: at most 250 ms, plus the 1.5 s follow-up. Effect: a bar's
+focused app, an isolated dock's window list, or a dock's full-screen/intellihide check can be wrong for that moment.
+There is no AppBar or work-area effect — a bar whose cached monitor rectangle no longer matches a live monitor
+undocks itself (spec 0010's detach guard), and `WorkAreaController` re-derives the monitor from the rectangle it is
+given and refuses one whose bounds changed (spec 0010, risk 10).
+*Fix direction:* compare the handle's own `GetMonitorInfo` bounds with the table entry's before trusting the key.
+
+### KI-099
+**WinGnome sets monitor work areas directly when Explorer doesn't apply a strip it granted** · S3 · Top bar, Dock · Open
+
+Explorer grants WinGnome's AppBars their strips but applies them to monitor work areas only inside its own taskbar
+layout pass. That pass is deferred while its taskbar is auto-hidden and `SW_HIDE`n (measured ~35 s on build 26200,
+in the build before spec 0010 as well) and can be skipped entirely after a monitor is unplugged, so maximised windows
+cover the bar and the strip is left unreserved. Re-registering the AppBar did not help and may restart the deferral
+(three live sessions, spec 0010).
+
+Since outcome B of spec 0010, a bar whose granted strip is still missing 1.5 s after a check sets that monitor's work
+area itself with the documented `SystemParametersInfo(SPI_SETWORKAREA)`, never `SPIF_UPDATEINIFILE`, so nothing is
+persisted to the user's profile. Limits, all deliberate:
+- Only the bar's own edge moves, and always from a **fresh** `GetMonitorInfo` read taken inside the same lock as the
+  write, so the taskbar's strip and other AppBars' strips survive and two bars on one edge stack.
+- Bounded twice: at most three actions per bar per missing-strip episode (1.5 s, 5 s, 20 s apart, then it gives up
+  until the bar is docked afresh) and three applications per monitor per 60 s. A refusal is logged, so a third-party
+  tool that also sets work areas cannot be fought in a loop.
+- Recorded before it is changed, in `workareas.state` in the settings directory (written aside and moved into place,
+  so a crash cannot truncate it): **no record, no shrink**. At most one record per bar and monitor: a re-shrink
+  replaces the pair's record and moves to the end of the list (the unwind order), so something that keeps resetting
+  a work area cannot grow the marker. `WorkAreaRecovery` unwinds a monitor's records newest first and only while each
+  is still the live value, so a top bar's and a dock's strips both go back and a live bar's is never written over. Recovered on exit, on the crash path (without the `WM_SETTINGCHANGE` broadcast, so a hung
+  window cannot block it), on the next start and by `--restore-taskbar`.
+- `--safe` and `--selftest` never shrink; they do recover, which is a repair of an earlier run's change.
+- A marker that cannot be parsed is not read as empty (that would strand the shrinks it described): where the taskbar
+  marker says the taskbar is hidden, every monitor's work area is reset to its full bounds; where it does not,
+  nothing is written so a visible taskbar keeps its strip. The janitor nudges Explorer right after either way.
+
+*Risks:* WinGnome now writes a value Explorer also writes, so Explorer recomputing later can overwrite ours (it
+normally produces the same rectangle while our AppBar is registered; a different one is caught by the next check,
+within the budget). The marker is per profile, so a force-kill followed by a start with a different `--settings-dir`
+cannot recover, as for `display-revert.json` (KI-068). `--restore-taskbar` does not take the single-instance mutex
+(as it already did not for `taskbar.state`), so running it while a healthy instance is up gives back a strip that
+instance's bar still holds and deletes its marker; the broadcast reaches the live bar, which re-shrinks and rewrites
+the marker within ~1.5 s, so only a force-kill inside that window could strand it.
+*Not verified live:* the whole path. Safe-mode runs cannot reach it (verified: `--selftest --safe` exits 0, no
+`workareas.state` written, both strips stacked correctly on the primary). Spec 0010's B6–B12 are the live checks.
+*Workaround:* none needed; without it the strip simply arrives late or not at all.
+
 ### KI-101
 **About and Displays bypass the shared load gate; a failed About read shows nothing at all** · S4 · Settings · Open
 
@@ -580,6 +665,7 @@ their local counters.
 
 | ID | Severity | Area | Summary | Fixed in |
 |---|---|---|---|---|
+| KI-001 | S3 | Dock, Top bar | Dock and top bar appeared on the primary monitor only | 767388e, 32877c1 (spec 0010: a top bar on every monitor, docks on all monitors as an option) |
 | KI-002 | S4 | App | The executable had no app icon | 2f7c44b |
 | KI-009 | S4 | Repo | No CI workflow, although the README said `--selftest` is used by CI | 94b9013 |
 | KI-011 | S2 | Settings | Non-safe runs with `--settings-dir` rewrote or deleted the shared "Start with Windows" entry | 6aeef5f |
