@@ -140,6 +140,56 @@ public class AppSettingsTests
     }
 
     [Fact]
+    public void TopBar_LogoDefaultsToWindows_AndPathEmpty()
+    {
+        var bar = new AppSettings().Normalize().TopBar;
+        Assert.Equal(TopBarLogo.Windows, bar.Logo);
+        Assert.Equal("", bar.LogoImagePath);
+    }
+
+    [Fact]
+    public void TopBar_UndefinedLogo_FallsBackToWindows()
+    {
+        var settings = new AppSettings { TopBar = { Logo = (TopBarLogo)42 } }.Normalize();
+        Assert.Equal(TopBarLogo.Windows, settings.TopBar.Logo);
+    }
+
+    [Theory]
+    [InlineData(null, "")]
+    [InlineData("", "")]
+    [InlineData("   ", "")]
+    [InlineData("  C:\\Pictures\\logo.png  ", "C:\\Pictures\\logo.png")]
+    public void TopBar_LogoImagePath_IsTrimmedOrEmptied(string? input, string expected)
+    {
+        var settings = new AppSettings { TopBar = { LogoImagePath = input! } }.Normalize();
+        Assert.Equal(expected, settings.TopBar.LogoImagePath);
+    }
+
+    [Fact]
+    public void TopBar_LogoImagePath_Over260Chars_BecomesEmpty()
+    {
+        var settings = new AppSettings { TopBar = { LogoImagePath = new string('a', 261) } }.Normalize();
+        Assert.Equal("", settings.TopBar.LogoImagePath);
+    }
+
+    [Fact]
+    public void TopBar_LogoImagePath_Exactly260Chars_IsKept()
+    {
+        var path = new string('a', 260);
+        var settings = new AppSettings { TopBar = { LogoImagePath = path } }.Normalize();
+        Assert.Equal(path, settings.TopBar.LogoImagePath);
+    }
+
+    [Fact]
+    public void TopBar_CustomWithEmptyPath_IsPreserved()
+    {
+        // The render-time fallback handles a missing file; Normalize must not reset the pending Custom choice.
+        var settings = new AppSettings { TopBar = { Logo = TopBarLogo.Custom, LogoImagePath = "" } }.Normalize();
+        Assert.Equal(TopBarLogo.Custom, settings.TopBar.Logo);
+        Assert.Equal("", settings.TopBar.LogoImagePath);
+    }
+
+    [Fact]
     public void Dock_AppearanceDefaults()
     {
         var dock = new AppSettings().Normalize().Dock;
@@ -506,7 +556,7 @@ public class AppSettingsTests
 
         settings.Normalize();
 
-        Assert.Equal(13, enumSettings.Count);
+        Assert.Equal(14, enumSettings.Count);
         Assert.All(enumSettings, s => Assert.True(
             Enum.IsDefined(s.Property.PropertyType, s.Property.GetValue(s.Section)!),
             $"{s.Property.DeclaringType!.Name}.{s.Property.Name} is not normalised"));
