@@ -59,7 +59,7 @@ the way it was when it exits.
 - **Type to search** apps and windows. Press Enter to launch the top hit and Esc to close.
 - **Application grid** (from the dock's *Show Applications* button). Right-click an app to pin it to the dock or run it as administrator.
 - **Ctrl+Shift+Enter** or **Ctrl+Shift+click** launches an app as administrator, as in Start.
-- **Hot corner**: the top-left corner of each display, where that is a real screen corner (GNOME's rule: not where another display continues to the left or above), with a configurable delay.
+- **Hot corner**: the top-left corner of the main display, and of every other display where that is a real screen corner (GNOME's rule: not where another display continues to the left or above), with a configurable delay. If another display continues past the main display's corner, rest the pointer in the corner a moment (at least 0.3 s) so that moving on to the other display doesn't open the overview.
 - Optional: **Super key alone opens the overview** instead of the Start menu. Win+X, Win+E and other Win+key shortcuts keep working.
 
 ### Settings (a GNOME Settings app for Windows)
