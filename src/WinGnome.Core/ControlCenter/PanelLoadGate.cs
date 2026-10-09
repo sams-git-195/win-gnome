@@ -6,7 +6,10 @@ namespace WinGnome.Core.ControlCenter;
 /// older read that finishes late (a re-read after each write) can't put stale values back, and loads on different
 /// channels (independent lists on one panel) never drop each other. Opening and closing each start a new generation,
 /// so a result that arrives after the panel was closed (or closed and reopened) is dropped. Pure counting: the panel
-/// keeps the dispatcher, the read and the actual showing.
+/// keeps the dispatcher, the read and the actual showing. Not thread-safe: <see cref="Opened"/>, <see cref="Closed"/>,
+/// <see cref="Begin"/> and <see cref="MayShow"/> must all run on one thread — the owning panel calls them on the UI
+/// thread and marshals worker results to it — because the counters are plain fields, per the repo's convention that
+/// UI state lives on the dispatcher thread and needs no locking.
 /// </summary>
 public sealed class PanelLoadGate
 {

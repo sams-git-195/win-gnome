@@ -64,7 +64,7 @@ spec 0010, and KI-100 by the Docker Desktop dock-grouping fix. The next free ID 
 | [KI-090](#ki-090) | S4 | Settings | Startup apps: machine-wide items are read-only, packaged startup tasks aren't listed | Open |
 | [KI-091](#ki-091) | S4 | Settings | Printers and Removable Media: undocumented values, no change notifications, a limited event list, little tested on real devices | Open |
 | [KI-092](#ki-092) | S4 | Settings | Region & Language formats and Windows Update status are partly left to Windows Settings | By design |
-| [KI-101](#ki-101) | S4 | Settings | About and Displays keep their own `Task.Run` loads: a failed read is only logged, with no problem banner | Open |
+| [KI-101](#ki-101) | S4 | Settings | About and Displays bypass the shared load gate; a failed About read shows nothing at all | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -564,13 +564,16 @@ A standard user may be refused by policy on managed machines; the panel then sho
 link.
 
 ### KI-101
-**About and Displays: a failed read is only logged, with no problem banner** · S4 · Settings · Open
+**About and Displays bypass the shared load gate; a failed About read shows nothing at all** · S4 · Settings · Open
 
 The two panels that predate spec 0020's `LoadAsync` keep their own `Task.Run(...).ContinueWith` loads and generation
-counters. When the read throws, About logs it and leaves `Info` null, so the heading keeps its "Reading…" fallback and
-the rows stay blank until the panel is closed and reopened; Displays logs it and shows an empty display list. Neither
-sets the problem banner. Found while fixing KI-091's shared failure path. The fix is to convert both to `LoadAsync`,
-which brings the banner and Core's `PanelLoadGate` generations for free and deletes their local counters.
+counters, so neither benefits from the shared failure path (`onFailed`), the newest-only load rules or Core's
+`PanelLoadGate` generations. When the read throws, About logs it and leaves `Info` null: the heading keeps its
+"Reading…" fallback and the rows stay blank until the panel is closed and reopened, with no problem banner to say why.
+Displays logs it and shows an empty display list, whose `Show` does raise the banner ("WinGnome couldn't read the
+displays."), so its gap is the duplicated machinery, not a silent failure. Found while fixing KI-091's shared failure
+path. The fix is to convert both to `LoadAsync`, which brings the banner, `onFailed` and the gate for free and deletes
+their local counters.
 
 ## Resolved
 

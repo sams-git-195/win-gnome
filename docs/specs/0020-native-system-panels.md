@@ -110,7 +110,7 @@ General → *Start with Windows*).
   MTA), and calls `show` on the dispatcher only if the panel is still open from the same `Open` (a generation counter),
   logging exceptions and setting `Problem`. `longRunning` is required for WUA, `EnumPrinters` and the uninstall-key walk,
   so a stuck RPC or COM call never starves the pool. Replaces the ad-hoc `Task.Run(...).ContinueWith` in About/Displays
-  for new panels only (existing panels untouched; their silent failure is KI-101). *As built, three additions (WP0, WP3
+  for new panels only (existing panels untouched; their ad-hoc load and failure handling is KI-101). *As built, three additions (WP0, WP3
   and the KI-091 fix):* an optional `channel` argument — loads on the same channel replace each other (only the newest
   is shown, so a re-read after each write can't be overwritten by an older read that finishes late), while loads on
   different channels (independent lists on one panel, e.g. Apps' `installed`, `startup` and per-package channels) never

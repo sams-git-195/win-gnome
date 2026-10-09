@@ -168,7 +168,21 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
                 ShowIfCurrent(generation, channel, sequence, () =>
                 {
                     Problem = "Couldn't read these settings from Windows. You can see them in Windows Settings instead.";
-                    onFailed?.Invoke();
+                    if (onFailed is null)
+                    {
+                        return;
+                    }
+
+                    try
+                    {
+                        onFailed();
+                    }
+                    catch (Exception ex)
+                    {
+                        // The banner above already says what failed; a broken callback must not replace it with the
+                        // show-failure one (ShowIfCurrent's catch), so it is logged here and goes no further.
+                        Log.Warn($"Settings: the \"{_panelId}\" panel's load-failure callback threw", ex);
+                    }
                 });
                 return;
             }
