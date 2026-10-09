@@ -62,6 +62,16 @@ public class DisplayArrangementTests
     }
 
     [Fact]
+    public void Resize_Shorter_PullsTheDisplayBelowUp()
+    {
+        var displays = new[] { D("A", 0, 0, 1920, 1200), D("B", 0, 1200, 1920, 1080) };
+
+        var result = DisplayArrangement.Resize(displays, "A", "A", 1920, 1080);
+
+        Assert.Equal([D("A", 0, 0, 1920, 1080), D("B", 0, 1080, 1920, 1080)], result);
+    }
+
+    [Fact]
     public void Resize_LeavesDisplaysOnTheLeftAlone()
     {
         var displays = new[] { D("L", -1280, 0, 1280, 1024), D("A", 0, 0, 1920, 1080) };

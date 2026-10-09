@@ -88,6 +88,32 @@ public class DisplayRevertRecordTests
         Assert.False(DisplayRevertRecord.IsStillApplied(new DisplayRevert(Original, Target), current));
     }
 
+    public static TheoryData<int, int, int, int> TargetDeviations { get; } = new()
+    {
+        { 1, 0, 0, 0 },
+        { 0, 1, 0, 0 },
+        { 0, 0, 1, 0 },
+        { 0, 0, 0, 1 },
+    };
+
+    [Theory]
+    [MemberData(nameof(TargetDeviations))]
+    public void IsStillApplied_AnyDifferenceInSizeOrPosition_False(int dw, int dh, int dx, int dy)
+    {
+        var first = Target[0];
+        var current = new[] { first with { Width = first.Width + dw, Height = first.Height + dh, X = first.X + dx, Y = first.Y + dy }, Target[1] };
+
+        Assert.False(DisplayRevertRecord.IsStillApplied(new DisplayRevert(Original, Target), current));
+    }
+
+    [Fact]
+    public void IsStillApplied_AnExtraDisplayAttached_StillTrue()
+    {
+        var extra = new DisplaySetting(@"\\.\DISPLAY3", 1280, 1024, 60, 1920, 0, IsPrimary: false);
+
+        Assert.True(DisplayRevertRecord.IsStillApplied(new DisplayRevert(Original, Target), [.. Target, extra]));
+    }
+
     [Fact]
     public void IsStillApplied_TargetDisplayMissing_False()
     {
