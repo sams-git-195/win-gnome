@@ -31,4 +31,17 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool TrackMouseEvent(ref TRACKMOUSEEVENT eventTrack);
+
+    // ---- System metrics ---------------------------------------------------------------------
+    public const int SM_CXFRAME = 32;
+    public const int SM_CYFRAME = 33;
+    public const int SM_CXPADDEDBORDER = 92;
+
+    /// <summary>Returns 0 on failure.</summary>
+    [LibraryImport("user32.dll")]
+    public static partial int GetSystemMetricsForDpi(int index, uint dpi);
+
+    /// <summary>Only for messages to WinGnome's own windows on the calling thread (no cross-process wait).</summary>
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+    public static partial nint SendMessage(nint hwnd, int msg, nint wParam, nint lParam);
 }

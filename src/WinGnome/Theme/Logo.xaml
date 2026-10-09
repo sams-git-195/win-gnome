@@ -11,7 +11,10 @@
     This file must stay loadable on its own (no x:Class, no code references): the export script parses it.
 -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                    xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
+                    mc:Ignorable="po">
 
     <!-- Heel: the Windows four-pane mark, an ellipse cut by a cross, then tilted. -->
     <CombinedGeometry x:Key="LogoHeel" GeometryCombineMode="Exclude">
@@ -60,7 +63,8 @@
     <Pen x:Key="LogoShadowWidePen" Brush="{StaticResource LogoShadowBrush}" Thickness="10" LineJoin="Round" />
     <Pen x:Key="LogoShadowNarrowPen" Brush="{StaticResource LogoShadowBrush}" Thickness="4" LineJoin="Round" />
 
-    <DrawingImage x:Key="WinGnomeLogo">
+    <!-- Frozen: shared by every Image that shows it, and never changes. -->
+    <DrawingImage x:Key="WinGnomeLogo" po:Freeze="True">
         <DrawingImage.Drawing>
             <DrawingGroup>
                 <!-- Fixes the image to the SVG's 256 x 256 view box. -->

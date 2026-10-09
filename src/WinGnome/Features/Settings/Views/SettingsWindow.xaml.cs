@@ -65,6 +65,11 @@ internal sealed partial class SettingsWindow : Window, IDialogService
             }
         }
 
+        if (_headerBar.ProbeSnapLayoutsHitTest() == false)
+        {
+            throw new InvalidOperationException("The settings header bar does not answer HTMAXBUTTON over its maximise circle (no Snap Layouts).");
+        }
+
         var picker = new AppPickerViewModel(_context.Apps, _context.Icons, []);
         try
         {
