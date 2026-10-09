@@ -100,6 +100,9 @@ internal sealed class NotificationsPanelViewModel : SystemPanelViewModel
 
     public VerifiedSwitch LockScreen { get; }
 
+    /// <summary>The line under the lock-screen row: its description, or why it is locked.</summary>
+    public string LockScreenSubtitle { get; private set; } = "Show notifications on the lock screen.";
+
     public ObservableCollection<NotificationAppViewModel> Apps { get; } = [];
 
     /// <summary>The line under the app list: empty-state text or how the list was built.</summary>
@@ -116,7 +119,12 @@ internal sealed class NotificationsPanelViewModel : SystemPanelViewModel
     private void Show(NotificationSnapshot snapshot)
     {
         Master.Confirm(snapshot.Master);
-        LockScreen.Confirm(snapshot.LockScreen);
+        LockScreen.CanChange = !snapshot.LockScreenPolicy;
+        LockScreen.Confirm(snapshot.LockScreen && !snapshot.LockScreenPolicy);
+        LockScreenSubtitle = snapshot.LockScreenPolicy
+            ? "Turned off by your organisation, so it can't be changed here."
+            : "Show notifications on the lock screen.";
+        OnPropertyChanged(nameof(LockScreenSubtitle));
 
         var rows = NotificationAppList.Build(snapshot.Keys, NameOf);
         var shown = new List<NotificationAppViewModel>(rows.Count);

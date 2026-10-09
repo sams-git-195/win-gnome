@@ -12,12 +12,12 @@
             <Grid Margin="0,0,0,6">
                 <TextBlock Text="Show banners" Style="{DynamicResource RowTitleText}" VerticalAlignment="Center" />
                 <CheckBox Style="{DynamicResource SettingsToggle}" HorizontalAlignment="Right" IsChecked="{Binding Banner.IsOn}"
-                          IsEnabled="{Binding Banner.IsIdle}" AutomationProperties.Name="Show banners" />
+                          IsEnabled="{Binding Banner.IsInteractive}" AutomationProperties.Name="Show banners" />
             </Grid>
             <Grid>
                 <TextBlock Text="Show in notification centre" Style="{DynamicResource RowTitleText}" VerticalAlignment="Center" />
                 <CheckBox Style="{DynamicResource SettingsToggle}" HorizontalAlignment="Right" IsChecked="{Binding Centre.IsOn}"
-                          IsEnabled="{Binding Centre.IsIdle}" AutomationProperties.Name="Show in notification centre" />
+                          IsEnabled="{Binding Centre.IsInteractive}" AutomationProperties.Name="Show in notification centre" />
             </Grid>
         </StackPanel>
     </DataTemplate>
@@ -30,7 +30,7 @@
                         AutomationProperties.Name="{Binding Name, StringFormat=Options for {0}}">
                     <TextBlock Text="{Binding ExpandGlyph}" FontFamily="{StaticResource IconFont}" FontSize="12" />
                 </Button>
-                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding Enabled.IsOn}" IsEnabled="{Binding Enabled.IsIdle}"
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding Enabled.IsOn}" IsEnabled="{Binding Enabled.IsInteractive}"
                           AutomationProperties.Name="{Binding Name, StringFormat=Notifications from {0}}" />
             </StackPanel>
         </c:SettingsRow>

@@ -12,13 +12,13 @@
                 <c:SettingsRow Title="Do Not Disturb" Subtitle="Hide banners and silence notification sounds."
                                Visibility="{Binding DoNotDisturb, Converter={x:Static c:Converters.NotNullToVisibility}}">
                     <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding DoNotDisturb.IsOn}"
-                              IsEnabled="{Binding DoNotDisturb.IsIdle}" />
+                              IsEnabled="{Binding DoNotDisturb.IsInteractive}" />
                 </c:SettingsRow>
                 <c:SettingsRow Title="Notifications" Subtitle="Let apps and Windows show notifications.">
-                    <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding Master.IsOn}" IsEnabled="{Binding Master.IsIdle}" />
+                    <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding Master.IsOn}" IsEnabled="{Binding Master.IsInteractive}" />
                 </c:SettingsRow>
-                <c:SettingsRow Title="Lock Screen Notifications" Subtitle="Show notifications on the lock screen.">
-                    <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding LockScreen.IsOn}" IsEnabled="{Binding LockScreen.IsIdle}" />
+                <c:SettingsRow Title="Lock Screen Notifications" Subtitle="{Binding LockScreenSubtitle}">
+                    <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding LockScreen.IsOn}" IsEnabled="{Binding LockScreen.IsInteractive}" />
                 </c:SettingsRow>
             </c:SettingsGroup>
 
