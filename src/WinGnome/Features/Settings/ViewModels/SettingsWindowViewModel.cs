@@ -44,12 +44,17 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
         };
         foreach (var (id, create) in PanelRegistry.SystemPanels)
         {
-            pages.Add(id, create(panels));
+            if (TryCreateSystemPanel(id, create, panels) is { } page)
+            {
+                pages.Add(id, page);
+            }
         }
 
+        // A native panel without a page opens its Windows Settings link instead (SidebarEntry.IsLink); one with
+        // neither would be a dead row, so it isn't listed.
         Entries = SettingsPanelCatalog.All
             .Select(panel => new SidebarEntry(panel, pages.GetValueOrDefault(panel.Id)))
-            .Where(entry => entry.IsLink || entry.Page is not null)
+            .Where(entry => entry.Page is not null || entry.Panel.LinkUri is not null)
             .ToList();
         Pages = Entries.Where(e => e.Page is not null).Select(e => e.Page!).ToList();
 
@@ -93,7 +98,8 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
 
             if (value.Page is null)
             {
-                // Links are never the current page; the view opens them with OpenLinkEntry on a click or Enter.
+                // Links (including native panels without a page) are never the current page; the view opens them with
+                // OpenLinkEntry on a click or Enter, and ShowPanel opens them directly.
                 return;
             }
 
@@ -152,12 +158,15 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Opens a link entry's Windows Settings page (or control panel); the current page stays.</summary>
+    /// <summary>
+    /// Opens a link entry's Windows Settings page (or control panel), including a native panel without a page; the
+    /// current page stays.
+    /// </summary>
     public void OpenLinkEntry(SidebarEntry entry)
     {
-        if (entry.IsLink)
+        if (entry.IsLink && entry.Panel.LinkUri is { } link)
         {
-            OpenLink(entry.Panel.LinkUri!);
+            OpenLink(link);
         }
     }
 
@@ -209,6 +218,23 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
 
     private bool IsVisibleInSidebar(object item) =>
         string.IsNullOrWhiteSpace(_searchText) || (item is SidebarEntry entry && _searchRank.ContainsKey(entry.Id));
+
+    /// <summary>
+    /// Builds one system panel's view model. A panel that throws is logged and left out, so its sidebar row falls
+    /// back to the Windows Settings link instead of taking the whole settings window down.
+    /// </summary>
+    private static SystemPanelViewModel? TryCreateSystemPanel(string id, Func<SystemPanelContext, SystemPanelViewModel> create, SystemPanelContext context)
+    {
+        try
+        {
+            return create(context);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Settings: could not create the \"{id}\" panel; it opens in Windows Settings instead", ex);
+            return null;
+        }
+    }
 
     /// <summary>Opens a Windows Settings URI, or a control panel program from System32 (colorcpl.exe).</summary>
     private void OpenLink(string link)

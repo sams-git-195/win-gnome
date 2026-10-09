@@ -12,7 +12,9 @@ using WinGnome.Features.Settings.Panels.Sound;
 namespace WinGnome.Features.Settings.Panels;
 
 /// <summary>
-/// The native system panels, one line each, so adding a panel touches no shared code beyond its line here.
+/// The native system panels, one line each, so adding a panel touches no shared code beyond its line here and one in
+/// <c>PanelResources.xaml</c> (its view). A catalogue entry marked native without a line here stays a link to its
+/// Windows Settings page (see <c>SidebarEntry.IsLink</c>), so a panel goes live by adding its line.
 /// </summary>
 internal static class PanelRegistry
 {
