@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using System.Globalization;
+using System.Windows.Threading;
 using WinGnome.Core.Settings;
 using WinGnome.Core.Theming;
 using WinGnome.Core.Windows;
@@ -14,6 +16,7 @@ namespace WinGnome.Features.WindowButtons;
 internal sealed class DecoratedWindow : IDisposable
 {
     private readonly CaptionColorizer _colorizer;
+    private readonly Dispatcher _dispatcher;
     private readonly TrafficLightButtonsView _view = new();
 
     // Created on the first supported layout, not up front: many tracked windows never get one (dialogs with only
@@ -33,7 +36,14 @@ internal sealed class DecoratedWindow : IDisposable
 
     // Set for windows that draw their own title bar: where probing found their buttons, instead of DWM.
     private ProbedCaption? _probe;
+    private ProbedCaption? _previousProbe;
     private bool _reprobeRequested;
+
+    // Set when a click guard found the probed buttons gone: hidden until a new probe arrives (SetProbe).
+    private bool _probeSuspended;
+
+    // A click on a probed window waiting for its guard hit test; further clicks meanwhile are ignored.
+    private bool _clickPending;
 
     private bool _cloaked;
     private bool _minimized;
@@ -45,12 +55,14 @@ internal sealed class DecoratedWindow : IDisposable
     /// creates and shows the surfaces once the target has a layout they can cover.
     /// </summary>
     /// <param name="probe">For a window that draws its own title bar, where its buttons were probed; else null.</param>
-    public DecoratedWindow(nint target, DecorationStyle style, CaptionColorizer colorizer, bool isActive, ProbedCaption? probe = null)
+    public DecoratedWindow(
+        nint target, DecorationStyle style, CaptionColorizer colorizer, Dispatcher dispatcher, bool isActive, ProbedCaption? probe = null)
     {
         Target = target;
         _probe = probe;
         _style = style;
         _colorizer = colorizer;
+        _dispatcher = dispatcher;
         _view.IsWindowActive = isActive;
         _view.ButtonClicked += OnButtonClicked;
         _view.SetAppearance(style.Colors, style.Settings);
@@ -77,6 +89,9 @@ internal sealed class DecoratedWindow : IDisposable
     /// <summary>True when the buttons were found by probing rather than reported by DWM.</summary>
     public bool IsProbed => _probe is not null;
 
+    /// <summary>True when the buttons are an app's HTML buttons, found from a built-in profile.</summary>
+    public bool IsClientHoles => _probe?.IsClientHoles == true;
+
     /// <summary>Lets the next measurement ask for a probe again (the last one could not be used).</summary>
     public void AllowReprobe() => _reprobeRequested = false;
 
@@ -88,8 +103,14 @@ internal sealed class DecoratedWindow : IDisposable
             return;
         }
 
+        if (_probe is { } current && !_probeSuspended && !current.IsSameSize(probe))
+        {
+            _previousProbe = current;
+        }
+
         _probe = probe;
         _reprobeRequested = false;
+        _probeSuspended = false;
         _layoutKey = default;
         UpdatePlacement();
     }
@@ -248,8 +269,24 @@ internal sealed class DecoratedWindow : IDisposable
             return CaptionMetrics.TryRead(Target, out metrics);
         }
 
+        if (_probeSuspended)
+        {
+            metrics = default;
+            return false;
+        }
+
         if (CaptionMetrics.TryReadProbed(Target, probe, out metrics, out var stale))
         {
+            return true;
+        }
+
+        // Back at the size of the probe before (restore after maximise): reuse it rather than spend one of the
+        // window's few probes a minute. The click guard still checks it before any command is sent.
+        if (stale && _previousProbe is { } previous && CaptionMetrics.TryReadProbed(Target, previous, out metrics, out _))
+        {
+            _previousProbe = probe;
+            _probe = previous;
+            _layoutKey = default;
             return true;
         }
 
@@ -406,9 +443,71 @@ internal sealed class DecoratedWindow : IDisposable
             return;
         }
 
+        if (_probe is { } probe)
+        {
+            GuardProbedClick(probe, kind);
+            return;
+        }
+
+        SendCommand(kind);
+    }
+
+    private void SendCommand(CaptionButtonKind kind)
+    {
         if (CaptionCommands.Invoke(Target, kind) == CaptionCommandResult.AccessDenied)
         {
             RemovalRequested?.Invoke(this, true);
+        }
+    }
+
+    /// <summary>
+    /// A probed window only gets the command if it still answers, over the native button, what the probe saw
+    /// there (spec 0009): one hit test off the UI thread (it goes to another process), then back here.
+    /// </summary>
+    private void GuardProbedClick(ProbedCaption probe, CaptionButtonKind kind)
+    {
+        if (_clickPending || !CaptionMetrics.TryReadFrame(Target, out var frame) || !probe.Matches(frame, NativeMethods.GetDpiForWindow(Target)))
+        {
+            return;
+        }
+
+        var scale = probe.Dpi > 0 ? probe.Dpi / 96.0 : 1.0;
+        var x = ProbedClickCheck.CheckX(probe.Relative.Offset(frame.Left, frame.Top), kind);
+        var y = CaptionHitTestProbe.RowY(frame, scale);
+        var expected = ProbedClickCheck.ExpectedCode(kind, probe.IsClientHoles);
+        var target = Target;
+        _clickPending = true;
+        Task.Run(() =>
+        {
+            var actual = CustomCaptionProbe.HitTestAt(target, x, y);
+            _dispatcher.BeginInvoke(() => OnClickChecked(kind, expected, actual, x, y));
+        });
+    }
+
+    private void OnClickChecked(CaptionButtonKind kind, int expected, int? actual, int x, int y)
+    {
+        _clickPending = false;
+        if (_disposed || !NativeMethods.IsWindowEnabled(Target))
+        {
+            return;
+        }
+
+        if (ProbedClickCheck.Allows(expected, actual))
+        {
+            SendCommand(kind);
+            return;
+        }
+
+        var answer = actual?.ToString(CultureInfo.InvariantCulture) ?? "nothing";
+        ThrottledLog.Warn(
+            "click-guard",
+            $"Dropped a {kind} click on 0x{Target:X}: it answered {answer} at ({x}, {y}) where the probe saw {expected}; probing it again");
+        _probeSuspended = true;
+        Conceal();
+        if (!_reprobeRequested)
+        {
+            _reprobeRequested = true;
+            ReprobeRequested?.Invoke(this);
         }
     }
 

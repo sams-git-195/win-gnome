@@ -66,6 +66,13 @@ public static class CaptionDecorationRules
         return null;
     }
 
+    /// <summary><see cref="WebButtonWidth(string?, string?)"/> for a tracked window (by its executable's file name).</summary>
+    public static double? WebButtonWidth(WindowInfo window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        return WebButtonWidth(Shell.PathText.FileNameWithoutExtension(window.ProcessPath), window.ClassName);
+    }
+
     /// <summary>
     /// True when Windows draws the full minimise/maximise/close trio. With neither WS_MINIMIZEBOX nor
     /// WS_MAXIMIZEBOX only a lone close button is drawn, and three circles would not fit its space.

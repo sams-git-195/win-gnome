@@ -56,6 +56,20 @@ public class CaptionDecorationRulesTests
     }
 
     [Theory]
+    [InlineData(@"C:\Users\sam\AppData\Local\GitHubDesktop\app-3.6.6\GitHubDesktop.exe", 45.0)]
+    [InlineData(@"C:\Users\sam\AppData\Local\Programs\Microsoft VS Code\Code.exe", null)]
+    [InlineData(null, null)]
+    public void WebButtonWidth_ForAWindow_UsesItsExecutableName(string? processPath, double? expected)
+    {
+        var window = new WindowInfo(
+            1, "GitHub Desktop", "Chrome_WidgetWin_1", 42, processPath, null, IsVisible: true, IsCloaked: false,
+            IsMinimized: false, IsMaximized: false, IsToolWindow: false, IsAppWindow: false, IsNoActivate: false,
+            HasOwner: false, HasCaption: true, HasSystemMenu: false, IsElevated: false, new(0, 0, 1262, 917));
+
+        Assert.Equal(expected, CaptionDecorationRules.WebButtonWidth(window));
+    }
+
+    [Theory]
     [InlineData(true, true, true)]
     [InlineData(true, false, true)]
     [InlineData(false, true, true)]
