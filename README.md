@@ -24,7 +24,7 @@ the way it was when it exits.
 - **System indicators**: network, volume (scroll on it to change the volume) and battery, drawn as GNOME-style symbolic icons.
 - **Crisp at any scaling**: bold **Adwaita Sans** text (GNOME's own typeface, bundled; switch to Segoe UI in Settings → Top Bar → Font), with text, icons and tray icons sized to whole screen pixels at 100%, 125%, 150% and up.
 - **Tray icons** (like macOS menu bar extras): the notification-area icons of your running apps (Discord, Steam, OneDrive, antivirus, ...) sit left of the system indicators, in the order they were added. Click, double-click, middle-click and right-click work as in the Windows tray, so app menus open right under the icon. Hover for the tooltip. Icons an app hides stay hidden. The Windows taskbar keeps its own copy of every icon, in both taskbar modes. Turn this off in Settings → Top Bar.
-- **Quick settings** menu: volume and screen-brightness sliders (brightness for a laptop's built-in display; scroll or use the arrow keys on it too), Wi-Fi and Bluetooth shortcuts, screenshot, Windows Settings, WinGnome settings, lock, and the power menu (sleep, restart, shut down, sign out). It also links to the hidden system tray and to Windows' own quick settings and notification centre.
+- **Quick settings** menu: volume and screen-brightness sliders (brightness for a laptop's built-in display; scroll or use the arrow keys on it too), Wi-Fi and Bluetooth shortcuts, screenshot, Settings, WinGnome settings, lock, and the power menu (sleep, restart, shut down, sign out). The chevrons on the sliders open the Sound and Displays panels, the battery row opens Power, and the calendar's *Date & time settings* opens Date & Time; Wi-Fi and Bluetooth open their Windows Settings pages. It also links to the hidden system tray and to Windows' own quick settings and notification centre.
 - Registered as an AppBar, so maximised windows sit below the bar instead of under it. The bar hides automatically when a full-screen app runs.
 - **Appearance**: you can set the background colour, text colour, opacity (0–100%), **blur or acrylic**, height, text size, the hover highlight's corner radius (square to pill), and a *floating* mode with a margin and rounded corners. The default is the classic solid black GNOME bar.
 
@@ -130,7 +130,7 @@ top right), or run `WinGnome.exe` again: a second launch opens the running insta
 | Switch | Effect |
 |---|---|
 | `--settings` | Open the settings window on start |
-| `--settings-panel <id>` | Start WinGnome with the settings window open at a panel, e.g. `displays`, `sound`, `power`, `appearance` or `wingnome-dock` (ids in `PanelIds`). If WinGnome is already running, it just opens its settings window (the panel isn't passed on). |
+| `--settings-panel <id>` | Start WinGnome with the settings window open at a panel, e.g. `displays`, `sound`, `power`, `appearance` or `wingnome-dock` (ids in `PanelIds`). If WinGnome is already running with the same profile, it opens that panel there. |
 | `--settings-dir <path>` | Use a separate profile folder (settings, tweak backups, log) |
 | `--safe` | Safe mode: no taskbar hiding, no registry writes, no keyboard hooks (tray icons still show in the top bar; nothing to undo) |
 | `--selftest` | Start every feature in safe mode, run for 5 s, exit with code 0 on success (used by CI and QA) |

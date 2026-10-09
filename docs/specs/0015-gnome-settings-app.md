@@ -107,5 +107,9 @@ Design decisions taken while building:
   sound volume sliders, which call Core Audio directly like the top bar does.
 - Rows whose value a Streamline tweak owns (dark mode, accent, snap layouts) are read-only while that tweak is on
   (KI-067), so reverting a tweak never silently undoes a panel change.
-- Quick settings rows and Win+I still open Windows Settings pages (KI-065); `ShellCommands.ShowSettings(panelId)`
-  and `--settings-panel <id>` are ready for them.
+- Quick settings rows, the gear, the calendar and the logo menu open their panel through
+  `ShellCommands.ShowSettings(panelId)`; link panels (Wi-Fi, Bluetooth) open their Windows Settings page directly
+  (`SettingsPanelCatalog.DirectLinkFor`). A second launch with `--settings-panel <id>` writes `settings-request.txt`
+  into the profile folder before signalling the running instance, which reads, validates
+  (`SettingsActivationRequest`) and deletes it. Win+I waits for shell mode's hotkeys (spec 0013, `ShellHotkeyMap` is
+  unwired).
