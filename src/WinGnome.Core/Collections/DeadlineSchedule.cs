@@ -37,6 +37,9 @@ public sealed class DeadlineSchedule<TKey>
 
     public bool Contains(TKey key) => _due.ContainsKey(key);
 
+    /// <summary>The deadline of <paramref name="key"/>, when it is scheduled.</summary>
+    public bool TryGetDue(TKey key, out long due) => _due.TryGetValue(key, out due);
+
     public void Clear() => _due.Clear();
 
     /// <summary>Removes every key whose deadline is at or before <paramref name="now"/> and adds it to <paramref name="into"/>.</summary>

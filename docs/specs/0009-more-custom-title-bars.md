@@ -1,6 +1,6 @@
 # 0009 — Round buttons on more custom title bars
 
-Status: Implemented (branch, not merged); Dia not achieved, see Implementation notes
+Status: Implemented (merged to improvements/shell-polish; the Dia addendum on its branch, verified by tests only)
 
 ## Problem
 With *Decorate apps with custom title bars (experimental)* on (spec 0005), Claude desktop is decorated, but Dia,
@@ -44,18 +44,27 @@ Docker Desktop and GitHub Desktop keep their own buttons, and VS Code is unconfi
 - Core `CaptionDecorationRules`: `Chrome_WidgetWin_` prefix; `WebButtonProfiles` (exe + class → button width DIP).
 - Core `CaptionHitTestProbe.FindGroupLeft`: gap tolerance, equal-width and minimum-span checks, `MaxTopGap` 8 DIP.
 - Core `CaptionHoleProbe.FindClientHoles(xs, codes, scale, expectedWidthDip)`.
-- Core click guard decision: `ProbedClickCheck.Allows(expectedCode, actualCode)`.
+- Core click guard decision: `ProbedClickCheck.Allows(expectedCode, actualCode)` (a consistency check, strong only
+  where the expected answer is a button code; see Safety and recovery).
 - App `CustomCaptionProbe`: deepest-child hit testing (`ChildWindowFromPointEx` with skip-invisible/transparent,
   walking down), records the answering HWND; profile path. `ProbedCaption.Source` (HitTest, ChildHitTest, Profile)
   for logging. Click guard in `CaptionCommands` path for probed windows.
 - Settings page: the new toggle with its subtitle; the experimental subtitle names the apps.
 
 ## Safety and recovery
-No system state changes; probed windows are never recoloured. The click guard prevents a stale or wrong decoration
-from sending a window command where the app no longer has that button.
+No system state changes; probed windows are never recoloured. For windows that report button codes, the click guard
+stops a stale or wrong decoration from sending a window command where the app no longer has that button. For the
+web-button paths it is much weaker: over HTML holes it only confirms the point is still client area, which most
+of a window is, so it catches a layout that turned into drag region but not one where the buttons moved elsewhere
+in the client area (KI-041). The maximise-anchored path also re-checks the maximise zone, which is a real button
+code. Those paths rely mainly on the strict row checks and stay behind their own opt-in setting.
 
 ## Footprint
-Unchanged at idle. Child lookups add a few cheap calls per sample; the click guard adds one message per click.
+Unchanged at idle. Child lookups add a few cheap calls per sample; the click guard adds one message per click (two
+beside a maximise anchor). Probes are debounced and use one shared one-shot timer. The KI-016 change re-samples a
+decorated window's patch once per settled move or resize by code: one screen `GetPixel` (a few milliseconds of
+DWM read-back) 450 ms after the last location change, on the same kind of shared one-shot timer; user drags don't
+add one, since they already sample on `MOVESIZEEND`.
 
 ## Acceptance criteria
 1. Core tests: Docker's row (45/43/gap 2/43 px at 125 %) accepted; a 5 DIP gap rejected; unequal runs rejected; wrong
@@ -69,7 +78,8 @@ Unchanged at idle. Child lookups add a few cheap calls per sample; the click gua
 
 ## Risks and open questions
 - Dia's restored geometry wasn't measured (it was minimised during research).
-- A future GitHub Desktop release could move its buttons; the hole check and click guard then leave it undecorated.
+- A future GitHub Desktop release could move its buttons. The hole check then leaves it undecorated at the next
+  probe; until then the click guard only notices if the old position stopped being client area (KI-041).
 
 ## Implementation notes
 - **Dia isn't decorated.** Measured on a restored Dia window (2251×1419 at 125 %, 2026-10-09): the deepest child
@@ -78,8 +88,21 @@ Unchanged at idle. Child lookups add a few cheap calls per sample; the click gua
   `ReunionWindowingCaptionControls` is 0 px wide and answers nothing. The row reads, from the right: 5 px
   `HTRIGHT`, 54 px `HTCLIENT` (close), 50 px `HTMAXBUTTON`, then `HTCLIENT`. So deepest-child hit testing (kept:
   it's how input is routed, and other Windows App SDK apps that set all their non-client regions will answer) finds
-  only one button. A "maximise-anchored" rule (an `HTMAXBUTTON` run with equal-width `HTCLIENT` runs either side)
-  would cover Dia but is a new heuristic; left as an open question in KI-007.
+  only one button.
+- **Addendum: maximise-anchored rule for Dia** (agreed after the measurements above). Under
+  `DecorateWebTitleBarButtons`, and only for windows with a visible `ReunionWindowingCaptionControls` child
+  (Windows App SDK caption controls), Core `CaptionMaxAnchorProbe.FindGroup` accepts, from the right: at most
+  8 DIPs of resize border, an `HTCLIENT` close zone, immediately an `HTMAXBUTTON` zone of at least 30 DIPs, then
+  immediately `HTCLIENT` for at least the maximise width (the minimise zone, taken to be that wide), with no
+  other button code in the row. Two points differ from the rule as first proposed, because Dia's measured row
+  wouldn't pass them: the close zone (59 px with the border) is 9 px wider than maximise (49–50 px), so the
+  widths must be within the usual 25 % ratio rather than 2 DIPs; and left of the minimise zone Dia reports more
+  `HTCLIENT` (its caption input sink), not `HTCAPTION`, so nothing is required there beyond the minimise width.
+  The controls child is 0 px wide on Dia, so "has the child" means present and visible, not non-empty. The
+  vertical extent comes from a column through the maximise zone (`FindZoneExtent`). The click guard expects
+  `HTMAXBUTTON` over maximise and `HTCLIENT` over close and minimise, and for those two also re-checks that
+  maximise still answers `HTMAXBUTTON` (two hit tests). Verified by Core tests from the measured row only; Dia
+  stayed minimised, and it isn't relaunched by agents (that restored the user's window).
 - Docker Desktop's window was hidden throughout, so its row is covered by Core tests from the research numbers only.
 - The click guard hit-tests the middle of the clicked button's third of the probed group, on the probe row (10 DIPs
   below the frame top), not the click point itself: with the circles on the left or smaller than the native

@@ -125,8 +125,8 @@
                            Subtitle="Also covers apps that draw their own title bar, such as Claude desktop, VS Code and Docker Desktop, when they report where their buttons are. Apps that don't report them keep their own buttons.">
                 <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding DecorateCustomTitleBars.Value}" />
             </c:SettingsRow>
-            <c:SettingsRow Title="Also decorate apps with web-drawn buttons (GitHub Desktop)"
-                           Subtitle="Recognises a few known apps whose buttons are part of their web page, by their size and position. If the app changes its buttons, they're left alone."
+            <c:SettingsRow Title="Also decorate apps with web-drawn buttons (GitHub Desktop, Dia)"
+                           Subtitle="Recognises a few known apps whose buttons are part of their web page by their size and position, and Windows App SDK apps that report only their maximise button. If the app changes its buttons, they're left alone."
                            IsEnabled="{Binding DecorateCustomTitleBars.Value}">
                 <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding DecorateWebTitleBarButtons.Value}" />
             </c:SettingsRow>

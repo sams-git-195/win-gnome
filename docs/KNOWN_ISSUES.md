@@ -92,8 +92,10 @@ setting, recognises GitHub Desktop's HTML buttons from a built-in profile of the
 windows are checked against a fresh hit test first, so a stale or wrong decoration drops the click instead of
 sending a command. Still undecorated:
 - **Dia** answers `HTMAXBUTTON` only over its maximise button (from its Windows App SDK non-client child) and
-  `HTCLIENT` over close and minimise. Open question: accept "an `HTMAXBUTTON` run between two equal `HTCLIENT`
-  runs at the right edge" for Windows App SDK windows, with the click guard expecting those codes.
+  `HTCLIENT` over close and minimise. Since the maximise-anchored rule (spec 0009 addendum) it's decorated
+  with *Also decorate apps with web-drawn buttons* on, but only verified by Core tests from measured numbers:
+  Dia stayed minimised afterwards. The rule infers the minimise zone's left edge (it's client area like what
+  lies left of it), so the circles may sit a few pixels off if Dia's minimise button isn't as wide as maximise.
 - Windows Terminal and other apps that report plain client area, unless they get a web-button profile.
 - Profiled apps whose layout changes in a new release (the hole check then fails, and they keep their buttons).
 
@@ -144,8 +146,8 @@ tweaks were written and tested against an in-memory registry. Still to confirm o
 **The patch behind the circles is a flat colour** · S4 · Window buttons · Open
 
 The patch is one sampled colour. It matches solid and Mica title bars after the Mica fade settles (re-sampled
-~450 ms after activation, after a drag ends, and since 6e5c21f 450 ms after a move or resize by code settles),
-but doesn't reproduce a gradient. Snapped windows keep a 1 px border inset, so the corner pixel shows the app's
+~450 ms after activation, after a drag ends, and since 6e5c21f 450 ms after a move or resize by code settles,
+which costs one screen `GetPixel` per settled move), but doesn't reproduce a gradient. Snapped windows keep a 1 px border inset, so the corner pixel shows the app's
 frame.
 *Fix direction:* sample a strip just left of the buttons and stretch it.
 
@@ -198,10 +200,12 @@ their target, so their windows show unpinned until the catalogue's `Changed` ref
 
 The settings window and app picker hide the Windows caption with `WindowChrome` but keep `WS_CAPTION`, the
 system menu and the maximise box (needed for Snap Layouts), so DWM still reports caption-button bounds. Each
-instance skips only its own process, so a second WinGnome with window buttons on (a QA profile next to the
-everyday one) overlays its circles on top of the header bar's own ones. One instance alone is unaffected. As
-with KI-015, turn window buttons off in test profiles; capture header bars with `PrintWindow` to see only
-the window's own drawing.
+instance skips only its own process, so another WinGnome that decorates windows overlays its circles on top of
+the header bar's own ones. Since dbf86fb only one instance per session decorates (the window-buttons session
+role), so with current builds this happens only when the decorating instance is a different one from the
+instance whose header bar is shown, e.g. a QA profile's settings window while the everyday instance holds the
+role. A pre-role build (KI-042) still decorates regardless and overlays every other instance's header bars. One
+instance alone is unaffected. Capture header bars with `PrintWindow` to see only the window's own drawing.
 
 ### KI-031
 **Overview animation details not verified on every path** · S4 · Overview · Open
@@ -245,6 +249,13 @@ thread (one `WM_NCHITTEST`, at most 50 ms; normally well under 1 ms). A second c
 is ignored, and a click on a hung app is dropped (its own buttons don't respond either; DWM's ghost window
 takes over). When the answer doesn't match, the click is dropped with a log line and the window is probed again.
 
+The check is only strong where the expected answer is a button code (Claude desktop, VS Code, Docker Desktop,
+and Dia's maximise zone, which is also re-checked for Dia's close and minimise clicks). For GitHub Desktop's
+HTML buttons it expects `HTCLIENT`, which most of the window answers: it catches buttons that turned into drag
+region, but if a new layout put other client content where a button was, a click before the next probe would
+still send the command. The row checks (three equal holes of the profiled width at the edge, drag region to
+their left) and the separate opt-in setting are the main protection there.
+
 ### KI-042
 **WinGnome builds from before the window-buttons role still decorate alongside newer ones** · S4 · Window buttons · Open
 
@@ -253,6 +264,12 @@ such as an everyday copy in `publish\` that predates it, don't know the mutex, s
 draw, as before. Taking over from a killed holder (abandoned mutex) is handled in code but wasn't exercised live
 (agents quit instances gracefully). Turning window buttons off and on quickly may log "another instance
 decorates windows" once while the previous thread releases the mutex.
+
+If the mutex can't be opened because an instance at another integrity level (elevated) created it, this
+instance treats the role as held and doesn't decorate; it can't wait for that holder, so it only takes over
+after a restart or switching window buttons off and on. Any other failure to create or wait on the mutex fails
+open: the instance logs a warning and decorates, as before the role existed, rather than silently showing no
+buttons; two instances may then both draw.
 *Fix direction:* republish the everyday copy.
 
 ## Resolved

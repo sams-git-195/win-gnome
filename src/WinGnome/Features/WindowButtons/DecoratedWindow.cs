@@ -90,8 +90,8 @@ internal sealed class DecoratedWindow : IDisposable
     /// <summary>True when the buttons were found by probing rather than reported by DWM.</summary>
     public bool IsProbed => _probe is not null;
 
-    /// <summary>True when the buttons are an app's HTML buttons, found from a built-in profile.</summary>
-    public bool IsClientHoles => _probe?.IsClientHoles == true;
+    /// <summary>True when the buttons were found by a rule that the web-buttons setting enables.</summary>
+    public bool NeedsWebButtonsSetting => _probe?.NeedsWebButtonsSetting == true;
 
     /// <summary>Lets the next measurement ask for a probe again (the last one could not be used).</summary>
     public void AllowReprobe() => _reprobeRequested = false;
@@ -464,7 +464,8 @@ internal sealed class DecoratedWindow : IDisposable
 
     /// <summary>
     /// A probed window only gets the command if it still answers, over the native button, what the probe saw
-    /// there (spec 0009): one hit test off the UI thread (it goes to another process), then back here.
+    /// there (spec 0009): one hit test off the UI thread (it goes to another process), then back here. Beside a
+    /// maximise anchor (Dia) the maximise zone is checked too, since plain client area alone proves little.
     /// </summary>
     private void GuardProbedClick(ProbedCaption probe, CaptionButtonKind kind)
     {
@@ -474,19 +475,27 @@ internal sealed class DecoratedWindow : IDisposable
         }
 
         var scale = probe.Dpi > 0 ? probe.Dpi / 96.0 : 1.0;
-        var x = ProbedClickCheck.CheckX(probe.Relative.Offset(frame.Left, frame.Top), kind);
+        var buttons = probe.Relative.Offset(frame.Left, frame.Top);
         var y = CaptionHitTestProbe.RowY(frame, scale);
-        var expected = ProbedClickCheck.ExpectedCode(kind, probe.IsClientHoles);
+        var click = new GuardCheck(ProbedClickCheck.CheckX(buttons, kind), ProbedClickCheck.ExpectedCode(kind, probe.Layout));
+        GuardCheck? anchor = ProbedClickCheck.ChecksMaximiseToo(kind, probe.Layout)
+            ? new GuardCheck(ProbedClickCheck.CheckX(buttons, CaptionButtonKind.Maximize), CaptionHitTestProbe.HtMaxButton)
+            : null;
         var target = Target;
         _clickPending = true;
         Task.Run(() =>
         {
-            var actual = CustomCaptionProbe.HitTestAt(target, x, y);
-            _dispatcher.BeginInvoke(() => OnClickChecked(kind, expected, actual, x, y));
+            var answered = click with { Actual = CustomCaptionProbe.HitTestAt(target, click.X, y) };
+            if (answered.Passed && anchor is { } check)
+            {
+                answered = check with { Actual = CustomCaptionProbe.HitTestAt(target, check.X, y) };
+            }
+
+            _dispatcher.BeginInvoke(() => OnClickChecked(kind, answered, y));
         });
     }
 
-    private void OnClickChecked(CaptionButtonKind kind, int expected, int? actual, int x, int y)
+    private void OnClickChecked(CaptionButtonKind kind, GuardCheck check, int y)
     {
         _clickPending = false;
         if (_disposed || !NativeMethods.IsWindowEnabled(Target))
@@ -494,11 +503,13 @@ internal sealed class DecoratedWindow : IDisposable
             return;
         }
 
-        if (ProbedClickCheck.Allows(expected, actual))
+        if (check.Passed)
         {
             SendCommand(kind);
             return;
         }
+
+        var (x, expected, actual) = (check.X, check.Expected, check.Actual);
 
         var answer = actual?.ToString(CultureInfo.InvariantCulture) ?? "nothing";
         ThrottledLog.Warn(
@@ -520,6 +531,12 @@ internal sealed class DecoratedWindow : IDisposable
         {
             RemovalRequested?.Invoke(this, false);
         }
+    }
+
+    /// <summary>One click-guard hit test: where, what the probe saw there, and (once asked) what the window answered.</summary>
+    private readonly record struct GuardCheck(int X, int Expected, int? Actual = null)
+    {
+        public bool Passed => ProbedClickCheck.Allows(Expected, Actual);
     }
 
     /// <summary>The target geometry a layout depends on; a change means the layout must be recomputed.</summary>
