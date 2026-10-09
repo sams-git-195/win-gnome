@@ -64,7 +64,7 @@ Merged this session:
 
 Each lives in a git worktree under `.claude/worktrees/agent-<id>`, branch `worktree-agent-<id>`.
 
-### 3a. Spec 0010 multi-monitor — branch `worktree-agent-ae7ed8eca306d9c7d` (HEAD 97a2538 or later) — NOT merge-ready
+### 3a. Spec 0010 multi-monitor — branch `worktree-agent-ae7ed8eca306d9c7d` (HEAD 5c19982) — NOT merge-ready
 
 Implemented and reviewed (all packages, hot corner per the user's decision: primary's corner always on, with an
 8×8 px dwell box where another monitor borders it). Passing: bars and docks on both monitors at their own DPI,
@@ -85,6 +85,25 @@ advisor was evaluating **spec 0010 "outcome B"**: WinGnome sets the work area it
 `SystemParametersInfo(SPI_SETWORKAREA)` per monitor, recording originals first and restoring on exit, crash and
 next start, either alone or as a fallback when the AppBar strip isn't applied within a few seconds. Check the
 branch for commits after 97a2538 and the spec's Risks/implementation notes before continuing.
+
+**Latest from the branch author (5c19982):** `TaskbarController.Hide` sends `ABM_SETSTATE(ABS_AUTOHIDE)` and then
+immediately `SW_HIDE`s every taskbar window. Hypothesis: Explorer recomputes work areas when its auto-hide slide
+finishes, and hiding the windows mid-transition pushes it onto a ~35 s fallback. In steady state (taskbar hidden for
+a while) Explorer applies a new strip in ~0.3 s. 5c19982 replaces the immediate re-registering with a capped policy:
+wait 45 s for Explorer, then re-register at most 3 times (60/120/240 s apart). Log lines: "leaving it to Explorer
+for 45 s", then "reserved again". Spec 0010 now records three outcomes; the experiment below decides between them.
+
+**Experiment (do this first, with the user, every WinGnome quit; nothing else running):** build
+`tools/TbExp` (`dotnet build tools/TbExp -c Release -o <scratch>	bexp`). Each run docks a 40 px top AppBar, logs
+all work areas every 250 ms for 60 s, then removes it and restores the taskbar and its auto-hide state. It refuses
+to run while any WinGnome process exists. Run each into the same log and compare when the strip appears:
+1. `TbExp.exe immediate tbexp.log` (today's order)  2. `TbExp.exe settle tbexp.log` (auto-hide, wait ≤5 s for
+Explorer to apply it, then hide the windows)  3. `TbExp.exe nohide tbexp.log`  4. `TbExp.exe spi tbexp.log`
+(today's order plus `SPI_SETWORKAREA` if still missing after 2 s, not persisted).
+- `settle` prompt → **recommended fix:** hide the taskbar windows only after Explorer has applied auto-hide
+  (bounded, non-blocking wait). Smallest change, no new system state.
+- only `spi` prompt → implement the advisor's SPI fallback below (marker discipline, design note and review first).
+- neither → keep 5c19982 (behaves like the old build: strip after ~35 s).
 
 **Advisor (Fable) diagnosis and recommended design** (read-only review of the code, after the live sessions):
 - Interception by our tray host is ruled out: `TrayHost.OnCopyData` forwards AppBar `WM_COPYDATA` to Explorer's
