@@ -1,6 +1,6 @@
 # 0009 — Round buttons on more custom title bars
 
-Status: Agreed
+Status: Implemented (branch, not merged); Dia not achieved, see Implementation notes
 
 ## Problem
 With *Decorate apps with custom title bars (experimental)* on (spec 0005), Claude desktop is decorated, but Dia,
@@ -70,3 +70,34 @@ Unchanged at idle. Child lookups add a few cheap calls per sample; the click gua
 ## Risks and open questions
 - Dia's restored geometry wasn't measured (it was minimised during research).
 - A future GitHub Desktop release could move its buttons; the hole check and click guard then leave it undecorated.
+
+## Implementation notes
+- **Dia isn't decorated.** Measured on a restored Dia window (2251×1419 at 125 %, 2026-10-09): the deepest child
+  under the maximise button is `InputNonClientPointerSource`, which answers `HTMAXBUTTON` (for Snap Layouts), but
+  under the close and minimise buttons it's `Microsoft.UI.Content.DesktopChildSiteBridge`, which answers `HTCLIENT`;
+  `ReunionWindowingCaptionControls` is 0 px wide and answers nothing. The row reads, from the right: 5 px
+  `HTRIGHT`, 54 px `HTCLIENT` (close), 50 px `HTMAXBUTTON`, then `HTCLIENT`. So deepest-child hit testing (kept:
+  it's how input is routed, and other Windows App SDK apps that set all their non-client regions will answer) finds
+  only one button. A "maximise-anchored" rule (an `HTMAXBUTTON` run with equal-width `HTCLIENT` runs either side)
+  would cover Dia but is a new heuristic; left as an open question in KI-007.
+- Docker Desktop's window was hidden throughout, so its row is covered by Core tests from the research numbers only.
+- The click guard hit-tests the middle of the clicked button's third of the probed group, on the probe row (10 DIPs
+  below the frame top), not the click point itself: with the circles on the left or smaller than the native
+  buttons, the click point isn't over the native button.
+- Probes wait for a size to settle (300 ms after the last location change) instead of re-probing continuously
+  during a live resize. A failed probe is retried once 2 s later; two failures at one size block that size. A
+  decorated window that returns to the size of its previous probe (restore after maximise) reuses it without
+  probing, so toggling maximise doesn't use up the 3 probes a minute.
+- For web buttons the column through the close hole must end at a non-client row (GitHub Desktop has a 1 px
+  `HTCAPTION` line under its buttons); the overlay starts at the frame top because the top resize border is drawn
+  over the buttons. The hole row is sampled every pixel (the strips between holes are 1 px).
+- Glyphs: the circles' glyphs never depend on pixels; maximise/restore uses `IsZoomed` (`WS_MAXIMIZE`).
+
+## Verification (2026-10-09, 125 %)
+- Claude desktop, VS Code (isolated `--user-data-dir`) and GitHub Desktop (web toggle on) were decorated; the
+  overlays lay exactly over the native groups (VS Code 1861–2032 px, Claude 2087–2258, GitHub Desktop 1306–1474).
+  With the web toggle off GitHub Desktop wasn't decorated.
+- VS Code, resized and moved by code and maximised/restored three times: the overlay followed each size within
+  1.5 s (maximised 2388–2560 at the top edge).
+- Clicking the circles wasn't exercised (it needs real input on the user's desktop with the everyday instance's
+  overlays on top); the guard's decision logic is covered by Core tests.

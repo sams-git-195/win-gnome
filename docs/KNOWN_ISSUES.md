@@ -30,12 +30,14 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-009](#ki-009) | S4 | Repo | No CI workflow, although the README says `--selftest` is used by CI | Open |
 | [KI-010](#ki-010) | S3 | App | Launched from a sandboxed terminal, WinGnome uses a private copy of its settings folder | Open |
 | [KI-014](#ki-014) | S4 | Tweaks | GNOME look tweaks are verified by tests only, not yet on a live Windows install | Open |
-| [KI-015](#ki-015) | S3 | Window buttons | Two WinGnome instances that both decorate windows fight over title-bar colours | Open |
 | [KI-016](#ki-016) | S4 | Window buttons | The patch behind the circles is a flat colour | Open |
 | [KI-018](#ki-018) | S4 | Performance | Idle CPU needs profiling on a quiet machine | Open |
 | [KI-019](#ki-019) | S4 | Tray | The tray host can take up to 1 s to get back in front of Explorer's taskbar | Open |
 | [KI-021](#ki-021) | S4 | Top bar | Brightness slider controls only a laptop's built-in display | Open |
 | [KI-022](#ki-022) | S4 | Tray | A `WM_CLOSE` posted to "the taskbar" quits WinGnome while it hosts tray icons | Open |
+| [KI-040](#ki-040) | S4 | Window buttons | A custom title bar resized often keeps its circles hidden for up to a minute | By design |
+| [KI-041](#ki-041) | S4 | Window buttons | Clicks on custom title bars wait for one hit test, and clicks meanwhile are ignored | By design |
+| [KI-042](#ki-042) | S4 | Window buttons | WinGnome builds from before the window-buttons role still decorate alongside newer ones | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -88,11 +90,19 @@ report them to DWM (`DWMWA_CAPTION_BUTTON_BOUNDS` is empty or stale). Since 652c
 *Decorate apps with custom title bars (experimental)* asks such windows what's under the top-right corner
 (`WM_NCHITTEST`, off the UI thread, with timeouts) and decorates them when they report three adjacent close,
 maximise and minimise zones: this works for apps that support Snap Layouts, such as Claude desktop
-(spec 0005). Apps that report plain client area over their buttons (GitHub Desktop, Dia, Windows Terminal)
-keep their own buttons; UI Automation was tried and is too slow and unreliable (3 s on Dia without a result).
-Known limits of the experimental mode: while such a window is resized live it's re-probed repeatedly and its
-circles stay hidden until the size settles, and an app that reports zones but draws its buttons elsewhere
-would be mis-decorated (mitigated by strict order, size and edge checks).
+(spec 0005). Spec 0009 (branch, 2026-10-09) adds VS Code and Docker Desktop (short gaps between zones, every
+`Chrome_WidgetWin_*` class probed), asks the deepest child window under each point, and, behind a second
+setting, recognises GitHub Desktop's HTML buttons from a built-in profile of their width. Clicks on probed
+windows are checked against a fresh hit test first, so a stale or wrong decoration drops the click instead of
+sending a command. Still undecorated:
+- **Dia** answers `HTMAXBUTTON` only over its maximise button (from its Windows App SDK non-client child) and
+  `HTCLIENT` over close and minimise. Open question: accept "an `HTMAXBUTTON` run between two equal `HTCLIENT`
+  runs at the right edge" for Windows App SDK windows, with the click guard expecting those codes.
+- Windows Terminal and other apps that report plain client area, unless they get a web-button profile.
+- Profiled apps whose layout changes in a new release (the hole check then fails, and they keep their buttons).
+
+UI Automation was tried and is too slow and unreliable (3 s on Dia without a result). While a probed window is
+resized live its circles stay hidden until the size has held still for 300 ms; see also KI-040.
 
 ### KI-008
 **The native taskbar isn't restyled** · S4 · Taskbar · By design
@@ -134,20 +144,14 @@ tweaks were written and tested against an in-memory registry. Still to confirm o
 - *Revert all* restores the accent from before WinGnome, discarding a newer accent picked in Windows Settings
   (the engine does this for every tweak).
 
-### KI-015
-**Two WinGnome instances that both decorate windows fight over title-bar colours** · S3 · Window buttons · Open
-
-With *Unify title bar colour* on in both, each records and restores the colours it changed, and the first to
-quit resets them under the other. Only matters with a second profile (`--settings-dir`) running alongside the
-everyday one, e.g. during QA: turn window buttons off in test profiles.
-
 ### KI-016
 **The patch behind the circles is a flat colour** · S4 · Window buttons · Open
 
 The patch is one sampled colour. It matches solid and Mica title bars after the Mica fade settles (re-sampled
-~450 ms after activation), but doesn't reproduce a gradient, and can go stale when a Mica window is moved by
-code rather than dragged. Snapped windows keep a 1 px border inset, so the corner pixel shows the app's frame.
-*Fix direction:* sample a strip just left of the buttons and stretch it, re-sampling on move/size end.
+~450 ms after activation, after a drag ends, and since 6e5c21f 450 ms after a move or resize by code settles),
+but doesn't reproduce a gradient. Snapped windows keep a 1 px border inset, so the corner pixel shows the app's
+frame.
+*Fix direction:* sample a strip just left of the buttons and stretch it.
 
 ### KI-018
 **Idle CPU needs profiling on a quiet machine** · S4 · Performance · Open
@@ -183,6 +187,33 @@ Windows* dialog therefore quits WinGnome instead. *Fix direction:* if taskkill i
 top-level window of the process, forward the message to Explorer's real taskbar again and rely on the
 UI-thread windows for quitting.
 
+### KI-040
+**A custom title bar resized often keeps its circles hidden for up to a minute** · S4 · Window buttons · By design
+
+Spec 0009 limits probing to 3 probes per window per minute, so a misbehaving app can't keep WinGnome sending it
+hit tests. Each new size of a probed window (after it has held still for 300 ms) needs a probe, so the fourth
+new size within a minute keeps the circles hidden until the minute is up. Going back to the size probed just
+before (restore after maximise) reuses that probe and costs nothing, so toggling maximise isn't affected.
+Measured on VS Code: three maximise/restore cycles kept the circles in place throughout.
+
+### KI-041
+**Clicks on custom title bars wait for one hit test, and clicks meanwhile are ignored** · S4 · Window buttons · By design
+
+Before a click on a probed window is passed on, the native button's position is hit-tested again off the UI
+thread (one `WM_NCHITTEST`, at most 50 ms; normally well under 1 ms). A second click before that answer arrives
+is ignored, and a click on a hung app is dropped (its own buttons don't respond either; DWM's ghost window
+takes over). When the answer doesn't match, the click is dropped with a log line and the window is probed again.
+
+### KI-042
+**WinGnome builds from before the window-buttons role still decorate alongside newer ones** · S4 · Window buttons · Open
+
+Since dbf86fb only the instance holding `Local\WinGnome-WindowButtons` decorates windows (KI-015). Older builds,
+such as an everyday copy in `publish\` that predates it, don't know the mutex, so they and a newer instance both
+draw, as before. Taking over from a killed holder (abandoned mutex) is handled in code but wasn't exercised live
+(agents quit instances gracefully). Turning window buttons off and on quickly may log "another instance
+decorates windows" once while the previous thread releases the mutex.
+*Fix direction:* republish the everyday copy.
+
 ## Resolved
 
 | ID | Severity | Area | Summary | Fixed in |
@@ -190,5 +221,6 @@ UI-thread windows for quitting.
 | KI-011 | S2 | Settings | Non-safe runs with `--settings-dir` rewrote or deleted the shared "Start with Windows" entry | 6aeef5f |
 | KI-012 | S3 | Settings | A settings folder that couldn't be written silently dropped every change | 6e07eb0 (warning banner) |
 | KI-013 | S4 | Top bar | Large hover corner radius drew oval highlights instead of pills | c26e1c8 |
+| KI-015 | S3 | Window buttons | Two WinGnome instances that both decorated windows fought over title-bar colours | dbf86fb (one instance per session decorates; see KI-042) |
 | KI-017 | S3 | Window buttons | The patch behind the circles didn't match Mica title bars and hid the window border | 45ae75a |
 | KI-020 | S3 | App | A graceful `taskkill` that reached the tray host window was ignored, so WinGnome didn't quit | 085fa14 |

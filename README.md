@@ -44,7 +44,8 @@ the way it was when it exits.
 - Left or right placement, macOS or Windows button order, adjustable size and spacing.
 - Glyphs (× − +) appear on hover, and inactive windows can be dimmed, as on macOS.
 - **Unified title bars**: optionally paints every decorated window's title bar in an Adwaita header colour so the round buttons blend in seamlessly. The original colours come back on exit.
-- Per-app exclusions. Apps that draw their own title bars (Chrome, Edge, VS Code, Windows Terminal, WinUI 3 apps) are left alone automatically, unless you turn on *Decorate apps with custom title bars (experimental)*, which adds the circles to apps that report their buttons to Windows (Claude desktop, for example).
+- Per-app exclusions. Apps that draw their own title bars (Chrome, Edge, VS Code, Windows Terminal, WinUI 3 apps) are left alone automatically, unless you turn on *Decorate apps with custom title bars (experimental)*, which adds the circles to apps that report their buttons to Windows: Claude desktop, VS Code and Docker Desktop, for example. Under it, *Also decorate apps with web-drawn buttons* adds GitHub Desktop, whose buttons are part of its web page, from a built-in profile of their size. Before a click on such an app is passed on, WinGnome checks that the app still has that button there.
+- Only one WinGnome instance per Windows session draws window buttons. A second instance (another `--settings-dir` profile) waits and takes over when the first one quits.
 
 ### Activities overview
 - Full-screen overview with **live window thumbnails** (DWM). Click a thumbnail to focus that window, or hover and click × to close it.
