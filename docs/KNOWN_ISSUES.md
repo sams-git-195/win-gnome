@@ -48,7 +48,6 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-062](#ki-062) | S4 | Settings | Display scale, orientation and turning displays on or off are left to Windows Settings | By design |
 | [KI-063](#ki-063) | S3 | Settings | The Settings panels' writes are verified by code review and tests, not yet on a live machine | Open |
 | [KI-064](#ki-064) | S4 | Settings | Snap and Alt+Tab options may need a new sign-in to take effect | Open |
-| [KI-065](#ki-065) | S4 | Settings | Quick settings and Win+I don't open the matching native panel yet | Open |
 | [KI-066](#ki-066) | S4 | Settings | Input sources are listed but not switched or reordered in the Keyboard panel | Open |
 | [KI-067](#ki-067) | S4 | Settings | Appearance style and accent are read-only while the matching Streamline tweak is on | By design |
 
@@ -362,14 +361,6 @@ that reason). *Snap Windows* uses
 `SPI_SETWINARRANGING` and applies at once. *Fix direction:* confirm live which values need a restart, and offer an
 Explorer restart for those as the Streamline page does.
 
-### KI-065
-**Quick settings and Win+I don't open the matching native panel yet** · S4 · Settings · Open
-
-Spec 0015 asks for the top bar's quick-settings rows and gear to open the matching panel, and for Win+I to open the
-settings app in shell mode (spec 0013). `ShellCommands.ShowSettings(panelId)` and `--settings-panel <id>` are in
-place, but the top bar files were being changed by another branch at the time, so its rows still open Windows
-Settings pages. *Fix direction:* call `ShowSettings(PanelIds.Sound)` and friends from `TopBarActions`.
-
 ### KI-066
 **Input sources are listed but not switched or reordered in the Keyboard panel** · S4 · Settings · Open
 
@@ -403,3 +394,4 @@ for *Snap Layouts* and the *Disable the snap layouts flyout* tweak.
 | KI-051 | S3 | Accessibility | The round window buttons weren't exposed to screen readers or the keyboard | fea478b |
 | KI-053 | S4 | Dock | An elevated launch played the launch animation even when the UAC prompt was cancelled | b09a222 (feedback posted back only after `ShellExecuteEx` succeeds) |
 | KI-054 | S3 | Dock | Full-trust packaged apps such as Windows Terminal couldn't be run as administrator | b09a222 (`PKEY_AppUserModel_HostEnvironment` in `AppCatalog`) |
+| KI-065 | S4 | Settings | Quick settings rows and the gear opened Windows Settings pages instead of the matching native panel | f5dcf13 (`TopBarActions` via `ShowSettings`; `--settings-panel` forwarded to a running instance; Win+I waits for shell-mode hotkeys, spec 0013) |
