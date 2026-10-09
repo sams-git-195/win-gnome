@@ -128,8 +128,12 @@ public static class DockModelBuilder
         return null;
     }
 
+    /// <summary>
+    /// A minimised foreground window is not focused: after a minimise the system often leaves it as the foreground
+    /// window, and treating it as focused would plan a second minimise instead of a restore.
+    /// </summary>
     private static bool IsFocused(List<RunningWindow> windows, nint foreground) =>
-        foreground != 0 && windows.Any(w => w.Handle == foreground);
+        foreground != 0 && windows.Any(w => w.Handle == foreground && !w.IsMinimized);
 
     private sealed record PinnedSlot(PinnedApp Pin, string Identity, string ExeName)
     {

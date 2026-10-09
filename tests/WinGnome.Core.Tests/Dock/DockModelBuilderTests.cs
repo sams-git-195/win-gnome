@@ -12,8 +12,8 @@ public class DockModelBuilderTests
 
     private static PinnedApp Pin(string name, string launchId) => new() { Name = name, LaunchId = launchId };
 
-    private static RunningWindow Win(nint handle, string appName, string? path = null, string? aumid = null, int pid = 1) =>
-        new(handle, AppIdentity.ForWindow(aumid, path, pid), appName + " window", appName, path, aumid);
+    private static RunningWindow Win(nint handle, string appName, string? path = null, string? aumid = null, int pid = 1, bool minimized = false) =>
+        new(handle, AppIdentity.ForWindow(aumid, path, pid), appName + " window", appName, path, aumid, minimized);
 
     private static IReadOnlyList<DockApp> Build(
         IReadOnlyList<PinnedApp> pinned,
@@ -279,5 +279,39 @@ public class DockModelBuilderTests
 
         Assert.True(apps[0].IsRunning);
         Assert.False(apps[1].IsRunning);
+    }
+
+    [Fact]
+    public void IsFocused_ForegroundWindowMinimised_IsFalse()
+    {
+        var apps = Build([Pin("Claude", @"C:\c\claude.exe")], [Win(1, "Claude", @"C:\c\claude.exe", minimized: true)], foreground: 1);
+
+        Assert.False(Assert.Single(apps).IsFocused);
+    }
+
+    [Fact]
+    public void IsFocused_MinimisedForegroundWithAnotherOpenWindow_IsFalse()
+    {
+        var windows = new[]
+        {
+            Win(1, "Claude", @"C:\c\claude.exe", minimized: true),
+            Win(2, "Claude", @"C:\c\claude.exe"),
+        };
+
+        var app = Assert.Single(Build([], windows, foreground: 1));
+
+        Assert.False(app.IsFocused);
+        Assert.Equal(new DockClickResult(DockClickKind.Activate, 1), DockClickPlanner.Plan(app, 1, DockClickAction.FocusOrMinimize, 0));
+    }
+
+    [Theory]
+    [InlineData(DockClickAction.FocusOrMinimize)]
+    [InlineData(DockClickAction.Cycle)]
+    [InlineData(DockClickAction.Previews)]
+    public void Click_OnlyWindowMinimisedAndForeground_PlansActivate(DockClickAction action)
+    {
+        var app = Assert.Single(Build([], [Win(7, "Claude", @"C:\c\claude.exe", minimized: true)], foreground: 7));
+
+        Assert.Equal(new DockClickResult(DockClickKind.Activate, 7), DockClickPlanner.Plan(app, 7, action, 0));
     }
 }
