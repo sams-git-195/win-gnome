@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using WinGnome.Core.Geometry;
 using WinGnome.Core.Overview;
 using WinGnome.Core.Search;
@@ -21,6 +22,11 @@ namespace WinGnome.Features.Overview;
 /// top bar and dock it is a normal activatable window, because it must receive the user's typing. It
 /// remembers which window was focused before it opened and gives focus back when dismissed without a
 /// choice.
+/// <para>
+/// Opening and closing are animated (spec 0008): thumbnails glide between the windows and the grid while the
+/// dim layer eases in or out. The window is prepared while cloaked and revealed once WPF has drawn its first
+/// frame, so the backdrop never shows without its content. The acrylic blur itself can't fade.
+/// </para>
 /// </remarks>
 internal sealed partial class OverviewWindow : Window
 {
@@ -43,6 +49,8 @@ internal sealed partial class OverviewWindow : Window
     private readonly ShellContext _context;
     private readonly AppTileCatalog _apps;
     private readonly ThumbnailLayer _thumbnails;
+    private readonly OverviewAnimator _animator;
+    private readonly SolidColorBrush _dimBrush = new(Colors.Transparent);
     private readonly List<SelectableItem> _results = [];
     private OverviewRequest _request = new(OverviewMode.Windows);
     private nint _hwnd;
@@ -53,6 +61,12 @@ internal sealed partial class OverviewWindow : Window
     private int _resultIndex = -1;
     private int _gridIndex = -1;
     private bool _thumbnailsShown;
+    private bool _windowsChangedWhileMoving;
+    private bool _closing;
+    private double _dimLevel;
+    private double _dim;
+    private double _dimFrom;
+    private double _dimTo;
     private bool _activating;
     private bool _allowClose;
     private bool _closed;
@@ -66,6 +80,8 @@ internal sealed partial class OverviewWindow : Window
         _thumbnails = new ThumbnailLayer(ThumbnailCanvas, context.Icons);
         _thumbnails.WindowActivated += (_, hwnd) => ActivateWindow(hwnd);
         _thumbnails.WindowCloseRequested += (_, hwnd) => WindowActivator.Close(hwnd);
+        _animator = new OverviewAnimator(Dispatcher);
+        Dimmer.Fill = _dimBrush;
 
         AppGrid.ItemsSource = _apps.Tiles;
         _apps.Changed += OnAppsChanged;
@@ -75,6 +91,14 @@ internal sealed partial class OverviewWindow : Window
         var exStyle = NativeMethods.GetExStyle(_hwnd) | NativeMethods.WS_EX_TOOLWINDOW;
         NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWL_EXSTYLE, (nint)exStyle);
         OverviewBackdrop.Apply(this);
+
+        // The overview animates itself; Windows' own show/hide fade would run on top of it.
+        var disabled = 1;
+        var hr = NativeMethods.DwmSetWindowAttribute(_hwnd, NativeMethods.DWMWA_TRANSITIONS_FORCEDISABLED, ref disabled, sizeof(int));
+        if (hr < 0)
+        {
+            Log.Warn($"Overview: DWMWA_TRANSITIONS_FORCEDISABLED failed (hr=0x{hr:X8})");
+        }
     }
 
     /// <summary>True while the overview is on screen.</summary>
@@ -87,18 +111,48 @@ internal sealed partial class OverviewWindow : Window
         && (request.OnlyWindows ?? []).SequenceEqual(_request.OnlyWindows ?? []);
 
     /// <summary>Opens the overview, or switches an open overview to another mode.</summary>
+    /// <remarks>While the overview is closing, a request for the same windows view turns the close around.</remarks>
     public void Open(OverviewRequest request, ActivitiesSettings settings)
     {
-        var wasOpen = IsOpen;
+        var previous = _request;
         _request = request;
-        Dimmer.Opacity = settings.BackdropOpacity * DimStrength;
-        if (!wasOpen)
+        _dimLevel = settings.BackdropOpacity * DimStrength;
+        if (_closing)
         {
-            ShowOnPrimaryMonitor();
+            if (request.Mode == OverviewMode.Windows && SameWindows(previous, request))
+            {
+                Reopen();
+                return;
+            }
+
+            FinishClosing();
         }
 
+        if (IsOpen)
+        {
+            // Switching modes: no transition, but a running one carries on with the dim layer.
+            ClearQuery();
+            ShowModeContent(fromWindows: false);
+            if (!_animator.IsRunning)
+            {
+                SetDim(_dimLevel);
+            }
+
+            return;
+        }
+
+        var animate = NativeMethods.AreClientAreaAnimationsEnabled();
+
+        // Started first so the reveal timing covers all the preparation below; no frame can render before it ends.
+        _dimFrom = animate ? 0 : _dimLevel;
+        _dimTo = _dimLevel;
+        _animator.Run(OverviewTransition.DurationFor(animate, opening: true), OnTransitionFrame, OnOpened, reveal: () => SetCloaked(false));
+
+        SetCloaked(true);
+        SetDim(_dimFrom);
+        ShowOnPrimaryMonitor();
         ClearQuery();
-        ShowModeContent(animate: !wasOpen);
+        ShowModeContent(fromWindows: animate);
     }
 
     /// <summary>
@@ -146,6 +200,45 @@ internal sealed partial class OverviewWindow : Window
             WindowActivator.Activate(focusTarget);
         }
 
+        if (!CanAnimateClose())
+        {
+            FinishClosing();
+            return;
+        }
+
+        // Interrupting the opening glide: only the distance already covered has to be travelled back.
+        var duration = OverviewTransition.CloseDuration;
+        if (_animator.IsRunning)
+        {
+            duration = OverviewTransition.ReverseDuration(duration, _animator.Eased);
+        }
+
+        // Input is ignored until hidden (see OnPreviewKeyDown); only Super or the hot corner turn it around (Open).
+        _closing = true;
+        Root.IsHitTestVisible = false;
+        _thumbnails.BeginClosing(focusTarget);
+        _dimFrom = _dim;
+        _dimTo = 0;
+        _animator.Run(duration, OnTransitionFrame, FinishClosing);
+    }
+
+    /// <summary>
+    /// Glide back only from the window grid (not from search results or the app grid), once the overview has been
+    /// revealed, and not while shutting down.
+    /// </summary>
+    private bool CanAnimateClose() =>
+        !_closed
+        && !_allowClose
+        && !_animator.IsWaitingToReveal
+        && _thumbnailsShown
+        && _thumbnails.IsVisible
+        && NativeMethods.AreClientAreaAnimationsEnabled();
+
+    /// <summary>Hides the overview straight away and releases every thumbnail.</summary>
+    private void FinishClosing()
+    {
+        _closing = false;
+        Root.IsHitTestVisible = true;
         if (!_closed)
         {
             Hide();
@@ -156,6 +249,9 @@ internal sealed partial class OverviewWindow : Window
                 NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
         }
 
+        // After hiding: stopping an opening that is still waiting uncloaks the window, which must not flash.
+        _animator.Stop();
+        _windowsChangedWhileMoving = false;
         _thumbnails.Clear();
         _thumbnailsShown = false;
         ClearQuery();
@@ -163,24 +259,119 @@ internal sealed partial class OverviewWindow : Window
         SelectGridItem(-1);
     }
 
+    /// <summary>Turns a closing overview around: it takes focus again and the thumbnails head back to the grid.</summary>
+    private void Reopen()
+    {
+        var duration = OverviewTransition.ReverseDuration(OverviewTransition.OpenDuration, _animator.Eased);
+        _closing = false;
+        Root.IsHitTestVisible = true;
+        RememberForeground();
+        _activating = true;
+        try
+        {
+            IsOpen = true;
+            TakeFocus();
+        }
+        finally
+        {
+            _activating = false;
+        }
+
+        _context.Windows.WindowsChanged += OnWindowsChanged;
+        _thumbnails.BeginReopening();
+        _dimFrom = _dim;
+        _dimTo = _dimLevel;
+        _animator.Run(duration, OnTransitionFrame, OnOpened);
+    }
+
+    private void OnTransitionFrame(double eased)
+    {
+        SetDim(_dimFrom, _dimTo, eased);
+        _thumbnails.SetProgress(eased);
+    }
+
+    private void OnOpened()
+    {
+        if (!_thumbnailsShown)
+        {
+            return;
+        }
+
+        _thumbnails.CompleteOpening();
+        if (_windowsChangedWhileMoving)
+        {
+            _windowsChangedWhileMoving = false;
+            _thumbnails.Update(GetWindows());
+        }
+    }
+
+    private void SetDim(double opacity) => SetDim(opacity, opacity, 1);
+
+    private void SetDim(double from, double to, double eased)
+    {
+        var alpha = OverviewTransition.DimAlpha(from, to, eased);
+        _dim = alpha / 255.0;
+        _dimBrush.Color = Color.FromArgb(alpha, 0, 0, 0);
+    }
+
+    /// <summary>
+    /// Cloaking hides the shown window from the screen while WPF draws its first frame. If cloaking fails the
+    /// overview just appears uncloaked, as before.
+    /// </summary>
+    private void SetCloaked(bool cloaked)
+    {
+        var value = cloaked ? 1 : 0;
+        var hr = NativeMethods.DwmSetWindowAttribute(_hwnd, NativeMethods.DWMWA_CLOAK, ref value, sizeof(int));
+        if (hr < 0)
+        {
+            Log.Warn($"Overview: DWMWA_CLOAK={value} failed (hr=0x{hr:X8})");
+        }
+    }
+
+    private static bool SameWindows(OverviewRequest a, OverviewRequest b) =>
+        (a.OnlyWindows ?? []).SequenceEqual(b.OnlyWindows ?? []);
+
     /// <summary>Closes the window for good (shutdown).</summary>
     public void Destroy()
     {
-        Dismiss(restoreFocus: false);
-        _apps.Changed -= OnAppsChanged;
         _allowClose = true;
+        Dismiss(restoreFocus: false);
+        if (_closing)
+        {
+            FinishClosing();
+        }
+
+        _apps.Changed -= OnAppsChanged;
         if (!_closed)
         {
             Close();
         }
     }
 
-    private void ShowOnPrimaryMonitor()
+    /// <summary>Remembers who had focus, unless it is one of WinGnome's own windows (they manage themselves).</summary>
+    private void RememberForeground()
     {
-        // Remember who had focus, unless it is one of WinGnome's own windows (they manage themselves).
         var foreground = NativeMethods.GetForegroundWindow();
         _previousForeground = NativeMethods.GetProcessId(foreground) == NativeMethods.GetCurrentProcessId() ? 0 : foreground;
+    }
 
+    private void TakeFocus()
+    {
+        // We usually own the foreground right now (hotkey, click on the dock or top bar), but not after a
+        // hot-corner dwell; WindowActivator works around the foreground lock in that case.
+        if (NativeMethods.GetForegroundWindow() != _hwnd)
+        {
+            WindowActivator.Activate(_hwnd);
+        }
+
+        Activate();
+        SearchBox.Focus();
+        Keyboard.Focus(SearchBox);
+    }
+
+    private void ShowOnPrimaryMonitor()
+    {
+        RememberForeground();
         var (monitor, _) = NativeMethods.GetPrimaryMonitorRects();
         _bounds = monitor;
 
@@ -201,17 +392,7 @@ internal sealed partial class OverviewWindow : Window
 
             IsOpen = true;
             Show();
-
-            // We usually own the foreground right now (hotkey, click on the dock or top bar), but not after a
-            // hot-corner dwell; WindowActivator works around the foreground lock in that case.
-            if (NativeMethods.GetForegroundWindow() != _hwnd)
-            {
-                WindowActivator.Activate(_hwnd);
-            }
-
-            Activate();
-            SearchBox.Focus();
-            Keyboard.Focus(SearchBox);
+            TakeFocus();
         }
         finally
         {
@@ -235,7 +416,7 @@ internal sealed partial class OverviewWindow : Window
     }
 
     /// <summary>Shows thumbnails or the app grid for the current mode (search results take over while typing).</summary>
-    private void ShowModeContent(bool animate)
+    private void ShowModeContent(bool fromWindows)
     {
         ResultsScroller.Visibility = Visibility.Collapsed;
         if (_request.Mode == OverviewMode.Applications)
@@ -258,7 +439,7 @@ internal sealed partial class OverviewWindow : Window
 
         var size = new LayoutSize(_bounds.Width / _scale, _bounds.Height / _scale);
         var area = new LayoutRect(SideMargin, ContentTop, size.Width - (2 * SideMargin), size.Height - ContentTop - BottomMargin);
-        _thumbnails.Show(_hwnd, _bounds, _scale, area, GetWindows(), animate);
+        _thumbnails.Show(_hwnd, _bounds, _scale, area, GetWindows(), fromWindows);
         _thumbnailsShown = true;
     }
 
@@ -284,7 +465,15 @@ internal sealed partial class OverviewWindow : Window
 
         if (_thumbnailsShown)
         {
-            _thumbnails.Update(GetWindows());
+            // Rearranging mid-glide would make thumbnails jump; the grid catches up once it has settled (OnOpened).
+            if (_animator.IsRunning)
+            {
+                _windowsChangedWhileMoving = true;
+            }
+            else
+            {
+                _thumbnails.Update(GetWindows());
+            }
         }
 
         if (ResultsScroller.Visibility == Visibility.Visible)
@@ -330,7 +519,7 @@ internal sealed partial class OverviewWindow : Window
         if (query.Length == 0)
         {
             SetResults([], []);
-            ShowModeContent(animate: false);
+            ShowModeContent(fromWindows: false);
             return;
         }
 
@@ -470,6 +659,13 @@ internal sealed partial class OverviewWindow : Window
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (_closing)
+        {
+            // Closing ignores the keyboard (handled key-downs produce no text input either).
+            e.Handled = true;
+            return;
+        }
+
         var resultsShown = ResultsScroller.Visibility == Visibility.Visible;
         switch (e.Key)
         {
@@ -621,6 +817,12 @@ internal sealed partial class OverviewWindow : Window
         // Application shutdown closes every window, possibly before the feature is disposed.
         _closed = true;
         Dismiss(restoreFocus: false);
+        if (_closing)
+        {
+            FinishClosing();
+        }
+
+        _animator.Stop();
         base.OnClosed(e);
     }
 
