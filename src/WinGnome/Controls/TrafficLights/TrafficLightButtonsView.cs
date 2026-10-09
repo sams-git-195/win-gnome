@@ -5,7 +5,7 @@ using WinGnome.Core.Settings;
 using WinGnome.Core.Theming;
 using WinGnome.Core.Windows;
 
-namespace WinGnome.Features.WindowButtons;
+namespace WinGnome.Controls.TrafficLights;
 
 /// <summary>
 /// Draws the three traffic-light circles and turns clicks into <see cref="ButtonClicked"/>. Everything is drawn

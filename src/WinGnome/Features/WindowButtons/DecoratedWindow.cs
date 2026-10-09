@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using WinGnome.Controls.TrafficLights;
 using WinGnome.Core.Settings;
 using WinGnome.Core.Theming;
 using WinGnome.Core.Windows;
