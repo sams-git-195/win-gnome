@@ -130,8 +130,9 @@ public class AppBarReservationTests
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 6500), recovery.Update(reserved: false, shrinkAllowed: true, 6499));
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Shrink, 26500), recovery.Update(reserved: false, shrinkAllowed: true, 6500));
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Shrink, 46500), recovery.Update(reserved: false, shrinkAllowed: true, 26500));
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp), recovery.Update(reserved: false, shrinkAllowed: true, 46500));
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp), recovery.Update(reserved: false, shrinkAllowed: true, 10_000_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp, 346_500), recovery.Update(reserved: false, shrinkAllowed: true, 46500));
+        // Long after the cool-down ended: the check starts a fresh episode instead of giving up forever (KI-102).
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 10_001_500), recovery.Update(reserved: false, shrinkAllowed: true, 10_000_000));
     }
 
     [Fact]
@@ -144,7 +145,7 @@ public class AppBarReservationTests
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Reregister, 6500), recovery.Update(reserved: false, shrinkAllowed: false, 1500));
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Reregister, 26500), recovery.Update(reserved: false, shrinkAllowed: false, 6500));
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Reregister, 46500), recovery.Update(reserved: false, shrinkAllowed: false, 26500));
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp), recovery.Update(reserved: false, shrinkAllowed: false, 46500));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp, 346_500), recovery.Update(reserved: false, shrinkAllowed: false, 46500));
     }
 
     [Fact]
@@ -186,6 +187,98 @@ public class AppBarReservationTests
         Assert.False(recovery.IsMissing);
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 501_500), recovery.Update(reserved: false, shrinkAllowed: true, 500_000));
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Shrink, 506_500), recovery.Update(reserved: false, shrinkAllowed: true, 501_500));
+    }
+
+    /// <summary>Drives one episode to its first give-up, stamped 46500 + ReArmDelayMs = 346500.</summary>
+    private static StripRecovery ExhaustedAt46500()
+    {
+        var recovery = new StripRecovery();
+        recovery.Update(reserved: false, shrinkAllowed: true, 0);
+        recovery.Update(reserved: false, shrinkAllowed: true, 1500);
+        recovery.Update(reserved: false, shrinkAllowed: true, 6500);
+        recovery.Update(reserved: false, shrinkAllowed: true, 26500);
+        recovery.Update(reserved: false, shrinkAllowed: true, 46500);
+        return recovery;
+    }
+
+    [Fact]
+    public void Recovery_GiveUp_CarriesTheReArmDueTime()
+    {
+        var recovery = new StripRecovery();
+        recovery.Update(reserved: false, shrinkAllowed: true, 0);
+        recovery.Update(reserved: false, shrinkAllowed: true, 1500);
+        recovery.Update(reserved: false, shrinkAllowed: true, 6500);
+        recovery.Update(reserved: false, shrinkAllowed: true, 26500);
+
+        // Every post-exhaustion give-up carries the stamped deadline (never DueMs = 0): CheckStrip re-points its
+        // one-shot timer at it verbatim.
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp, 346_500), recovery.Update(reserved: false, shrinkAllowed: true, 46500));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp, 346_500), recovery.Update(reserved: false, shrinkAllowed: true, 100_000));
+    }
+
+    [Fact]
+    public void Recovery_GiveUp_DoesNotSlideTheCoolDown()
+    {
+        var recovery = ExhaustedAt46500();
+
+        // A forced-pass storm during a fight calls Update repeatedly; re-scheduling may shorten the remaining
+        // interval but the deadline itself must never move later.
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp, 346_500), recovery.Update(reserved: false, shrinkAllowed: true, 200_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp, 346_500), recovery.Update(reserved: false, shrinkAllowed: true, 346_499));
+    }
+
+    [Fact]
+    public void Recovery_AfterTheCoolDown_StartsAFreshEpisode()
+    {
+        var recovery = ExhaustedAt46500();
+
+        // The KI-102(b) regression: at the deadline the next check starts a fresh, fully bounded episode instead
+        // of giving up for the rest of the run.
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 348_000), recovery.Update(reserved: false, shrinkAllowed: true, 346_500));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Shrink, 353_000), recovery.Update(reserved: false, shrinkAllowed: true, 348_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Shrink, 373_000), recovery.Update(reserved: false, shrinkAllowed: true, 353_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Shrink, 393_000), recovery.Update(reserved: false, shrinkAllowed: true, 373_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp, 693_000), recovery.Update(reserved: false, shrinkAllowed: true, 393_000));
+    }
+
+    [Fact]
+    public void Recovery_BeforeTheCoolDownEnds_StillGivesUp()
+    {
+        var recovery = ExhaustedAt46500();
+
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp, 346_500), recovery.Update(reserved: false, shrinkAllowed: true, 346_499));
+    }
+
+    [Fact]
+    public void Recovery_ReservedDuringTheCoolDown_EndsItAtOnce()
+    {
+        var recovery = ExhaustedAt46500();
+
+        // Explorer applied the strip during the cool-down: it ends at once.
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.None), recovery.Update(reserved: true, shrinkAllowed: true, 50_000));
+
+        // And it took the deadline with it: the next give-up stamps a new one from the new time, not the stale one.
+        recovery.Update(reserved: false, shrinkAllowed: true, 1_000_000);
+        recovery.Update(reserved: false, shrinkAllowed: true, 1_001_500);
+        recovery.Update(reserved: false, shrinkAllowed: true, 1_006_500);
+        recovery.Update(reserved: false, shrinkAllowed: true, 1_026_500);
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp, 1_346_500), recovery.Update(reserved: false, shrinkAllowed: true, 1_046_500));
+    }
+
+    [Fact]
+    public void Recovery_Reset_ClearsTheCoolDown()
+    {
+        var recovery = ExhaustedAt46500();
+
+        // The bar was undocked during the cool-down.
+        recovery.Reset();
+
+        // Docked afresh much later: the new give-up stamps a new deadline from the new time, not the stale one.
+        recovery.Update(reserved: false, shrinkAllowed: true, 1_000_000);
+        recovery.Update(reserved: false, shrinkAllowed: true, 1_001_500);
+        recovery.Update(reserved: false, shrinkAllowed: true, 1_006_500);
+        recovery.Update(reserved: false, shrinkAllowed: true, 1_026_500);
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp, 1_346_500), recovery.Update(reserved: false, shrinkAllowed: true, 1_046_500));
     }
 
     [Fact]
