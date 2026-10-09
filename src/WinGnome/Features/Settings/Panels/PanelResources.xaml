@@ -9,5 +9,6 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ResourceDictionary.MergedDictionaries>
         <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/RegionLanguage/RegionLanguagePanelResources.xaml" />
+        <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/WindowsUpdate/WindowsUpdatePanelResources.xaml" />
     </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>

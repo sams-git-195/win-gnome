@@ -9,6 +9,7 @@ using WinGnome.Features.Settings.Panels.Multitasking;
 using WinGnome.Features.Settings.Panels.Power;
 using WinGnome.Features.Settings.Panels.RegionLanguage;
 using WinGnome.Features.Settings.Panels.Sound;
+using WinGnome.Features.Settings.Panels.WindowsUpdate;
 
 namespace WinGnome.Features.Settings.Panels;
 
@@ -33,5 +34,6 @@ internal static class PanelRegistry
             [PanelIds.DateTime] = context => new DateTimePanelViewModel(context),
             [PanelIds.About] = context => new AboutPanelViewModel(context),
             [PanelIds.RegionLanguage] = context => new RegionLanguagePanelViewModel(context),
+            [PanelIds.WindowsUpdate] = context => new WindowsUpdatePanelViewModel(context),
         };
 }
