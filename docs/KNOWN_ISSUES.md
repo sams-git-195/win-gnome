@@ -16,8 +16,8 @@ Status is one of *Open*, *In progress*, *By design* (a limitation we've chosen t
 or *Fixed* (with the commit). When in doubt, pick the higher severity. A resolved entry may carry a `### KI-…`
 detail section below the Resolved table when the measured evidence behind the fix is worth keeping (KI-100).
 
-IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-101 all
-have entries now). The next free ID is **KI-102**; grep the specs for `KI-0` before allocating one.
+IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-102 all
+have entries now). The next free ID is **KI-103**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
@@ -70,6 +70,7 @@ have entries now). The next free ID is **KI-102**; grep the specs for `KI-0` bef
 | [KI-098](#ki-098) | S4 | Top bar, Dock | `MonitorKeyOf` can map a recycled HMONITOR to the wrong monitor for up to 250 ms | Open |
 | [KI-099](#ki-099) | S3 | Top bar, Dock | WinGnome sets monitor work areas directly when Explorer doesn't apply a strip it granted | Open |
 | [KI-101](#ki-101) | S4 | Settings | About and Displays bypass the shared load gate; a failed About read shows nothing at all | Open |
+| [KI-102](#ki-102) | S3 | Top bar, Dock | Explorer keeps recomputing work areas without the strips after an everyday display pass, and the fallback's give-up lasts the run | Open |
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -693,6 +694,8 @@ observed); the taskbar-**hidden** branch of the corrupt-marker repair ("work are
 crash path (`EmergencyRestore` → `AppBar.UndockAll` → `ReleaseAll` without the broadcast — only `taskkill /f` was
 exercised, which by design runs nothing); and the TbExp hide-order experiment (immediate / settle / nohide / spi),
 which would say whether the cheaper option 1 in the spec could complement or replace the fallback.
+That verified stability had a time limit: 15 minutes after B6's clean start the same instance lost both strips
+again and the fallback fought Explorer's own recomputes to a terminal give-up — see KI-102.
 *Workaround:* none needed; without it the strip simply arrives late or not at all.
 
 ### KI-101
@@ -706,6 +709,73 @@ Displays logs it and shows an empty display list, whose `Show` does raise the ba
 displays."), so its gap is the duplicated machinery, not a silent failure. Found while fixing KI-091's shared failure
 path. The fix is to convert both to `LoadAsync`, which brings the banner, `onFailed` and the gate for free and deletes
 their local counters.
+
+### KI-102
+**Explorer keeps recomputing work areas without the strips after an everyday display pass, and the fallback's give-up lasts the run** · S3 · Top bar, Dock · Open
+
+Measured on the user's everyday instance, 2026-10-09 (build e85e68e with KI-099's fallback, Windows 11 build 26200;
+DISPLAY1 primary 2560×1600 at 125 %, DISPLAY2 3440×1440 at 100 % at (−447,−1440); the user walked away ~20:35).
+Both top bars lost their strips mid-run, the fallback re-set them again and again over ~7 minutes, then hit the
+three-attempt cap and gave up: both work areas stayed full for the rest of the run and maximised windows covered the
+bars on every monitor. S3 rather than S2 because the bars themselves keep working, the pre-fallback build ended in
+the same state (an incomplete fix, not a regression — one that now costs ~20 SPI writes and broadcasts), and a
+workaround exists.
+
+Timeline (log lines quoted verbatim from the run):
+- 20:35:22 start; the usual KI-099 B6 sequence — the display pass at 20:35:24.990 finds both work areas full, one
+  "work area set directly" per monitor (20:35:26.791, 20:35:27.096), both "reserved again" at 20:35:27.097, the
+  forced pass at 20:35:33.490 still reserved. Then 15 minutes of silence, zero warnings.
+- 20:50:41.006 a **display pass** — not a shell notification — reports both work areas full again:
+  "Displays re-checked: removed 0, changed 0, added 0" with unchanged bounds and DPI on both monitors, so no
+  topology and no mode change. The timing (~15 minutes after the user walked away) is consistent with the displays
+  powering down and/or coming back, but the log does not prove which: treat a display power event as the likely
+  trigger, not a fact.
+- 20:50:42–20:57:22 a fight: 18 further "work area set directly" lines, nine per monitor (20 across the run). The
+  first pair follows the display pass; every later re-shrink is triggered by "after a shell notification the work
+  area of monitor … doesn't leave out the strip …", lands within ~1.5 s and is confirmed by "the strip … is
+  reserved again" within ~2 s — and is reset again seconds to minutes later.
+- 20:57:24–20:57:49 the per-monitor budget refuses six times: "Not setting \\.\DISPLAY1's work area directly:
+  3 applications in the last 60 s already" (and the same for DISPLAY2), each followed by the bar's "… which could
+  not be set directly" line.
+- 20:57:53 both bars hit the cap: "Explorer still hasn't reserved the strip … after 3 attempts; giving up until
+  the next display change". After that, silence: both strips missing and both work areas full until the instance
+  was restarted at 21:16, so the give-up is terminal for the run.
+- The marker at give-up held exactly two records — one per monitor, `Owner` the two bar HWNDs (0xF05FC,
+  0x1550530), `Original` the full bounds, `Applied` the shrunk rectangles: the per-(owner, monitor) replacement
+  rule held through nine re-shrinks on DISPLAY1.
+- Graceful quit 21:16:09 dropped both without writing anything ("Dropped 2 work area record(s) that no longer
+  describe a live work area …"): correct, the live work areas were already the full bounds, and the taskbar and
+  both work areas returned to the exact baseline. The restart at 21:16:40 reproduced the original late-strip bug
+  and the fallback fixed it again within ~4 s, so a restart is a reliable recovery.
+
+What the safety design got right: the two budgets (three applications per monitor per 60 s, three attempts per
+episode) stopped the fight after ~7 minutes instead of letting it run forever, with every refusal logged; and the
+marker never grew past one record per bar and monitor.
+
+What is wrong:
+- (a) Explorer recomputes work areas **without a strip it granted to a still-registered AppBar** — the same state
+  as KI-099's deferred layout pass, but reachable mid-run from an everyday event — and each of our
+  `SPI_SETWORKAREA` writes (with `SPIF_SENDCHANGE`) appears to provoke another such recompute, so the fallback
+  feeds the fight it is trying to win.
+- (b) The give-up is terminal for the run. `StripRecovery.Reset()` is called only on undock and when the strip is
+  reserved again, so a later display pass that changes nothing does not re-arm the recovery: the log's "giving up
+  until the next display change" is inaccurate as written — a display change re-arms it only when it causes a
+  re-dock.
+
+*Workaround:* restart WinGnome, or switch the top bar off and on — re-docking re-arms the recovery.
+
+*Fix directions (directions, not decisions):*
+- Run spec 0010's TbExp experiment: its option 1 (hide the taskbar windows only after Explorer has applied
+  auto-hide) attacks the state Explorer is in rather than the symptom.
+- Test whether the shrink WITHOUT `SPIF_SENDCHANGE` sticks — our own broadcast may be what provokes Explorer's
+  recompute (the recovery's checks all ride existing triggers, so they would still run, just later).
+- Consider re-registering the AppBar or nudging the `AppBarJanitor` after a shrink, so Explorer's own recompute
+  includes our strip instead of contradicting it. (Re-registering during the start-up deferral looked harmful and
+  in the steady state after an external reset it restored strips at once; this situation is neither and needs a
+  test.)
+- Consider re-arming `StripRecovery` on a display pass, or after a long cool-down, so a display wake recovers
+  without a restart.
+- Consider giving up sooner: the fight cost 20 writes and broadcasts and ended in the same state as not trying.
 
 ## Resolved
 

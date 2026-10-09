@@ -691,7 +691,16 @@ B12. Q Native taskbar mode (taskbar visible, not auto-hidden) with an always-vis
 12. **WinGnome now writes a system value Explorer also writes.** Bounded by two budgets, always derived from a fresh
     read, only ever moving our own edge inward, and reversible through the record. KI-099 (S3) records it, including
     that a third-party tool which also sets work areas could fight us — after three applications in a minute we stop
-    and log, so a fight cannot become a loop.
+    and log, so a fight cannot become a loop. **That fight was observed for real (2026-10-09, the user's everyday
+    instance), and the other writer was Explorer itself, not a third-party tool:** after a display pass with no
+    topology or mode change (probably a display power event), Explorer recomputed both work areas without the strips
+    it had granted our still-registered AppBars, and each shrink we wrote appeared to provoke another such
+    recompute — 20 direct sets across both monitors over ~7 minutes. Both budgets held and stopped the fight, but it
+    ended in the three-attempt cap's give-up, which is terminal for the run: a display pass that changes nothing
+    does not re-arm `StripRecovery` (only an undock/fresh dock or a strip really reserved again does — the log's
+    "giving up until the next display change" overstates what re-arms it, since a display change only re-docks the
+    bars when the layout actually changed), and both strips stayed missing until a restart. KI-102 (S3) records the
+    measured episode and the fix directions.
 13. **`SPIF_SENDCHANGE` broadcasts synchronously** to top-level windows, so a hung app could delay a shrink. It is
     skipped on the crash path for that reason; on the normal path it runs on the dispatcher and is worth its cost.
 14. **The marker is per profile.** A force-kill followed by a start with a different `--settings-dir` cannot recover
