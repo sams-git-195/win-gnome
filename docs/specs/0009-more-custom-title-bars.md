@@ -44,18 +44,27 @@ Docker Desktop and GitHub Desktop keep their own buttons, and VS Code is unconfi
 - Core `CaptionDecorationRules`: `Chrome_WidgetWin_` prefix; `WebButtonProfiles` (exe + class → button width DIP).
 - Core `CaptionHitTestProbe.FindGroupLeft`: gap tolerance, equal-width and minimum-span checks, `MaxTopGap` 8 DIP.
 - Core `CaptionHoleProbe.FindClientHoles(xs, codes, scale, expectedWidthDip)`.
-- Core click guard decision: `ProbedClickCheck.Allows(expectedCode, actualCode)`.
+- Core click guard decision: `ProbedClickCheck.Allows(expectedCode, actualCode)` (a consistency check, strong only
+  where the expected answer is a button code; see Safety and recovery).
 - App `CustomCaptionProbe`: deepest-child hit testing (`ChildWindowFromPointEx` with skip-invisible/transparent,
   walking down), records the answering HWND; profile path. `ProbedCaption.Source` (HitTest, ChildHitTest, Profile)
   for logging. Click guard in `CaptionCommands` path for probed windows.
 - Settings page: the new toggle with its subtitle; the experimental subtitle names the apps.
 
 ## Safety and recovery
-No system state changes; probed windows are never recoloured. The click guard prevents a stale or wrong decoration
-from sending a window command where the app no longer has that button.
+No system state changes; probed windows are never recoloured. For windows that report button codes, the click guard
+stops a stale or wrong decoration from sending a window command where the app no longer has that button. For the
+web-button paths it is much weaker: over HTML holes it only confirms the point is still client area, which most
+of a window is, so it catches a layout that turned into drag region but not one where the buttons moved elsewhere
+in the client area (KI-041). The maximise-anchored path also re-checks the maximise zone, which is a real button
+code. Those paths rely mainly on the strict row checks and stay behind their own opt-in setting.
 
 ## Footprint
-Unchanged at idle. Child lookups add a few cheap calls per sample; the click guard adds one message per click.
+Unchanged at idle. Child lookups add a few cheap calls per sample; the click guard adds one message per click (two
+beside a maximise anchor). Probes are debounced and use one shared one-shot timer. The KI-016 change re-samples a
+decorated window's patch once per settled move or resize by code: one screen `GetPixel` (a few milliseconds of
+DWM read-back) 450 ms after the last location change, on the same kind of shared one-shot timer; user drags don't
+add one, since they already sample on `MOVESIZEEND`.
 
 ## Acceptance criteria
 1. Core tests: Docker's row (45/43/gap 2/43 px at 125 %) accepted; a 5 DIP gap rejected; unequal runs rejected; wrong
@@ -69,7 +78,8 @@ Unchanged at idle. Child lookups add a few cheap calls per sample; the click gua
 
 ## Risks and open questions
 - Dia's restored geometry wasn't measured (it was minimised during research).
-- A future GitHub Desktop release could move its buttons; the hole check and click guard then leave it undecorated.
+- A future GitHub Desktop release could move its buttons. The hole check then leaves it undecorated at the next
+  probe; until then the click guard only notices if the old position stopped being client area (KI-041).
 
 ## Implementation notes
 - **Dia isn't decorated.** Measured on a restored Dia window (2251×1419 at 125 %, 2026-10-09): the deepest child
