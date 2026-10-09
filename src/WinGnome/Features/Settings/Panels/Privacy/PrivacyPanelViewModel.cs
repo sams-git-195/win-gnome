@@ -9,13 +9,17 @@ namespace WinGnome.Features.Settings.Panels.Privacy;
 /// <summary>One app in a capability's list: a switch for a packaged app, only its use for a desktop app.</summary>
 internal sealed class PrivacyAppViewModel : ObservableObject
 {
-    public PrivacyAppViewModel(ConsentAppRow row, Action<PrivacyAppViewModel, VerifiedSwitch, bool> change)
+    public PrivacyAppViewModel(ConsentAppRow row, PrivacyCapabilityViewModel capability, Action<PrivacyAppViewModel, VerifiedSwitch, bool> change)
     {
+        Capability = capability;
         Key = row.Key;
         Name = row.Name;
         IsDesktop = row.IsDesktop;
         Switch = new VerifiedSwitch((sw, on) => change(this, sw, on));
     }
+
+    /// <summary>The camera, microphone or location list this app belongs to.</summary>
+    public PrivacyCapabilityViewModel Capability { get; }
 
     /// <summary>The registry key name (the package family name for a packaged app).</summary>
     public string Key { get; }
@@ -138,7 +142,7 @@ internal sealed class PrivacyCapabilityViewModel : ObservableObject
         {
             if (!_known.TryGetValue(row.Key, out var app))
             {
-                app = new PrivacyAppViewModel(row, _changeApp);
+                app = new PrivacyAppViewModel(row, this, _changeApp);
                 _known[row.Key] = app;
             }
 
@@ -248,13 +252,10 @@ internal sealed class PrivacyPanelViewModel : SystemPanelViewModel
 
     private void ChangeApp(PrivacyAppViewModel app, VerifiedSwitch target, bool on)
     {
-        var capability = CapabilityOf(app);
+        var capability = app.Capability;
         Change(target, $"{capability.Noun} access for {app.Name}", $"turn {capability.Noun} access for {app.Name} {(on ? "on" : "off")}",
             () => ConsentStore.SetApp(capability.Capability, app.Key, on));
     }
-
-    private PrivacyCapabilityViewModel CapabilityOf(PrivacyAppViewModel app) =>
-        new[] { Camera, Microphone, Location }.First(c => c.AppList.Contains(app));
 
     /// <summary>Writes on the writer thread, then reads everything back and shows it. Does nothing in safe mode.</summary>
     private void Change(VerifiedSwitch target, string label, string what, Action write)

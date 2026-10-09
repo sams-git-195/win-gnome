@@ -54,6 +54,10 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
     // Bumped by every open and close, so a LoadAsync result is shown only by the same Open that asked for it.
     private int _generation;
 
+    // Bumped by every LoadAsync, so when loads overlap (a re-read after each write) only the newest one is shown and an
+    // older read that finishes late can't put stale values back.
+    private int _loadSequence;
+
     protected SystemPanelViewModel(SystemPanelContext context, string panelId)
         : this(context, SettingsPanelCatalog.Find(panelId) ?? throw new ArgumentException($"Unknown panel \"{panelId}\".", nameof(panelId)))
     {
@@ -129,7 +133,7 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
 
     /// <summary>
     /// Runs <paramref name="read"/> off the UI thread and passes its result to <paramref name="show"/> on the dispatcher,
-    /// but only while the panel is still open from the same <see cref="Open"/>: a read that finishes after the panel was
+    /// but only while the panel is still open from the same <see cref="Open"/> and no later <see cref="LoadAsync{T}"/> was started: a read that finishes after the panel was
     /// closed (or closed and reopened) is dropped. A failure is logged and shown as <see cref="Problem"/>. Call it from
     /// the UI thread (usually in <see cref="Open"/>).
     /// </summary>
@@ -143,6 +147,7 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
         ArgumentNullException.ThrowIfNull(read);
         ArgumentNullException.ThrowIfNull(show);
         var generation = _generation;
+        var sequence = ++_loadSequence;
 
         void Work()
         {
@@ -155,11 +160,11 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
             {
                 // Thread boundary: an exception escaping a worker would end the shell process.
                 Log.Warn($"Settings: could not read the \"{_panelId}\" panel's settings", ex);
-                ShowIfCurrent(generation, () => Problem = "Couldn't read these settings from Windows. You can see them in Windows Settings instead.");
+                ShowIfCurrent(generation, sequence, () => Problem = "Couldn't read these settings from Windows. You can see them in Windows Settings instead.");
                 return;
             }
 
-            ShowIfCurrent(generation, () => show(result));
+            ShowIfCurrent(generation, sequence, () => show(result));
         }
 
         if (longRunning)
@@ -175,10 +180,10 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
     }
 
     /// <summary>Runs <paramref name="action"/> on the dispatcher if the panel is still in the open state <paramref name="generation"/>.</summary>
-    private void ShowIfCurrent(int generation, Action action) =>
+    private void ShowIfCurrent(int generation, int sequence, Action action) =>
         Context.Dispatcher.BeginInvoke(() =>
         {
-            if (!_isOpen || generation != _generation)
+            if (!_isOpen || generation != _generation || sequence != _loadSequence)
             {
                 return;
             }
