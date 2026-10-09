@@ -113,6 +113,41 @@ public class HeaderBarLayoutTests
     }
 
     [Theory]
+    [InlineData(ButtonOrder.MinimizeMaximizeClose)]
+    [InlineData(ButtonOrder.CloseMinimizeMaximize)]
+    public void ComputeForHeaderBar_CloseOnlyOnTheRight_PutsTheCloseCircleAtTheEnd(ButtonOrder order)
+    {
+        var settings = Settings();
+        settings.Order = order;
+
+        var layout = CaptionButtonLayout.ComputeForHeaderBar(460, 46, settings, closeOnly: true)!;
+
+        Assert.Equal(new PixelRect(322, 0, 460, 46), layout.Bounds);
+        Assert.Equal([new CaptionButtonSlot(CaptionButtonKind.Close, 119, 23)], layout.Buttons);
+    }
+
+    [Fact]
+    public void ComputeForHeaderBar_CloseOnlyOnTheLeft_NarrowsTheGroupToOneCircle()
+    {
+        var settings = Settings();
+        settings.Side = ButtonSide.Left;
+
+        var layout = CaptionButtonLayout.ComputeForHeaderBar(460, 46, settings, closeOnly: true)!;
+
+        Assert.Equal(new PixelRect(8, 0, 46, 46), layout.Bounds);
+        Assert.Equal([new CaptionButtonSlot(CaptionButtonKind.Close, 19, 23)], layout.Buttons);
+    }
+
+    [Fact]
+    public void ComputeForHeaderBar_CloseOnlyInATinyBar_ShrinksTheCircleToTheMinimum()
+    {
+        var layout = CaptionButtonLayout.ComputeForHeaderBar(30, 46, Settings(), closeOnly: true)!;
+
+        Assert.Equal(8, layout.Diameter);
+        Assert.Equal([new CaptionButtonSlot(CaptionButtonKind.Close, 14, 23)], layout.Buttons);
+    }
+
+    [Theory]
     [InlineData(0, 46)]
     [InlineData(-10, 46)]
     [InlineData(940, 0)]

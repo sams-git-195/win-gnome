@@ -37,14 +37,20 @@ public static class CaptionButtonLayout
     public static CaptionOverlayLayout? Compute(PixelRect nativeButtonsScreen, PixelRect windowScreen, double dpiScale, WindowButtonSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        CaptionButtonKind[] order = settings.Order == ButtonOrder.CloseMinimizeMaximize
+            ? [CaptionButtonKind.Close, CaptionButtonKind.Minimize, CaptionButtonKind.Maximize]
+            : [CaptionButtonKind.Minimize, CaptionButtonKind.Maximize, CaptionButtonKind.Close];
+        return Compute(nativeButtonsScreen, windowScreen, dpiScale, settings, order);
+    }
+
+    private static CaptionOverlayLayout? Compute(
+        PixelRect nativeButtonsScreen, PixelRect windowScreen, double dpiScale, WindowButtonSettings settings, CaptionButtonKind[] order)
+    {
         if (nativeButtonsScreen.IsEmpty || !double.IsFinite(dpiScale) || dpiScale <= 0)
         {
             return null;
         }
 
-        CaptionButtonKind[] order = settings.Order == ButtonOrder.CloseMinimizeMaximize
-            ? [CaptionButtonKind.Close, CaptionButtonKind.Minimize, CaptionButtonKind.Maximize]
-            : [CaptionButtonKind.Minimize, CaptionButtonKind.Maximize, CaptionButtonKind.Close];
         var count = order.Length;
 
         var diameter = Math.Max(MinDiameter, double.IsFinite(settings.Diameter) ? settings.Diameter : MinDiameter);
@@ -107,7 +113,11 @@ public static class CaptionButtonLayout
     /// The layout in DIPs: <see cref="CaptionOverlayLayout.Bounds"/> is the button group's area inside the bar and the
     /// slot centres are relative to it. Null when the bar has no area.
     /// </returns>
-    public static CaptionOverlayLayout? ComputeForHeaderBar(double widthDip, double heightDip, WindowButtonSettings settings)
+    /// <param name="widthDip">Width of the bar in DIPs.</param>
+    /// <param name="heightDip">Height of the bar in DIPs.</param>
+    /// <param name="settings">User settings (side, order, diameter, spacing).</param>
+    /// <param name="closeOnly">Lay out only the close circle (dialogs), at the end of the bar on the configured side.</param>
+    public static CaptionOverlayLayout? ComputeForHeaderBar(double widthDip, double heightDip, WindowButtonSettings settings, bool closeOnly = false)
     {
         ArgumentNullException.ThrowIfNull(settings);
         if (!double.IsFinite(widthDip) || !double.IsFinite(heightDip))
@@ -122,7 +132,9 @@ public static class CaptionButtonLayout
         }
 
         var native = new PixelRect(Math.Max(0, bar.Right - HeaderBarNativeButtonsWidth), 0, bar.Right, bar.Bottom);
-        return Compute(native, bar, 1.0, settings);
+        return closeOnly
+            ? Compute(native, bar, 1.0, settings, [CaptionButtonKind.Close])
+            : Compute(native, bar, 1.0, settings);
     }
 
     private static int RoundToInt(double value) => (int)Math.Round(value, MidpointRounding.AwayFromZero);
