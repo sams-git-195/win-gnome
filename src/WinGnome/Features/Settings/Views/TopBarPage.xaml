@@ -75,8 +75,11 @@
         </c:SettingsGroup>
 
         <c:SettingsGroup Header="Contents">
-            <c:SettingsRow Title="Logo menu" Subtitle="A Windows logo at the far left with settings, Task Manager and power options, like the macOS Apple menu.">
+            <c:SettingsRow Title="Logo menu" Subtitle="A logo at the far left with settings, Task Manager and power options, like the macOS Apple menu.">
                 <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding ShowLogoMenu.Value}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Logo icon" Subtitle="{Binding LogoSubtitle}">
+                <ComboBox ItemsSource="{Binding LogoOptions}" SelectedItem="{Binding SelectedLogo}" DisplayMemberPath="Label" />
             </c:SettingsRow>
             <c:SettingsRow Title="Activities button">
                 <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding ShowActivities.Value}" />
