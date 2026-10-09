@@ -13,7 +13,8 @@ for when to add, update and close entries.
 | **S4 Low** | Cosmetic, rare, or a documented limitation. | One-pixel misalignment; tooltip wording; behaviour Windows doesn't allow us to change. |
 
 Status is one of *Open*, *In progress*, *By design* (a limitation we've chosen to accept, with the reason),
-or *Fixed* (with the commit). When in doubt, pick the higher severity.
+or *Fixed* (with the commit). When in doubt, pick the higher severity. A resolved entry may carry a `### KI-…`
+detail section below the Resolved table when the measured evidence behind the fix is worth keeping (KI-100).
 
 IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017, KI-098 and KI-099 by
 spec 0010, and KI-100 by the Docker Desktop dock-grouping fix. The next free ID is **KI-102**; grep the specs for
@@ -592,3 +593,42 @@ their local counters.
 | KI-053 | S4 | Dock | An elevated launch played the launch animation even when the UAC prompt was cancelled | b09a222 (feedback posted back only after `ShellExecuteEx` succeeds) |
 | KI-054 | S3 | Dock | Full-trust packaged apps such as Windows Terminal couldn't be run as administrator | b09a222 (`PKEY_AppUserModel_HostEnvironment` in `AppCatalog`) |
 | KI-065 | S4 | Settings | Quick settings rows and the gear opened Windows Settings pages instead of the matching native panel | f5dcf13 (`TopBarActions` via `ShowSettings`; `--settings-panel` forwarded to a running instance; Win+I waits for shell-mode hotkeys, spec 0013) |
+| KI-100 | S3 | Dock | A pinned Docker Desktop showed a second, unpinned icon while running | c842f5d (launcher-child rule in `AppPathMatch.IsSameInstall`; see below) |
+
+### KI-100
+**A pinned Docker Desktop showed a second, unpinned icon while running** · S3 · Dock · Fixed in c842f5d
+
+The user's only Docker pin is the named AUMID `Docker.DockerForWindows.Settings`. Evidence measured live on
+Docker Desktop 4.83.0: that AUMID resolves through the Start-menu shortcut to the root launcher
+`C:\Program Files\Docker\Docker\Docker Desktop.exe` (FileDescription "Docker Desktop Launcher"; it holds no
+windows), while the dashboard window (class `Chrome_WidgetWin_1`, unowned) belongs to a different same-named exe
+one folder down, `C:\Program Files\Docker\Docker\frontend\Docker Desktop.exe` (Electron, `--name=dashboard`).
+Neither exposes an AppUserModelID another process can read: `SHGetPropertyStoreForWindow` +
+`PKEY_AppUserModel_ID` returns S_OK with VT_EMPTY, and `GetApplicationUserModelId` returns 15703
+(APPMODEL_ERROR_NO_APPLICATION) for both processes; the probe was validated against a packaged app that does
+return one. The layout is neither Squirrel (`app-<version>`) nor MSIX, so none of the identity, same-install or
+exe-name passes in `DockModelBuilder.FindPinnedSlot` matched and the window became an unpinned group after the
+pinned slots.
+
+*Fix:* `AppPathMatch.IsSameInstall` now also matches the launcher-stub layout — a same-file-named executable in
+a direct child folder of the target's folder, with the shared folder required to be a real directory (never a
+drive root). The rule is one-way, the process below the target; the reverse layout (launcher in a subfolder, UI
+at the root) needs no rule, because such a pin is a path pin whose root-UI window already matches by identity or
+by the exe-name fallback. `DockModelBuilder` is unchanged; its gate (a named-AUMID pin only takes a window with
+no AUMID of its own) still keeps browser-PWA windows separate.
+
+*Deliberately flipped guardrail:* the 632e8ac test `IsSameInstall_ProcessInASubfolderThatIsNotSquirrel_IsFalse`
+(`...\Foo\bin\Foo.exe` against `...\Foo\Foo.exe`) asserted exactly the shape that is now true. No documented
+real-world app stood behind it (spec 0006 describes only the Squirrel rule), so it was replaced by the
+two-folders-down case `IsSameInstall_ProcessInAGrandchildFolder_IsFalse`.
+
+*Accepted trade-off:* a different product installed one level inside a pinned app's folder with the same binary
+name now groups with that pin (for example `...\GitHubDesktop\app-foo\GitHubDesktop.exe` joins the stub pin).
+Windows that report their own AUMID are still exempt for named-AUMID pins. The real-directory guard covers drive
+roots and folder-less relative paths only: a UNC share root (`\\server\share`) is not guarded, so a same-named
+exe in a child folder of a share would also pair — accepted because Start-menu pins resolve through
+`System.Link.TargetParsingPath`, which is almost always local.
+
+*Fix direction (not done, out of scope):* `AppCatalog.FindForWindow` falls back to the Squirrel stub only, so an
+**unpinned** Docker dashboard still gets its name and icon from the `frontend\` exe rather than the catalogue
+entry. Extending that fallback to the launcher-child layout would be a small, separate change.

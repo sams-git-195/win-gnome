@@ -24,6 +24,10 @@ Status: Implemented (branch improvements/shell-polish)
 - For named-AUMID pins the path rule applies only to windows that report no AUMID of their own, so browser web
   apps (which run the browser's exe with their own AUMID) keep their own icon instead of joining a pinned browser.
   Path pins match by install whatever the window's AUMID (Squirrel apps such as Discord set one).
+- Note (KI-100, after this spec): `IsSameInstall` also matches the launcher-stub layout — a same-file-named
+  executable in a direct child folder of the target's folder. Docker Desktop's shortcut targets the root launcher
+  while the UI runs from `frontend\Docker Desktop.exe` with no AUMID another process can read, so without the rule
+  its window showed as a second, unpinned icon.
 - No new settings.
 
 ## Non-goals

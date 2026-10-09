@@ -31,7 +31,7 @@ the way it was when it exits.
 ### Dock
 - Pinned apps plus running apps, with **running-indicator dots** (one per window, up to four).
 - **Click** focuses an app (restoring it if minimised), or minimises it if it's already focused. Other click actions: *cycle windows* or *show previews*.
-- Running windows join their pinned icon, including Electron apps such as VS Code and Squirrel-installed apps such as GitHub Desktop and Discord.
+- Running windows join their pinned icon, including Electron apps such as VS Code, Squirrel-installed apps such as GitHub Desktop and Discord, and launcher-stub apps such as Docker Desktop, whose UI runs from a folder beside the launcher the shortcut points at.
 - **Middle-click** opens a new window. **Right-click** lists the app's windows plus *New window*, *Pin/Unpin* and *Quit*.
 - **Run as administrator** (right-click) starts an app elevated after the UAC prompt; pinned apps also get an *Always run as administrator* checkbox. As in Start, this works for desktop apps and full-trust Store apps such as Windows Terminal, but not for UWP apps such as Calculator or for File Explorer, which don't offer it. WinGnome itself never runs elevated.
 - **Super+1…9** activates the n-th dock item.
