@@ -306,5 +306,5 @@ them to the rule, keeping the desktop, taskbar and other shell windows out.
 | KI-020 | S3 | App | A graceful `taskkill` that reached the tray host window was ignored, so WinGnome didn't quit | 085fa14 |
 | KI-030 | S4 | Overview | The first overview open after start took about half a second (WPF's first full-screen frame) | 1e4522f (cloaked warm-up 3 s after start) |
 | KI-051 | S3 | Accessibility | The round window buttons weren't exposed to screen readers or the keyboard | fea478b |
-| KI-053 | S4 | Dock | An elevated launch played the launch animation even when the UAC prompt was cancelled | COMMIT (feedback posted back only after `ShellExecuteEx` succeeds) |
-| KI-054 | S3 | Dock | Full-trust packaged apps such as Windows Terminal couldn't be run as administrator | COMMIT (`PKEY_AppUserModel_HostEnvironment` in `AppCatalog`) |
+| KI-053 | S4 | Dock | An elevated launch played the launch animation even when the UAC prompt was cancelled | b09a222 (feedback posted back only after `ShellExecuteEx` succeeds) |
+| KI-054 | S3 | Dock | Full-trust packaged apps such as Windows Terminal couldn't be run as administrator | b09a222 (`PKEY_AppUserModel_HostEnvironment` in `AppCatalog`) |
