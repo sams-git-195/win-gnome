@@ -146,6 +146,13 @@ internal sealed class AppLauncher : IAppLauncher
         {
             var info = NewExecuteInfo(verb);
             info.fMask |= NativeMethods.SEE_MASK_INVOKEIDLIST;
+            if (verb is null)
+            {
+                // A normal launch runs on the dispatcher: a shell error box would block it, so failures are only logged.
+                // Elevated launches keep the shell's UI, since they run on their own thread and must show UAC.
+                info.fMask |= NativeMethods.SEE_MASK_FLAG_NO_UI;
+            }
+
             info.lpIDList = idList;
             return Execute(ref info, id);
         }
@@ -203,8 +210,9 @@ internal sealed class AppLauncher : IAppLauncher
             {
                 launch();
             }
-            catch (Exception ex) when (ex is Win32Exception or COMException or InvalidOperationException)
+            catch (Exception ex)
             {
+                // Thread boundary: an exception escaping here would end the shell process, so everything is logged.
                 Log.Warn($"AppLauncher: could not launch '{what}'", ex);
             }
         })

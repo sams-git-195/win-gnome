@@ -83,6 +83,9 @@ internal static partial class NativeMethods
     /// <summary>Finish the launch before returning, so the calling thread may exit straight after.</summary>
     public const uint SEE_MASK_NOASYNC = 0x00000100;
 
+    /// <summary>Don't show an error message box when the launch fails.</summary>
+    public const uint SEE_MASK_FLAG_NO_UI = 0x00000400;
+
     /// <summary>Win32 error for "the operation was cancelled by the user", e.g. "No" on a UAC prompt.</summary>
     public const int ERROR_CANCELLED = 1223;
 

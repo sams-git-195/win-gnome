@@ -43,6 +43,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
 | [KI-052](#ki-052) | S4 | Dock | Explorer windows other than folder windows don't join the File Explorer pin | Open |
 | [KI-053](#ki-053) | S4 | Dock | An elevated launch plays the launch animation even when the UAC prompt is cancelled | Open |
+| [KI-054](#ki-054) | S3 | Dock | Full-trust packaged apps such as Windows Terminal can't be run as administrator | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -301,6 +302,19 @@ thread and reports success as soon as the prompt is requested (spec 0014). The d
 bounce before the user answers, and still plays it when they choose No (which is logged at Info, as intended).
 *Fix direction:* give `IAppLauncher` an asynchronous result for elevated launches and play the feedback only when
 it succeeds.
+
+### KI-054
+**Full-trust packaged apps such as Windows Terminal can't be run as administrator** · S3 · Dock · Open
+
+Spec 0014 treats every packaged AUMID (`Family_hash!App`) as non-elevatable, so `LaunchPlanner.CanElevate` is false
+and neither the dock nor the overview offers *Run as administrator* for them. That is right for UWP apps, but
+full-trust packaged desktop apps (Windows Terminal `Microsoft.WindowsTerminal_8wekyb3d8bbwe!App`, PowerShell 7 from
+the Store, WinGet-installed MSIX tools) do offer it in Start, through `runas` on their AppsFolder item. Spec 0014's
+manual check names Windows Terminal, so that check can't pass as written. Desktop apps (Win32 AUMIDs, `.exe`,
+`.lnk`, `.bat`, `.cmd`, `.msc`) elevate as specified. *Fix direction:* read whether the AppsFolder item is a desktop
+app (for example `PKEY_AppUserModel_HostEnvironment`, or whether its context menu has `runas`) in `AppCatalog`,
+pass that into `LaunchPlanner.CanElevate`, and launch elevated packaged apps with `runas` on their ID list instead
+of `IApplicationActivationManager`.
 
 ## Resolved
 

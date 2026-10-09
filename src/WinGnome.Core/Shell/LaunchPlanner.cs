@@ -40,7 +40,8 @@ public static class LaunchPlanner
     /// <summary>Holding both of these elevates, as in Start.</summary>
     public const LaunchModifiers ElevateModifiers = LaunchModifiers.Control | LaunchModifiers.Shift;
 
-    private static readonly string[] ElevatableFileExtensions = [".exe", ".lnk"];
+    /// <summary>File types Explorer offers "Run as administrator" for.</summary>
+    private static readonly string[] ElevatableFileExtensions = [".exe", ".lnk", ".bat", ".cmd", ".msc"];
 
     /// <summary>
     /// Plans a click or Enter on <paramref name="launchId"/>. <paramref name="pin"/> is the matching dock pin, if any:

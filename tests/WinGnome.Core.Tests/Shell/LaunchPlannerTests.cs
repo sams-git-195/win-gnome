@@ -5,7 +5,8 @@ namespace WinGnome.Core.Tests.Shell;
 
 public class LaunchPlannerTests
 {
-    private const string Desktop = "Microsoft.WindowsTerminal";
+    // A desktop app's explicit AUMID (Git Bash). Windows Terminal is packaged, so it is not one (KI-054).
+    private const string Desktop = "GitForWindows.Bash";
     private const string Packaged = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
 
     public enum PinState { None, Normal, AlwaysElevated }
@@ -50,6 +51,14 @@ public class LaunchPlannerTests
         var request = LaunchPlanner.Plan(Packaged, modifiers, Pin(Packaged, pin));
 
         Assert.Equal(new LaunchRequest(Packaged, null, false), request);
+    }
+
+    [Theory]
+    [InlineData("ms-settings:")]
+    [InlineData(@"C:\Users\me\notes.txt")]
+    public void Plan_CtrlShift_OnTargetsThatCannotElevate_LaunchesNormally(string launchId)
+    {
+        Assert.Equal(new LaunchRequest(launchId, null, false), LaunchPlanner.Plan(launchId, LaunchPlanner.ElevateModifiers, null));
     }
 
     [Fact]
@@ -112,6 +121,9 @@ public class LaunchPlannerTests
     [InlineData(@"C:\Windows\System32\cmd.exe", true)]
     [InlineData(@"C:\Users\me\Desktop\Tool.LNK", true)]
     [InlineData(@"{7C5A40EF-A0FB-4BFC-874A-C0F2E0B9FA8E}\Mozilla Firefox\firefox.exe", true)]
+    [InlineData(@"C:\Tools\build.cmd", true)]
+    [InlineData(@"C:\Tools\setup.bat", true)]
+    [InlineData(@"C:\Windows\System32\services.msc", true)]
     [InlineData(@"C:\Users\me\notes.txt", false)]
     [InlineData(@"C:\Tools", false)]
     [InlineData("ms-settings:", false)]
