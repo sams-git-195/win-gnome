@@ -95,18 +95,31 @@ internal static class PrinterService
 
     private static List<PrinterInfo> EnumeratePrinters()
     {
+        // A printer added between the sizing call and the read makes the buffer too small; size again a few times.
+        for (var attempt = 1; ; attempt++)
+        {
+            if (TryEnumeratePrinters(out var printers, out var error))
+            {
+                return printers;
+            }
+
+            if (error != NativeMethods.ERROR_INSUFFICIENT_BUFFER || attempt == 3)
+            {
+                throw new Win32Exception(error, $"EnumPrinters failed (Win32 error {error})");
+            }
+        }
+    }
+
+    private static bool TryEnumeratePrinters(out List<PrinterInfo> printers, out int error)
+    {
         const uint flags = NativeMethods.PRINTER_ENUM_LOCAL | NativeMethods.PRINTER_ENUM_CONNECTIONS;
+        printers = [];
         NativeMethods.EnumPrinters(flags, null, 2, 0, 0, out var needed, out _);
-        var error = Marshal.GetLastPInvokeError();
+        error = Marshal.GetLastPInvokeError();
         if (needed == 0)
         {
             // No printers is a success with nothing to read; anything else is a spooler failure.
-            if (error is 0 or NativeMethods.ERROR_INSUFFICIENT_BUFFER)
-            {
-                return [];
-            }
-
-            throw new Win32Exception(error, $"EnumPrinters failed (Win32 error {error})");
+            return error is 0 or NativeMethods.ERROR_INSUFFICIENT_BUFFER;
         }
 
         var buffer = Marshal.AllocHGlobal((int)needed);
@@ -115,11 +128,11 @@ internal static class PrinterService
             if (!NativeMethods.EnumPrinters(flags, null, 2, buffer, needed, out _, out var returned))
             {
                 error = Marshal.GetLastPInvokeError();
-                throw new Win32Exception(error, $"EnumPrinters failed (Win32 error {error})");
+                return false;
             }
 
+            // The strings point into the buffer, so they are copied out before it is freed.
             var size = Marshal.SizeOf<PRINTER_INFO_2>();
-            var printers = new List<PrinterInfo>((int)returned);
             for (var i = 0; i < returned; i++)
             {
                 var info = Marshal.PtrToStructure<PRINTER_INFO_2>(buffer + (i * size));
@@ -129,7 +142,7 @@ internal static class PrinterService
                 }
             }
 
-            return printers;
+            return true;
         }
         finally
         {

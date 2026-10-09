@@ -79,9 +79,10 @@ internal sealed class PrintersPanelViewModel : SystemPanelViewModel
     /// <summary>True when a printer setting can be changed now (not in safe mode, nothing in flight).</summary>
     public bool CanChange => CanEdit && !IsBusy;
 
-    /// <summary>True when the list is empty because there are no printers (not because it could not be read).</summary>
+    /// <summary>True when there is at least one printer to list.</summary>
     public bool HasPrinters => Printers.Count > 0;
 
+    /// <summary>True when the list is empty because there are no printers (not because it is loading or could not be read).</summary>
     public bool ShowsEmptyNote => Printers.Count == 0 && !IsBusy && !_listFailed;
 
     /// <summary>

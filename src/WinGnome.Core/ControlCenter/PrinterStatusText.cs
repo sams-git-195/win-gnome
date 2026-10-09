@@ -29,6 +29,7 @@ public static class PrinterStatusText
     private const uint OutOfMemory = 0x200000;
     private const uint DoorOpen = 0x400000;
     private const uint ServerUnknown = 0x800000;
+    private const uint ServerOffline = 0x2000000;
 
     // Most serious first: when several bits are set only the first match is named.
     private static readonly (uint Bit, string Text)[] BySeriousness =
@@ -40,6 +41,7 @@ public static class PrinterStatusText
         (Offline, "Offline"),
         (NotAvailable, "Not available"),
         (ServerUnknown, "Offline"),
+        (ServerOffline, "Offline"),
         (Error, "Error"),
         (UserIntervention, "Needs attention"),
         (PaperProblem, "Paper problem"),

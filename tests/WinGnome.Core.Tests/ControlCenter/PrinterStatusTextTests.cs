@@ -26,6 +26,7 @@ public class PrinterStatusTextTests
     [InlineData(0x200000u, "Out of memory")]
     [InlineData(0x400000u, "Door open")]
     [InlineData(0x800000u, "Offline")]
+    [InlineData(0x2000000u, "Offline")]
     public void Describe_SingleStatusBit_NamesIt(uint status, string expected)
     {
         Assert.Equal(expected, PrinterStatusText.Describe(status, 0, 0));
