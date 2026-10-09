@@ -150,10 +150,14 @@ verified-set (write through the service, re-read, show the re-read value).
 
 **1. Notifications** — `Panels/Notifications/`, `NotificationSettingsStore` (the only class touching the keys).
 - Undocumented HKCU storage, isolated, all under `Software\Microsoft\Windows\CurrentVersion\`:
-  - Master: read `Notifications\Settings` value `NOC_GLOBAL_SETTING_TOASTS_ENABLED` first, falling back to
-    `PushNotifications` value `ToastEnabled` when it's absent; write **both** (DWORD).
-  - Lock screen: `Notifications\Settings` value `NOC_GLOBAL_SETTING_ALLOW_TOASTS_ABOVE_LOCK` (a value under
-    `Settings`, not a subkey).
+  - Master: read `PushNotifications` value `ToastEnabled` first (the value the notification platform's `wpncore.dll`
+    reads), falling back to `Notifications\Settings` value `NOC_GLOBAL_SETTING_TOASTS_ENABLED` when it's absent; write
+    `ToastEnabled` always and the NOC value only if it already exists (DWORD). Many installs never have the NOC value.
+  - Lock screen: read `PushNotifications` value `LockScreenToastEnabled` first (absent = on), falling back to
+    `Notifications\Settings` value `NOC_GLOBAL_SETTING_ALLOW_TOASTS_ABOVE_LOCK`; write `LockScreenToastEnabled` always and
+    the NOC value only if it already exists. When the policy `NoToastApplicationNotificationOnLockScreen` is 1 (HKCU or
+    HKLM, `Policies\Microsoft\Windows\Explorer` or `...\CurrentVersion\PushNotifications`) the row shows off, read-only,
+    with a note.
   - Per app: `Notifications\Settings\<AUMID>` values `Enabled`, `ShowBanner`, `ShowInActionCenter` (DWORD;
     absent = on).
 - Apps listed: subkeys of `Notifications\Settings` that have `LastNotificationAddedTime` or any of the three values.
@@ -164,8 +168,8 @@ verified-set (write through the service, re-read, show the re-read value).
 - DND: spec 0017's service from `Services`; the row is hidden if it is null or not available.
 - Core: `NotificationAppList.Build(IEnumerable<NotificationKeySnapshot>, Func<string,string?> nameOf)` → sorted
   rows (name, aumid, enabled, banner, centre), hidden rules; `NotificationValue.IsOn(int?)`;
-  `NotificationMaster.Read(int? nocGlobal, int? toastEnabled)`. Tests: absent/0/1/other values, NOC value wins over
-  `ToastEnabled`, fallback when absent, system-id table, unnamed packaged id hidden, sort is culture-invariant
+  `NotificationMaster.Read(int? toastEnabled, int? nocGlobal)`, `NotificationLockScreen.Read/IsBlockedByPolicy`. Tests: absent/0/1/other values, `ToastEnabled` wins over the
+  NOC value, fallback when absent, system-id table, unnamed packaged id hidden, sort is culture-invariant
   ordinal-ignore-case.
 - After a write, `WM_SETTINGCHANGE` is not needed. Per-app `Enabled` is expected to be picked up live by the
   notification platform (AC 3 checks it); needing sign-out is the failure case, and then the row says "Takes effect
