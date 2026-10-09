@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using WinGnome.Core.Settings;
 using WinGnome.Infrastructure;
+using WinGnome.Interop;
 using WinGnome.Services;
 using WinGnome.Services.Apps;
 using WinGnome.Theme;
@@ -331,6 +332,16 @@ public partial class App : Application
         if (!_ownsInstance)
         {
             return;
+        }
+
+        // First, while the tray host is still alive: each ABM_REMOVE is forwarded through it to Explorer.
+        try
+        {
+            AppBar.UndockAll();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Emergency AppBar removal failed", ex);
         }
 
         foreach (var feature in _features.OfType<IEmergencyRestore>())

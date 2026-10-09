@@ -1,6 +1,8 @@
-﻿using System.Runtime.InteropServices;
+using System.Collections.Immutable;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Threading;
 using WinGnome.Core.Geometry;
 using WinGnome.Infrastructure;
 
@@ -18,6 +20,10 @@ internal enum AppBarEdge
 /// Registers a WPF window as a shell application desktop toolbar (AppBar) so the system work area
 /// excludes it and maximised windows do not cover it. All geometry is in physical pixels.
 /// </summary>
+/// <remarks>
+/// Every window with a live <c>ABM_NEW</c> is also kept in a static registry, so the crash path
+/// (<see cref="UndockAll"/>) can give every strip back without touching feature state.
+/// </remarks>
 internal sealed partial class AppBar : IDisposable
 {
     [StructLayout(LayoutKind.Sequential)]
@@ -42,18 +48,28 @@ internal sealed partial class AppBar : IDisposable
     [LibraryImport("shell32.dll")]
     private static partial nuint SHAppBarMessage(uint message, ref APPBARDATA data);
 
+    /// <summary>Windows that hold a live ABM_NEW registration, swapped lock-free so any thread can read it.</summary>
+    private static ImmutableArray<nint> s_registered = ImmutableArray<nint>.Empty;
+
+    private static long s_messageCount;
+
     private readonly nint _hwnd;
     private readonly uint _callbackMessage;
     private readonly HwndSource? _source;
+    private readonly Dispatcher _dispatcher;
     private AppBarEdge _edge;
     private int _thickness;
     private PixelRect _monitor;
+    private PixelRect _requested;
     private bool _registered;
+    private bool _inCall;
+    private bool _recheckPending;
 
     /// <param name="window">Window that must already have a handle.</param>
     public AppBar(Window window)
     {
         _hwnd = new WindowInteropHelper(window).EnsureHandle();
+        _dispatcher = window.Dispatcher;
         _callbackMessage = NativeMethods.RegisterWindowMessage("WinGnome.AppBar." + Guid.NewGuid().ToString("N"));
         _source = HwndSource.FromHwnd(_hwnd);
         _source?.AddHook(WndProc);
@@ -65,30 +81,59 @@ internal sealed partial class AppBar : IDisposable
     /// <summary>Raised when the shell moved the bar on its own (ABN_POSCHANGED: another AppBar came or went).</summary>
     public event EventHandler? Moved;
 
+    /// <summary>
+    /// Raised after the bar undocked itself because the monitor it was docked on no longer exists with the same
+    /// bounds (removed, moved or resized). The owner decides whether to dock it again or destroy it.
+    /// </summary>
+    public event EventHandler? Detached;
+
+    /// <summary>Number of SHAppBarMessage calls made by every bar in this process (for storm diagnostics in the log).</summary>
+    public static long MessageCount => Interlocked.Read(ref s_messageCount);
+
     /// <summary>The rectangle the shell granted, in physical pixels.</summary>
     public PixelRect Bounds { get; private set; }
 
     public bool IsRegistered => _registered;
 
-    /// <summary>Registers (if needed) and docks the bar on <paramref name="edge"/> of <paramref name="monitor"/>.</summary>
+    /// <summary>
+    /// Crash path (any thread, plain Win32 only): sends ABM_REMOVE for every window that still holds a registration.
+    /// The instances are not told; a later <see cref="Undock"/> on one of them sends a harmless second ABM_REMOVE.
+    /// </summary>
+    public static void UndockAll()
+    {
+        var windows = ImmutableInterlocked.InterlockedExchange(ref s_registered, ImmutableArray<nint>.Empty);
+        foreach (var hwnd in windows)
+        {
+            try
+            {
+                var data = new APPBARDATA { cbSize = Marshal.SizeOf<APPBARDATA>(), hWnd = hwnd };
+                Send(ABM_REMOVE, ref data);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"Could not remove the AppBar of window 0x{hwnd:X}", ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Registers (if needed) and docks the bar on <paramref name="edge"/> of <paramref name="monitor"/>: the full
+    /// QUERYPOS, SETPOS, move and WINDOWPOSCHANGED sequence, for first registration and explicit re-docks.
+    /// </summary>
     public PixelRect Dock(AppBarEdge edge, int thicknessPx, PixelRect monitor)
     {
         _edge = edge;
         _thickness = Math.Max(1, thicknessPx);
         _monitor = monitor;
-
-        if (!_registered)
+        Guarded(() =>
         {
-            var data = NewData();
-            data.uCallbackMessage = _callbackMessage;
-            _registered = SHAppBarMessage(ABM_NEW, ref data) != 0;
             if (!_registered)
             {
-                Log.Warn("ABM_NEW failed; bar will float without reserving space");
+                Register();
             }
-        }
 
-        Reposition();
+            Apply(_registered ? QueryRect() : ProposedRect());
+        });
         return Bounds;
     }
 
@@ -101,31 +146,55 @@ internal sealed partial class AppBar : IDisposable
         }
 
         var data = NewData();
-        SHAppBarMessage(ABM_REMOVE, ref data);
+        Send(ABM_REMOVE, ref data);
         _registered = false;
+        ImmutableInterlocked.Update(ref s_registered, (list, hwnd) => list.Remove(hwnd), _hwnd);
     }
 
-    private void Reposition()
+    private void Register()
     {
-        var rect = ProposedRect();
+        var data = NewData();
+        data.uCallbackMessage = _callbackMessage;
+        _registered = Send(ABM_NEW, ref data) != 0;
+        if (_registered)
+        {
+            ImmutableInterlocked.Update(ref s_registered, (list, hwnd) => list.Contains(hwnd) ? list : list.Add(hwnd), _hwnd);
+        }
+        else
+        {
+            Log.Warn("ABM_NEW failed; bar will float without reserving space");
+        }
+    }
+
+    /// <summary>Asks the shell where the bar may go (QUERYPOS) and re-applies our thickness to the answer.</summary>
+    private PixelRect QueryRect()
+    {
+        var data = NewData();
+        data.uEdge = (uint)_edge;
+        data.rc = RECT.From(ProposedRect());
+        Send(ABM_QUERYPOS, ref data);
+
+        // The shell may have moved the edge we are not anchored to; re-apply our thickness.
+        var granted = data.rc.ToPixelRect();
+        return _edge switch
+        {
+            AppBarEdge.Top => granted with { Bottom = granted.Top + _thickness },
+            AppBarEdge.Bottom => granted with { Top = granted.Bottom - _thickness },
+            AppBarEdge.Left => granted with { Right = granted.Left + _thickness },
+            _ => granted with { Left = granted.Right - _thickness },
+        };
+    }
+
+    /// <summary>Claims <paramref name="rect"/> (SETPOS when registered), moves the window there and tells the shell.</summary>
+    private void Apply(PixelRect rect)
+    {
+        _requested = rect;
         if (_registered)
         {
             var data = NewData();
             data.uEdge = (uint)_edge;
             data.rc = RECT.From(rect);
-            SHAppBarMessage(ABM_QUERYPOS, ref data);
-
-            // The shell may have moved the edge we are not anchored to; re-apply our thickness.
-            var granted = data.rc.ToPixelRect();
-            rect = _edge switch
-            {
-                AppBarEdge.Top => granted with { Bottom = granted.Top + _thickness },
-                AppBarEdge.Bottom => granted with { Top = granted.Bottom - _thickness },
-                AppBarEdge.Left => granted with { Right = granted.Left + _thickness },
-                _ => granted with { Left = granted.Right - _thickness },
-            };
-            data.rc = RECT.From(rect);
-            SHAppBarMessage(ABM_SETPOS, ref data);
+            Send(ABM_SETPOS, ref data);
             rect = data.rc.ToPixelRect();
         }
 
@@ -136,7 +205,7 @@ internal sealed partial class AppBar : IDisposable
         if (_registered)
         {
             var data = NewData();
-            SHAppBarMessage(ABM_WINDOWPOSCHANGED, ref data);
+            Send(ABM_WINDOWPOSCHANGED, ref data);
         }
     }
 
@@ -147,6 +216,88 @@ internal sealed partial class AppBar : IDisposable
         AppBarEdge.Left => _monitor with { Right = _monitor.Left + _thickness },
         _ => _monitor with { Left = _monitor.Right - _thickness },
     };
+
+    /// <summary>
+    /// ABN_POSCHANGED: another AppBar came, went or moved. Only a QUERYPOS unless our slot really changed, because
+    /// every SETPOS makes the shell notify every other bar on the edge, and N bars that always answer with a SETPOS
+    /// notify each other forever.
+    /// </summary>
+    private void OnPositionChanged()
+    {
+        if (!_registered)
+        {
+            return;
+        }
+
+        if (!MonitorStillMatches())
+        {
+            // Windows may already have moved this window to another monitor; docking there would reserve a second
+            // strip on it. Step aside and let the owner re-read the layout.
+            Log.Info($"AppBar 0x{_hwnd:X}: its monitor {_monitor} is gone or changed; undocking");
+            Undock();
+            Detached?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        var moved = false;
+        Guarded(() =>
+        {
+            var rect = QueryRect();
+            if (rect != Bounds && rect != _requested)
+            {
+                Apply(rect);
+                moved = true;
+            }
+        });
+
+        if (moved)
+        {
+            Moved?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>True when the cached monitor rectangle is still exactly a live monitor's rectangle.</summary>
+    private bool MonitorStillMatches()
+    {
+        var monitor = NativeMethods.MonitorFromRect(RECT.From(_monitor), NativeMethods.MONITOR_DEFAULTTONULL);
+        return monitor != 0 && NativeMethods.GetMonitorRects(monitor).Monitor == _monitor;
+    }
+
+    /// <summary>
+    /// Runs our own shell calls with the re-entrancy flag set. SHAppBarMessage is a synchronous cross-process send,
+    /// so the shell's notification can be dispatched to this window while we are still inside one of our own calls;
+    /// such a notification is only marked, and one recheck runs after the outer call returned.
+    /// </summary>
+    private void Guarded(Action action)
+    {
+        if (_inCall)
+        {
+            action();
+            return;
+        }
+
+        _inCall = true;
+        try
+        {
+            action();
+        }
+        finally
+        {
+            _inCall = false;
+        }
+
+        if (_recheckPending)
+        {
+            _recheckPending = false;
+            _dispatcher.BeginInvoke(OnPositionChanged, DispatcherPriority.Background);
+        }
+    }
+
+    private static nuint Send(uint message, ref APPBARDATA data)
+    {
+        Interlocked.Increment(ref s_messageCount);
+        return SHAppBarMessage(message, ref data);
+    }
 
     private APPBARDATA NewData() => new()
     {
@@ -163,14 +314,11 @@ internal sealed partial class AppBar : IDisposable
 
         switch ((int)wParam)
         {
+            case ABN_POSCHANGED when _inCall:
+                _recheckPending = true;
+                break;
             case ABN_POSCHANGED:
-                var before = Bounds;
-                Reposition();
-                if (Bounds != before)
-                {
-                    Moved?.Invoke(this, EventArgs.Empty);
-                }
-
+                OnPositionChanged();
                 break;
             case ABN_FULLSCREENAPP:
                 FullScreenChanged?.Invoke(this, lParam != 0);
