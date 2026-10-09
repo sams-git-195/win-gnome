@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -7,46 +8,29 @@ using WinGnome.Infrastructure;
 
 namespace WinGnome.Features.TopBar.Tray;
 
-/// <summary>One notification-area icon in the bar.</summary>
-internal sealed class TrayIconViewModel : ObservableObject
+/// <summary>
+/// One notification-area icon in one bar: the shared <see cref="TrayIconEntry"/> plus this bar's slot size and DPI
+/// scale (bars on monitors with different DPIs draw the same bitmap differently).
+/// </summary>
+internal sealed class TrayIconViewModel : ObservableObject, IDisposable
 {
-    private TrayIconState _state;
-    private BitmapSource? _image;
     private int _slotPx;
     private double _scale = 1;
     private TrayIconPlacement _placement;
 
-    public TrayIconViewModel(TrayIconState state)
+    public TrayIconViewModel(TrayIconEntry entry)
     {
-        _state = state;
+        Entry = entry;
+        Entry.PropertyChanged += OnEntryChanged;
+        UpdatePlacement();
     }
 
-    public TrayIconState State
-    {
-        get => _state;
-        set
-        {
-            if (SetProperty(ref _state, value))
-            {
-                OnPropertyChanged(nameof(IsVisible));
-                OnPropertyChanged(nameof(ToolTip));
-            }
-        }
-    }
+    public TrayIconEntry Entry { get; }
+
+    public TrayIconState State => Entry.State;
 
     /// <summary>The icon at its own pixel size and 96 DPI, so one bitmap pixel is one DIP before placement.</summary>
-    public BitmapSource? Image
-    {
-        get => _image;
-        set
-        {
-            if (SetProperty(ref _image, value))
-            {
-                OnPropertyChanged(nameof(IsVisible));
-                UpdatePlacement();
-            }
-        }
-    }
+    public BitmapSource? Image => Entry.Image;
 
     /// <summary>Edge length the image is drawn at, in DIPs: a whole number of device pixels (see TrayIconPlacement).</summary>
     public double ImageSize => _placement.SizePx / _scale;
@@ -56,16 +40,13 @@ internal sealed class TrayIconViewModel : ObservableObject
 
     /// <summary>Whole-number upscales keep hard pixel edges; downscales are filtered.</summary>
     public BitmapScalingMode ScalingMode =>
-        _image is { } image && _placement.SizePx > image.PixelWidth ? BitmapScalingMode.NearestNeighbor : BitmapScalingMode.HighQuality;
+        Image is { } image && _placement.SizePx > image.PixelWidth ? BitmapScalingMode.NearestNeighbor : BitmapScalingMode.HighQuality;
 
     /// <summary>Hidden icons (NIS_HIDDEN) and icons whose image could not be read take no space.</summary>
-    public bool IsVisible => _state.IsVisible && _image is not null;
+    public bool IsVisible => State.IsVisible && Image is not null;
 
     /// <summary>The standard tooltip, or null when the app draws its own pop-up (version 4 without NIF_SHOWTIP).</summary>
-    public string? ToolTip => _state.ShowsToolTip ? _state.Tip : null;
-
-    /// <summary>True while NIN_POPUPOPEN has been sent without its NIN_POPUPCLOSE.</summary>
-    public bool PopupOpen { get; set; }
+    public string? ToolTip => State.ShowsToolTip ? State.Tip : null;
 
     /// <summary>Sets the square slot the icon is drawn in: <paramref name="slotPx"/> device pixels on a monitor at <paramref name="scale"/>.</summary>
     public void SetSlot(int slotPx, double scale)
@@ -75,11 +56,30 @@ internal sealed class TrayIconViewModel : ObservableObject
         UpdatePlacement();
     }
 
+    private void OnEntryChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(TrayIconEntry.State):
+                OnPropertyChanged(nameof(State));
+                OnPropertyChanged(nameof(IsVisible));
+                OnPropertyChanged(nameof(ToolTip));
+                break;
+            case nameof(TrayIconEntry.Image):
+                OnPropertyChanged(nameof(Image));
+                OnPropertyChanged(nameof(IsVisible));
+                UpdatePlacement();
+                break;
+        }
+    }
+
     private void UpdatePlacement()
     {
-        _placement = TrayIconPlacement.Choose(_image?.PixelWidth ?? 0, _slotPx);
+        _placement = TrayIconPlacement.Choose(Image?.PixelWidth ?? 0, _slotPx);
         OnPropertyChanged(nameof(ImageSize));
         OnPropertyChanged(nameof(ImageMargin));
         OnPropertyChanged(nameof(ScalingMode));
     }
+
+    public void Dispose() => Entry.PropertyChanged -= OnEntryChanged;
 }

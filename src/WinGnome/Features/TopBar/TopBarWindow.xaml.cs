@@ -17,8 +17,8 @@ using WinGnome.Interop;
 namespace WinGnome.Features.TopBar;
 
 /// <summary>
-/// The GNOME top bar surface. Owns its popups and appearance (colours, blur, sizes); docking and system
-/// events are handled by <see cref="TopBarFeature"/>.
+/// One GNOME top bar surface (one per monitor). Owns its popups and appearance (colours, blur, sizes); docking and
+/// system events are handled by <see cref="TopBarInstance"/> and <see cref="TopBarFeature"/>.
 /// </summary>
 internal sealed partial class TopBarWindow : Window
 {
@@ -36,13 +36,15 @@ internal sealed partial class TopBarWindow : Window
     private readonly TopBarViewModel _viewModel;
     private readonly PopupHost _popups;
     private readonly TopBarActions _actions;
-    private readonly CalendarCard _calendarCard = new();
-    private readonly QuickSettingsCard _quickSettingsCard;
-    private readonly LogoMenuCard _logoMenuCard = new();
-    private readonly Popup _logoPopup;
-    private readonly Popup _calendarPopup;
-    private readonly Popup _quickSettingsPopup;
     private readonly BlurBackdrop _backdrop;
+
+    // Created on first open: bars on secondary monitors rarely open them, and each is a sizeable visual tree.
+    private CalendarCard? _calendarCard;
+    private QuickSettingsCard? _quickSettingsCard;
+    private LogoMenuCard? _logoMenuCard;
+    private Popup? _logoPopup;
+    private Popup? _calendarPopup;
+    private Popup? _quickSettingsPopup;
     private TopBarSettings _settings;
     private TopBarGeometry _geometry;
     private double _scale = 1;
@@ -72,16 +74,6 @@ internal sealed partial class TopBarWindow : Window
 
         _popups = popups;
         _actions = new TopBarActions(context);
-        _quickSettingsCard = new QuickSettingsCard(viewModel.Status);
-        _calendarCard.ActionRequested += OnActionRequested;
-        _quickSettingsCard.ActionRequested += OnActionRequested;
-        _logoMenuCard.ActionRequested += OnActionRequested;
-        _logoPopup = CreatePopup(_logoMenuCard, LogoButton);
-
-        // Runs after PopupHost's own Opened handler has activated the popup: open with nothing selected, keys ready.
-        _logoPopup.Opened += (_, _) => _logoMenuCard.Reset();
-        _calendarPopup = CreatePopup(_calendarCard, ClockButton);
-        _quickSettingsPopup = CreatePopup(_quickSettingsCard, StatusButton);
         TrayIcons.IconPressed += OnTrayIconPressed;
     }
 
@@ -114,16 +106,37 @@ internal sealed partial class TopBarWindow : Window
     /// <summary>Puts the blur backdrop and then the bar at the top of the topmost band.</summary>
     public void RaiseToTop() => _backdrop.RaiseToTop();
 
-    /// <summary>Closes any open popup (e.g. when the bar hides for a full-screen app).</summary>
-    public void ClosePopups() => _popups.Close(restoreFocus: false);
+    /// <summary>
+    /// Closes this bar's open popup, if any (e.g. when the bar hides for a full-screen app). A popup open on another
+    /// bar stays: the popup host is shared by every bar.
+    /// </summary>
+    public void ClosePopups()
+    {
+        if (IsOwnPopupOpen())
+        {
+            _popups.Close(restoreFocus: false);
+        }
+    }
 
     /// <summary>Closes the window for good; any other close attempt (e.g. Alt+F4) is refused.</summary>
     public void Shutdown()
     {
-        _popups.Close(restoreFocus: false);
-        _calendarCard.ActionRequested -= OnActionRequested;
-        _quickSettingsCard.ActionRequested -= OnActionRequested;
-        _logoMenuCard.ActionRequested -= OnActionRequested;
+        ClosePopups();
+        if (_calendarCard is not null)
+        {
+            _calendarCard.ActionRequested -= OnActionRequested;
+        }
+
+        if (_quickSettingsCard is not null)
+        {
+            _quickSettingsCard.ActionRequested -= OnActionRequested;
+        }
+
+        if (_logoMenuCard is not null)
+        {
+            _logoMenuCard.ActionRequested -= OnActionRequested;
+        }
+
         TrayIcons.IconPressed -= OnTrayIconPressed;
         _allowClose = true;
         Close();
@@ -226,7 +239,26 @@ internal sealed partial class TopBarWindow : Window
         return popup;
     }
 
-    private void OnLogoClick(object sender, RoutedEventArgs e) => _popups.Toggle(_logoPopup, LogoButton, PopupAlignment.Start);
+    private bool IsOwnPopupOpen() =>
+        (_logoPopup is not null && _popups.IsOpen(_logoPopup))
+        || (_calendarPopup is not null && _popups.IsOpen(_calendarPopup))
+        || (_quickSettingsPopup is not null && _popups.IsOpen(_quickSettingsPopup));
+
+    private void OnLogoClick(object sender, RoutedEventArgs e)
+    {
+        if (_logoPopup is null)
+        {
+            var card = new LogoMenuCard();
+            card.ActionRequested += OnActionRequested;
+            _logoMenuCard = card;
+            _logoPopup = CreatePopup(card, LogoButton);
+
+            // Runs after PopupHost's own Opened handler has activated the popup: open with nothing selected, keys ready.
+            _logoPopup.Opened += (_, _) => card.Reset();
+        }
+
+        _popups.Toggle(_logoPopup, LogoButton, PopupAlignment.Start);
+    }
 
     /// <summary>An app's tray menu is about to open: our own popups make way, without pulling focus back.</summary>
     private void OnTrayIconPressed(object? sender, EventArgs e) => _popups.Close(restoreFocus: false);
@@ -239,23 +271,37 @@ internal sealed partial class TopBarWindow : Window
 
     private void OnClockClick(object sender, RoutedEventArgs e)
     {
-        if (!_popups.IsOpen(_calendarPopup))
+        if (_calendarCard is null)
+        {
+            _calendarCard = new CalendarCard();
+            _calendarCard.ActionRequested += OnActionRequested;
+            _calendarPopup = CreatePopup(_calendarCard, ClockButton);
+        }
+
+        if (!_popups.IsOpen(_calendarPopup!))
         {
             _calendarCard.ShowToday();
         }
 
-        _popups.Toggle(_calendarPopup, ClockButton, PopupAlignment.Center);
+        _popups.Toggle(_calendarPopup!, ClockButton, PopupAlignment.Center);
     }
 
     private void OnStatusClick(object sender, RoutedEventArgs e)
     {
-        if (!_popups.IsOpen(_quickSettingsPopup))
+        if (_quickSettingsCard is null)
+        {
+            _quickSettingsCard = new QuickSettingsCard(_viewModel.Status);
+            _quickSettingsCard.ActionRequested += OnActionRequested;
+            _quickSettingsPopup = CreatePopup(_quickSettingsCard, StatusButton);
+        }
+
+        if (!_popups.IsOpen(_quickSettingsPopup!))
         {
             _quickSettingsCard.Reset();
             _viewModel.Status.RefreshBrightness();
         }
 
-        _popups.Toggle(_quickSettingsPopup, StatusButton, PopupAlignment.End);
+        _popups.Toggle(_quickSettingsPopup!, StatusButton, PopupAlignment.End);
     }
 
     private void OnStatusWheel(object sender, MouseWheelEventArgs e)

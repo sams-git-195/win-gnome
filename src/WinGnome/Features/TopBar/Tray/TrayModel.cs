@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -13,24 +12,29 @@ using WinGnome.Services.Tray;
 
 namespace WinGnome.Features.TopBar.Tray;
 
+/// <summary>A change to the order of the icon list (state changes travel on the entries themselves).</summary>
+internal readonly record struct TrayStructureChange(TrayChangeKind Kind, int Index, TrayIconEntry? Entry);
+
 /// <summary>
-/// The bar's notification area: mirrors the <see cref="TrayHost"/>'s icon list and delivers pointer events to the
-/// icons' owners exactly as Explorer would. Turning it off stops hosting altogether (no thread, window or icons).
+/// The notification area shared by every bar: owns the one <see cref="TrayHost"/>, the ordered icon entries, the
+/// hover state and delivery of pointer events to the icons' owners exactly as Explorer would. Each bar mirrors the
+/// entries through its own <see cref="TrayBarIcons"/>. Turning it off stops hosting altogether (no thread, window
+/// or icons).
 /// </summary>
-internal sealed class TrayViewModel : ObservableObject, IDisposable
+internal sealed class TrayModel : IDisposable
 {
     private readonly Dispatcher _dispatcher;
     private readonly Action _onCloseRequested;
     private readonly DispatcherTimer _hoverTimer;
+    private readonly List<TrayIconEntry> _entries = [];
     private TrayHost? _host;
-    private PixelRect _barBounds;
-    private TrayIconViewModel? _hovered;
+    private PixelRect _hostBounds;
+    private TrayIconEntry? _hovered;
     private PixelRect _hoveredBounds;
-    private int _iconSlotPx;
-    private double _iconScale = 1;
+    private PixelRect _hoveredBarBounds;
 
     /// <param name="onCloseRequested">Quits WinGnome when the tray host receives a polite close request.</param>
-    public TrayViewModel(Dispatcher dispatcher, Action onCloseRequested)
+    public TrayModel(Dispatcher dispatcher, Action onCloseRequested)
     {
         _dispatcher = dispatcher;
         _onCloseRequested = onCloseRequested;
@@ -38,8 +42,14 @@ internal sealed class TrayViewModel : ObservableObject, IDisposable
         _hoverTimer.Tick += OnHoverTimer;
     }
 
-    /// <summary>Icons in the order they were added, including hidden ones (the view collapses those).</summary>
-    public ObservableCollection<TrayIconViewModel> Icons { get; } = [];
+    /// <summary>Raised on the UI thread when an icon is inserted or removed (applied in order, the list mirrors exactly).</summary>
+    public event EventHandler<TrayStructureChange>? Changed;
+
+    /// <summary>Raised when hosting starts or stops.</summary>
+    public event EventHandler? EnabledChanged;
+
+    /// <summary>Icons in the order they were added, including hidden ones (the views collapse those).</summary>
+    public IReadOnlyList<TrayIconEntry> Entries => _entries;
 
     public bool IsEnabled => _host is not null;
 
@@ -64,7 +74,7 @@ internal sealed class TrayViewModel : ObservableObject, IDisposable
             // Changes are queued on the dispatcher, so a stopped host's last ones can arrive after a new host started:
             // each callback names its host and only the current one's are applied.
             TrayHost? host = null;
-            host = new TrayHost(_dispatcher, (change, imageChanged, image) => OnHostChange(host, change, imageChanged, image), _barBounds, _onCloseRequested);
+            host = new TrayHost(_dispatcher, (change, imageChanged, image) => OnHostChange(host, change, imageChanged, image), _hostBounds, _onCloseRequested);
             _host = host;
         }
         else
@@ -72,29 +82,24 @@ internal sealed class TrayViewModel : ObservableObject, IDisposable
             StopHost();
         }
 
-        OnPropertyChanged(nameof(IsEnabled));
+        EnabledChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>The bar's strip in physical pixels (the host window claims it, as a taskbar's window would).</summary>
-    public void SetBarBounds(PixelRect bounds)
+    /// <summary>
+    /// The primary bar's strip in physical pixels: the hidden host window claims it, as a taskbar's window would.
+    /// Bars on other monitors pass their own strip with each pointer event instead.
+    /// </summary>
+    public void SetHostBounds(PixelRect bounds)
     {
-        _barBounds = bounds;
+        _hostBounds = bounds;
         _host?.SetBarBounds(bounds);
     }
 
-    /// <summary>Size of every icon's square slot: <paramref name="slotPx"/> device pixels on a monitor at <paramref name="scale"/>.</summary>
-    public void SetIconSlot(int slotPx, double scale)
-    {
-        _iconSlotPx = slotPx;
-        _iconScale = scale;
-        foreach (var icon in Icons)
-        {
-            icon.SetSlot(slotPx, scale);
-        }
-    }
-
-    /// <summary>Delivers a pointer event on <paramref name="icon"/>, whose on-screen rectangle is <paramref name="bounds"/>.</summary>
-    public void Send(TrayIconViewModel icon, TrayPointerAction action, PixelRect bounds)
+    /// <summary>
+    /// Delivers a pointer event on <paramref name="entry"/>, whose on-screen rectangle is <paramref name="iconBounds"/>,
+    /// in the bar whose strip is <paramref name="barBounds"/>.
+    /// </summary>
+    public void Send(TrayIconEntry entry, TrayPointerAction action, PixelRect iconBounds, PixelRect barBounds)
     {
         if (_host is null)
         {
@@ -104,8 +109,10 @@ internal sealed class TrayViewModel : ObservableObject, IDisposable
         switch (action)
         {
             case TrayPointerAction.Enter:
-                _hovered = icon;
-                _hoveredBounds = bounds;
+                // Also when the pointer came from another bar: the timer restarts for this icon, as between two icons.
+                _hovered = entry;
+                _hoveredBounds = iconBounds;
+                _hoveredBarBounds = barBounds;
                 _hoverTimer.Stop();
                 _hoverTimer.Start();
                 break;
@@ -113,12 +120,12 @@ internal sealed class TrayViewModel : ObservableObject, IDisposable
             case TrayPointerAction.Leave:
                 _hoverTimer.Stop();
                 _hovered = null;
-                if (!icon.PopupOpen)
+                if (!entry.PopupOpen)
                 {
                     return;
                 }
 
-                icon.PopupOpen = false;
+                entry.PopupOpen = false;
                 break;
 
             default:
@@ -126,7 +133,7 @@ internal sealed class TrayViewModel : ObservableObject, IDisposable
                 break;
         }
 
-        Deliver(icon, action, bounds);
+        Deliver(entry, action, iconBounds, barBounds);
     }
 
     /// <summary>Crash path (any thread, plain Win32 only).</summary>
@@ -135,23 +142,24 @@ internal sealed class TrayViewModel : ObservableObject, IDisposable
     private void OnHoverTimer(object? sender, EventArgs e)
     {
         _hoverTimer.Stop();
-        if (_hovered is { } icon && Icons.Contains(icon))
+        if (_hovered is { } entry && _entries.Contains(entry))
         {
-            icon.PopupOpen = TrayCallback.Notifications(TrayPointerAction.Hover, icon.State).Count > 0;
-            Deliver(icon, TrayPointerAction.Hover, _hoveredBounds);
+            entry.PopupOpen = TrayCallback.Notifications(TrayPointerAction.Hover, entry.State).Count > 0;
+            Deliver(entry, TrayPointerAction.Hover, _hoveredBounds, _hoveredBarBounds);
         }
     }
 
-    private void Deliver(TrayIconViewModel icon, TrayPointerAction action, PixelRect bounds)
+    private void Deliver(TrayIconEntry entry, TrayPointerAction action, PixelRect iconBounds, PixelRect barBounds)
     {
-        var state = icon.State;
+        var state = entry.State;
         var notifications = TrayCallback.Notifications(action, state);
         if (state.CallbackMessage == 0 || notifications.Count == 0 || _host is null)
         {
             return;
         }
 
-        _host.SetIconBounds(state.Id, bounds);
+        // Shell_NotifyIconGetRect answers with the icon the user actually used, on that bar's monitor.
+        _host.SetIconBounds(state.Id, iconBounds);
         var owner = state.Id.Owner;
         if (TrayCallback.MayTakeForeground(action))
         {
@@ -160,10 +168,8 @@ internal sealed class TrayViewModel : ObservableObject, IDisposable
             NativeMethods.AllowSetForegroundWindow((int)NativeMethods.GetProcessId(owner));
         }
 
-        // Version 4 apps get an anchor in wParam: the icon's centre at the bar's bottom edge, so menus they place
-        // there open just under the bar, like macOS menu bar extras.
-        var anchorX = bounds.Left + (bounds.Width / 2);
-        var anchorY = Math.Max(bounds.Bottom, _barBounds.Bottom);
+        // Version 4 apps get an anchor in wParam: menus they place there open just under the clicked bar.
+        var (anchorX, anchorY) = TrayAnchor.For(iconBounds, barBounds);
         foreach (var notification in notifications)
         {
             var (wParam, lParam) = TrayCallback.Encode(state.Version, state.Id.Id, notification, anchorX, anchorY);
@@ -187,34 +193,37 @@ internal sealed class TrayViewModel : ObservableObject, IDisposable
         switch (change.Kind)
         {
             case TrayChangeKind.Added:
-                var added = new TrayIconViewModel(change.Icon);
-                added.SetSlot(_iconSlotPx, _iconScale);
+                var added = new TrayIconEntry(change.Icon);
                 if (imageChanged)
                 {
                     added.Image = ToImage(image);
                 }
 
-                Icons.Insert(Math.Min(change.Index, Icons.Count), added);
+                var index = Math.Min(change.Index, _entries.Count);
+                _entries.Insert(index, added);
+                Changed?.Invoke(this, new TrayStructureChange(TrayChangeKind.Added, index, added));
                 break;
 
-            case TrayChangeKind.Updated when change.Index < Icons.Count:
-                var icon = Icons[change.Index];
-                icon.State = change.Icon;
+            case TrayChangeKind.Updated when change.Index < _entries.Count:
+                var entry = _entries[change.Index];
+                entry.State = change.Icon;
                 if (imageChanged)
                 {
-                    icon.Image = ToImage(image);
+                    entry.Image = ToImage(image);
                 }
 
                 break;
 
-            case TrayChangeKind.Removed when change.Index < Icons.Count:
-                if (ReferenceEquals(Icons[change.Index], _hovered))
+            case TrayChangeKind.Removed when change.Index < _entries.Count:
+                if (ReferenceEquals(_entries[change.Index], _hovered))
                 {
                     _hoverTimer.Stop();
                     _hovered = null;
                 }
 
-                Icons.RemoveAt(change.Index);
+                var removed = _entries[change.Index];
+                _entries.RemoveAt(change.Index);
+                Changed?.Invoke(this, new TrayStructureChange(TrayChangeKind.Removed, change.Index, removed));
                 break;
         }
     }
@@ -247,7 +256,14 @@ internal sealed class TrayViewModel : ObservableObject, IDisposable
         var host = _host;
         _host = null;
         host?.Dispose();
-        Icons.Clear();
+
+        // Last to first, so each removal's index is valid for the bars mirroring the list.
+        for (var i = _entries.Count - 1; i >= 0; i--)
+        {
+            var removed = _entries[i];
+            _entries.RemoveAt(i);
+            Changed?.Invoke(this, new TrayStructureChange(TrayChangeKind.Removed, i, removed));
+        }
     }
 
     public void Dispose()
