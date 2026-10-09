@@ -29,7 +29,8 @@ the way it was when it exits.
 
 ### Dock
 - Pinned apps plus running apps, with **running-indicator dots** (one per window, up to four).
-- **Click** focuses an app, or minimises it if it's already focused. Other click actions: *cycle windows* or *show previews*.
+- **Click** focuses an app (restoring it if minimised), or minimises it if it's already focused. Other click actions: *cycle windows* or *show previews*.
+- Running windows join their pinned icon, including Electron apps such as VS Code and Squirrel-installed apps such as GitHub Desktop and Discord.
 - **Middle-click** opens a new window. **Right-click** lists the app's windows plus *New window*, *Pin/Unpin* and *Quit*.
 - **Super+1…9** activates the n-th dock item.
 - **Visibility modes**: *Always visible* (reserves screen space), *Intellihide* (hides only when a window overlaps it, the Ubuntu default) and *Autohide*.

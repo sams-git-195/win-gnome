@@ -183,7 +183,8 @@ internal sealed class DockFeature : IFeature, IEmergencyRestore
         window.Title,
         _context.Apps.FindForWindow(window.AppUserModelId, window.ProcessPath)?.Name ?? _context.Windows.GetAppName(window),
         window.ProcessPath,
-        window.AppUserModelId);
+        window.AppUserModelId,
+        window.IsMinimized);
 
     // ---- Geometry ---------------------------------------------------------------------------
 

@@ -15,6 +15,18 @@ internal static class PathText
         return index < 0 ? path : path[(index + 1)..];
     }
 
+    /// <summary>The text before the last separator, or an empty string when there is none.</summary>
+    public static string DirectoryName(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return "";
+        }
+
+        var index = path.LastIndexOfAny(['\\', '/']);
+        return index < 0 ? "" : path[..index];
+    }
+
     /// <summary>The file name without its last extension.</summary>
     public static string FileNameWithoutExtension(string? path)
     {
