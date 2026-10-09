@@ -73,8 +73,8 @@ internal sealed class WindowsUpdatePanelViewModel : SystemPanelViewModel
     }
 
     /// <summary>
-    /// Never throws: LoadAsync's own failure path only sets the problem, which would leave the progress bar up and
-    /// Refresh disabled until the panel is reopened. Any failure becomes a status carrying its HRESULT instead.
+    /// Never throws: any failure becomes a status carrying its HRESULT, so the rows can show Windows' own message for
+    /// it instead of LoadAsync's generic failure banner (whose <c>onFailed</c> callback has no access to the exception).
     /// </summary>
     private static UpdateStatus ReadStatus()
     {

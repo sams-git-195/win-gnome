@@ -49,18 +49,10 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
 {
     private readonly string _panelId;
     private string? _problem;
-    private bool _isOpen;
 
-    // Bumped by every open and close, so a LoadAsync result is shown only by the same Open that asked for it.
-    private int _generation;
-
-    // Bumped by every LoadAsync, so when loads on one channel overlap (a re-read after each write) only the newest one is
-    // shown and an older read that finishes late can't put stale values back.
-    private int _loadSequence;
-
-    // The newest load's sequence per channel. Loads on different channels (independent lists on one panel) never drop
-    // each other. Cleared with every open and close; the generation already drops the earlier open's loads.
-    private readonly Dictionary<string, int> _newestLoad = new(StringComparer.Ordinal);
+    // Which load may show its result: the open's generation and the newest load per channel. The rule is pure
+    // counting, so it lives in Core (PanelLoadGate) with the tests; the showing itself stays here on the dispatcher.
+    private readonly PanelLoadGate _loads = new();
 
     protected SystemPanelViewModel(SystemPanelContext context, string panelId)
         : this(context, SettingsPanelCatalog.Find(panelId) ?? throw new ArgumentException($"Unknown panel \"{panelId}\".", nameof(panelId)))
@@ -98,28 +90,24 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
 
     public sealed override void OnSelected()
     {
-        if (_isOpen)
+        if (_loads.IsOpen)
         {
             return;
         }
 
-        _isOpen = true;
-        _generation++;
-        _newestLoad.Clear();
+        _loads.Opened();
         Problem = null;
         Open();
     }
 
     public sealed override void OnDeselected()
     {
-        if (!_isOpen)
+        if (!_loads.IsOpen)
         {
             return;
         }
 
-        _isOpen = false;
-        _generation++;
-        _newestLoad.Clear();
+        _loads.Closed();
         Close();
     }
 
@@ -140,9 +128,15 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
     /// <summary>
     /// Runs <paramref name="read"/> off the UI thread and passes its result to <paramref name="show"/> on the dispatcher,
     /// but only while the panel is still open from the same <see cref="Open"/> and no later <see cref="LoadAsync{T}"/> was started on the same <paramref name="channel"/>: a read that finishes after the panel was
-    /// closed (or closed and reopened) is dropped. A failure is logged and shown as <see cref="Problem"/>. Call it from
-    /// the UI thread (usually in <see cref="Open"/>).
+    /// closed (or closed and reopened) is dropped. A failure is logged, shown as <see cref="Problem"/> and passed to
+    /// <paramref name="onFailed"/>. Call it from the UI thread (usually in <see cref="Open"/>).
     /// </summary>
+    /// <param name="onFailed">
+    /// Runs on the dispatcher, under exactly the same conditions as <paramref name="show"/>, when
+    /// <paramref name="read"/> threw: a panel that set a busy flag before loading passes this to clear the flag, so a
+    /// failed read never leaves the controls disabled. A load that was superseded on its channel or outlived its open
+    /// does not run it — the busy state then belongs to the newer load or to the next open.
+    /// </param>
     /// <param name="longRunning">
     /// Runs the read on its own background thread (MTA, named after the panel) instead of the thread pool. Use it for
     /// reads that can block for long (an RPC to a print server, Windows Update, a walk over hundreds of registry keys),
@@ -152,14 +146,13 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
     /// Which loads replace each other: only the newest load on the same channel is shown. Existing callers use the
     /// default channel; a panel with independent lists gives each its own channel.
     /// </param>
-    protected void LoadAsync<T>(Func<T> read, Action<T> show, bool longRunning = false, string channel = "")
+    protected void LoadAsync<T>(Func<T> read, Action<T> show, Action? onFailed = null, bool longRunning = false, string channel = "")
     {
         ArgumentNullException.ThrowIfNull(read);
         ArgumentNullException.ThrowIfNull(show);
         ArgumentNullException.ThrowIfNull(channel);
-        var generation = _generation;
-        var sequence = ++_loadSequence;
-        _newestLoad[channel] = sequence;
+        var generation = _loads.Generation;
+        var sequence = _loads.Begin(channel);
 
         void Work()
         {
@@ -172,7 +165,25 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
             {
                 // Thread boundary: an exception escaping a worker would end the shell process.
                 Log.Warn($"Settings: could not read the \"{_panelId}\" panel's settings", ex);
-                ShowIfCurrent(generation, channel, sequence, () => Problem = "Couldn't read these settings from Windows. You can see them in Windows Settings instead.");
+                ShowIfCurrent(generation, channel, sequence, () =>
+                {
+                    Problem = "Couldn't read these settings from Windows. You can see them in Windows Settings instead.";
+                    if (onFailed is null)
+                    {
+                        return;
+                    }
+
+                    try
+                    {
+                        onFailed();
+                    }
+                    catch (Exception ex)
+                    {
+                        // The banner above already says what failed; a broken callback must not replace it with the
+                        // show-failure one (ShowIfCurrent's catch), so it is logged here and goes no further.
+                        Log.Warn($"Settings: the \"{_panelId}\" panel's load-failure callback threw", ex);
+                    }
+                });
                 return;
             }
 
@@ -195,7 +206,7 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
     private void ShowIfCurrent(int generation, string channel, int sequence, Action action) =>
         Context.Dispatcher.BeginInvoke(() =>
         {
-            if (!_isOpen || generation != _generation || !_newestLoad.TryGetValue(channel, out var newest) || newest != sequence)
+            if (!_loads.MayShow(generation, channel, sequence))
             {
                 return;
             }

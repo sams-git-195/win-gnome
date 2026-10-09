@@ -105,17 +105,19 @@ General → *Start with Windows*).
   spec 0017's DND service (nullable until 0017 lands). Panels take only the record, so adding a service doesn't
   change every constructor. As built in WP0 the record has the first four; the DND member is added (nullable) by
   whichever of 0017 or WP1 lands second, since its type doesn't exist yet.
-- **`SystemPanelViewModel.LoadAsync<T>(Func<T> read, Action<T> show, bool longRunning = false)`**: runs `read` on the
-  thread pool, or with `longRunning` on a dedicated named background thread (`"WinGnome panel: <id>"`, MTA), and
-  calls `show` on the dispatcher only if the panel is still open from the same `Open` (a generation counter), logging
-  exceptions and setting `Problem`. `longRunning` is required for WUA, `EnumPrinters` and the uninstall-key walk, so
-  a stuck RPC or COM call never starves the pool. Replaces the ad-hoc `Task.Run(...).ContinueWith` in About/Displays
-  for new panels only (existing panels untouched). *As built, two additions (WP0, WP3):* an optional
-  `channel` argument — loads on the same channel replace each other (only the newest is shown, so a re-read after each
-  write can't be overwritten by an older read that finishes late), while loads on different channels (independent
-  lists on one panel, e.g. Apps' `installed`, `startup` and per-package channels) never drop each other; and the
-  failure path: a throwing `read` is logged and sets `Problem` but does not call `show`, so a panel that set a busy flag
-  before loading must clear it itself (KI-091).
+- **`SystemPanelViewModel.LoadAsync<T>(Func<T> read, Action<T> show, Action? onFailed = null, bool longRunning = false, string channel = "")`**:
+  runs `read` on the thread pool, or with `longRunning` on a dedicated named background thread (`"WinGnome panel: <id>"`,
+  MTA), and calls `show` on the dispatcher only if the panel is still open from the same `Open` (a generation counter),
+  logging exceptions and setting `Problem`. `longRunning` is required for WUA, `EnumPrinters` and the uninstall-key walk,
+  so a stuck RPC or COM call never starves the pool. Replaces the ad-hoc `Task.Run(...).ContinueWith` in About/Displays
+  for new panels only (existing panels untouched; their ad-hoc load and failure handling is KI-101). *As built, three additions (WP0, WP3
+  and the KI-091 fix):* an optional `channel` argument — loads on the same channel replace each other (only the newest
+  is shown, so a re-read after each write can't be overwritten by an older read that finishes late), while loads on
+  different channels (independent lists on one panel, e.g. Apps' `installed`, `startup` and per-package channels) never
+  drop each other; an optional `onFailed` callback — a throwing `read` is logged and sets `Problem`, and `onFailed` runs
+  on the dispatcher under exactly the same conditions as `show`, so a panel that set a busy flag before loading (Printers,
+  Removable Media, Apps' installed list) clears it; and the generation counter with the per-channel newest-sequence table
+  moved into Core's `PanelLoadGate`, with the tests.
 - **`ShellThread`** (`Services/Apps/ShellThread.cs`): `AppLauncher.RunOnShellThread` extracted unchanged into a
   shared helper (`ShellThread.Run(string what, Func<bool> work, Action? done)`: STA background thread, logs every
   exception, posts `done` to the caller's context). `AppLauncher` calls it; this extraction is its own refactor
@@ -457,7 +459,8 @@ line lands, WP0's fallback keeps it a working link.
   - KI-090 S4 Settings — Startup apps: machine-wide items and packaged startup tasks are read-only/linked; HKCU Run
     values can be disabled but not removed (deferred); the HKLM-approval check result.
   - KI-091 S4 Settings — `LegacyDefaultPrinterMode` and AutoPlay handler keys are undocumented (as written it also
-    covers the Printers and Removable Media limits and the `LoadAsync` failure path that leaves a busy flag set).
+    covers the Printers and Removable Media limits, and the `LoadAsync` failure path that left a busy flag set — the
+    latter since fixed).
   - KI-092 S4 Settings — The format locale and display language are changed in Windows Settings (By design; as
     written it also covers the Windows Update panel's cached-only status).
   - KI-063 extended to the new panels until each write is checked live.

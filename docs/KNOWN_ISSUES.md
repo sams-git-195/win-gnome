@@ -15,6 +15,10 @@ for when to add, update and close entries.
 Status is one of *Open*, *In progress*, *By design* (a limitation we've chosen to accept, with the reason),
 or *Fixed* (with the commit). When in doubt, pick the higher severity.
 
+IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017, KI-098 and KI-099 by
+spec 0010, and KI-100 by the Docker Desktop dock-grouping fix. The next free ID is **KI-102**; grep the specs for
+`KI-0` before allocating one.
+
 ## Open
 
 | ID | Severity | Area | Summary | Status |
@@ -60,6 +64,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-090](#ki-090) | S4 | Settings | Startup apps: machine-wide items are read-only, packaged startup tasks aren't listed | Open |
 | [KI-091](#ki-091) | S4 | Settings | Printers and Removable Media: undocumented values, no change notifications, a limited event list, little tested on real devices | Open |
 | [KI-092](#ki-092) | S4 | Settings | Region & Language formats and Windows Update status are partly left to Windows Settings | By design |
+| [KI-101](#ki-101) | S4 | Settings | About and Displays bypass the shared load gate; a failed About read shows nothing at all | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -484,8 +489,6 @@ gets WinGnome's *Uninstall…* only when its command is safe (`UninstallPlan`: M
 /X`, bare `msiexec`/`rundll32` rooted at System32, otherwise a fully qualified `.exe`); every other one shows
 *Uninstall in Windows Settings*. System-signed and framework packages can't be removed here. The Recycle Bin operation
 has no owner window (the panel has no HWND), so a shell prompt such as "delete permanently?" isn't modal to Settings.
-The installed-apps list reads on a background thread; if that read throws, the loading indicator stays until the panel
-is reopened (the shared failure path of `LoadAsync`, see KI-091).
 *Not verified live:* uninstall itself was not run during development (desktop or packaged); the plans were checked by
 Core tests and by reading all 282 Uninstall keys on the development machine (64 listed, 63 with a plan, 1 without an
 `UninstallString`).
@@ -536,10 +539,11 @@ panels show what they read back after every write.
   `CameraAlternate` key (HKCU has `EventHandlers\CameraMemoryOnArrival`). *Next step:* change *Memory card* in Windows
   Settings and diff the registry.
 
-*Shared failure path:* `SystemPanelViewModel.LoadAsync` has no failure callback, so when a read throws (it logs and
-shows the problem banner) a panel that set `IsBusy = true` before loading never clears it: Printers' and Removable
-Media's controls stay disabled (Removable Media can't retry) until the panel is closed and reopened, and Apps' installed
-list keeps its loading indicator. *Fix direction:* an optional failure callback in `LoadAsync`.
+*Shared failure path:* **fixed** in c8f1c26 + 8b409f0: `LoadAsync` takes an optional `onFailed` callback that runs when
+the read throws, on the dispatcher and under the same conditions as `show` (still open from the same `Open`, still the
+newest load on its channel — the counting lives in Core's `PanelLoadGate`, with tests). Printers, Removable Media and
+Apps pass it, so a failed read clears the busy state instead of leaving the controls disabled or the loading indicator
+up until the panel is reopened.
 *Not verified live:* printers and set-default were not tried on real printers (the spooler is disabled on the
 development machine), and no USB stick, memory card or disc was inserted for AutoPlay.
 
@@ -558,6 +562,18 @@ updates Windows hasn't found yet, or found since the last check, aren't listed u
 differ from Windows Settings', which also merges Microsoft Store and driver sources. The panel never scans or installs.
 A standard user may be refused by policy on managed machines; the panel then shows the error with the Windows Settings
 link.
+
+### KI-101
+**About and Displays bypass the shared load gate; a failed About read shows nothing at all** · S4 · Settings · Open
+
+The two panels that predate spec 0020's `LoadAsync` keep their own `Task.Run(...).ContinueWith` loads and generation
+counters, so neither benefits from the shared failure path (`onFailed`), the newest-only load rules or Core's
+`PanelLoadGate` generations. When the read throws, About logs it and leaves `Info` null: the heading keeps its
+"Reading…" fallback and the rows stay blank until the panel is closed and reopened, with no problem banner to say why.
+Displays logs it and shows an empty display list, whose `Show` does raise the banner ("WinGnome couldn't read the
+displays."), so its gap is the duplicated machinery, not a silent failure. Found while fixing KI-091's shared failure
+path. The fix is to convert both to `LoadAsync`, which brings the banner, `onFailed` and the gate for free and deletes
+their local counters.
 
 ## Resolved
 
