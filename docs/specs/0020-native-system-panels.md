@@ -210,8 +210,11 @@ verified-set (write through the service, re-read, show the re-read value).
   2. `WindowsInstaller=1` **and** the key name parses as a GUID → `<System32>\msiexec.exe /X {GUID}`.
   3. Otherwise `StartupRunner.TryParseCommand(UninstallString)` (an MSI key whose name isn't a GUID falls through
      to here). A bare `msiexec`/`msiexec.exe` or `rundll32`/`rundll32.exe` is rewritten to `<System32>\<name>.exe`.
-  4. Any other executable must be a fully qualified path (`Path.IsPathFullyQualified`); a bare name, relative path
-     or unexpanded `%VAR%` → none.
+  4. Any other executable must be a fully qualified path (`C:\…` or `\\server\share\…`) ending in `.exe`; a bare
+     name, relative path, other file type or unexpanded `%VAR%` → none. (As built, WP3: `.exe` only, because an
+     unquoted `C:\Program Files\App\uninst /S` splits at the first space and `C:\Program` could then resolve to a
+     planted `C:\Program.exe`. On the development machine 63 of 64 listed apps get a plan; the other has no
+     `UninstallString`.)
   5. None → the row's button becomes *Uninstall in Windows Settings* (`ms-settings:appsfeatures`).
   Tests for each filter rule and each plan case: MSI with GUID key, MSI with non-GUID key (falls through), bare
   msiexec and rundll32 rewritten, quoted/unquoted rooted paths with spaces, bare `setup.exe` → none, relative path →
@@ -224,8 +227,13 @@ verified-set (write through the service, re-read, show the re-read value).
     (UTC, little-endian) of the change. **WP3 step 1** confirms on 25H2, by toggling an HKLM Run item in Task
     Manager as a standard user, where Windows stores its approval; expected HKLM (admin), so HKLM and common-folder
     items are read-only with a *Change in Task Manager* link (`taskmgr.exe /0 /startup`). If Windows stores it in
-    HKCU, the result goes in KI-090 and they stay read-only in this spec.
-  - Add: the existing app picker (`AppPickerWindow`) → a `.lnk` in the user's Startup folder created with
+    HKCU, the result goes in KI-090 and they stay read-only in this spec. *Result (WP3, 2026-10-09):* the check
+    couldn't be run as a standard user (the development account is an administrator with a split token, and
+    creating a test HKLM Run item needs elevation, which WP3 doesn't use). Read-only evidence: an HKLM Run item
+    disabled earlier through Task Manager has its `03 …` value under **HKLM** `StartupApproved\Run`, nothing under
+    HKCU. Machine items stay read-only, approval read from HKLM only (KI-090).
+  - Add: the existing app picker (`AppPickerWindow`; as built its heading still reads "Add app to dock", since
+    `IDialogService.PickApp` takes no title and WP3 doesn't edit shared views, KI-090) → a `.lnk` in the user's Startup folder created with
     `IShellLinkW` from the picked AppsFolder item's ID list and saved with `IPersistFile.Save`, on `ShellThread`, so
     packaged apps work too.
   - Remove: user Startup-folder shortcuts only, after confirmation, to the Recycle Bin (`IFileOperation`,
