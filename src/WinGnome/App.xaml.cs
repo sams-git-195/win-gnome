@@ -66,9 +66,14 @@ public partial class App : Application
         Log.Info($"WinGnome {typeof(App).Assembly.GetName().Version} starting. Args: {string.Join(' ', e.Args)}");
         InstallCrashHandlers();
 
+        // The work-area fallback changes system state, so it is off in safe mode and in the self-test (which runs
+        // safe); recovering an earlier run's change is a repair and runs either way.
+        WorkAreaController.Initialize(_settingsDirectory, enabled: !options.Safe && !options.SelfTest);
+
         if (options.RestoreTaskbar)
         {
             TaskbarController.RestoreFromMarker(_settingsDirectory);
+            WorkAreaController.RecoverFromMarker(_settingsDirectory);
             AppBarJanitor.Nudge();
             Shutdown(0);
             return;
@@ -83,6 +88,7 @@ public partial class App : Application
 
         // A previous run that crashed (or was killed) may have left the taskbar hidden, and strips reserved.
         TaskbarController.RestoreFromMarker(_settingsDirectory);
+        WorkAreaController.RecoverFromMarker(_settingsDirectory);
         AppBarJanitor.Nudge();
         if (options.SelfTest)
         {

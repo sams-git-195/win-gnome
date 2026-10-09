@@ -95,66 +95,79 @@ public class AppBarReservationTests
     {
         var recovery = new StripRecovery();
 
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.None), recovery.Update(reserved: true, 1000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.None), recovery.Update(reserved: true, shrinkAllowed: true, 1000));
         Assert.False(recovery.IsMissing);
     }
 
     [Fact]
-    public void Recovery_MissingStrip_WaitsForExplorerFirst()
+    public void Recovery_MissingStrip_WaitsBeforeActing()
     {
-        // The third live run: Explorer applied the strips ~35 s after the taskbar went auto-hide, on its own.
+        // Explorer applies a strip within about 0.3 s in the steady state, so acting at once would only race it.
         var recovery = new StripRecovery();
 
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 46_000), recovery.Update(reserved: false, 1000));
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 46_000), recovery.Update(reserved: false, 45_999));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 1500), recovery.Update(reserved: false, shrinkAllowed: true, 0));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 1500), recovery.Update(reserved: false, shrinkAllowed: true, 1499));
         Assert.True(recovery.IsMissing);
     }
 
     [Fact]
-    public void Recovery_ExplorerAppliesTheStripDuringTheGrace_NeverRegistersAgain()
+    public void Recovery_ExplorerAppliesTheStripBeforeTheFirstAction_NeverActs()
     {
         var recovery = new StripRecovery();
-        recovery.Update(reserved: false, 1000);
+        recovery.Update(reserved: false, shrinkAllowed: true, 0);
 
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.None), recovery.Update(reserved: true, 36_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.None), recovery.Update(reserved: true, shrinkAllowed: true, 1499));
         Assert.False(recovery.IsMissing);
     }
 
     [Fact]
-    public void Recovery_StillMissing_RegistersAgainWithADoublingBackoff_ThenGivesUp()
+    public void Recovery_StillMissing_SetsTheWorkAreaThreeTimes_ThenGivesUp()
     {
         var recovery = new StripRecovery();
-        recovery.Update(reserved: false, 0);
+        recovery.Update(reserved: false, shrinkAllowed: true, 0);
 
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Reregister, 105_000), recovery.Update(reserved: false, 45_000));
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 105_000), recovery.Update(reserved: false, 104_999));
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Reregister, 225_000), recovery.Update(reserved: false, 105_000));
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Reregister, 465_000), recovery.Update(reserved: false, 225_000));
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp), recovery.Update(reserved: false, 465_000));
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp), recovery.Update(reserved: false, 10_000_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Shrink, 6500), recovery.Update(reserved: false, shrinkAllowed: true, 1500));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 6500), recovery.Update(reserved: false, shrinkAllowed: true, 6499));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Shrink, 26500), recovery.Update(reserved: false, shrinkAllowed: true, 6500));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Shrink, 46500), recovery.Update(reserved: false, shrinkAllowed: true, 26500));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp), recovery.Update(reserved: false, shrinkAllowed: true, 46500));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp), recovery.Update(reserved: false, shrinkAllowed: true, 10_000_000));
     }
 
     [Fact]
-    public void Recovery_FrequentChecks_NeverRegisterMoreOftenThanTheBackoff()
+    public void Recovery_ShrinkNotAllowed_RegistersAgainInstead()
+    {
+        // Safe mode changes no system state, so re-registering is the only tool it has.
+        var recovery = new StripRecovery();
+        recovery.Update(reserved: false, shrinkAllowed: false, 0);
+
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Reregister, 6500), recovery.Update(reserved: false, shrinkAllowed: false, 1500));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Reregister, 26500), recovery.Update(reserved: false, shrinkAllowed: false, 6500));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Reregister, 46500), recovery.Update(reserved: false, shrinkAllowed: false, 26500));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp), recovery.Update(reserved: false, shrinkAllowed: false, 46500));
+    }
+
+    [Fact]
+    public void Recovery_FrequentChecks_NeverActMoreOftenThanTheSchedule()
     {
         // Notifications and display passes can arrive many times a second; only the schedule decides.
         var recovery = new StripRecovery();
-        recovery.Update(reserved: false, 0);
+        recovery.Update(reserved: false, shrinkAllowed: true, 0);
 
-        Assert.Equal(StripRecoveryKind.Reregister, recovery.Update(reserved: false, 45_000).Kind);
-        Assert.Equal(StripRecoveryKind.Wait, recovery.Update(reserved: false, 45_001).Kind);
-        Assert.Equal(StripRecoveryKind.Wait, recovery.Update(reserved: false, 60_000).Kind);
+        Assert.Equal(StripRecoveryKind.Shrink, recovery.Update(reserved: false, shrinkAllowed: true, 1500).Kind);
+        Assert.Equal(StripRecoveryKind.Wait, recovery.Update(reserved: false, shrinkAllowed: true, 1501).Kind);
+        Assert.Equal(StripRecoveryKind.Wait, recovery.Update(reserved: false, shrinkAllowed: true, 6000).Kind);
     }
 
     [Fact]
     public void Recovery_StripReservedAgain_StartsAfreshNextTime()
     {
         var recovery = new StripRecovery();
-        recovery.Update(reserved: false, 0);
-        recovery.Update(reserved: false, 45_000);
-        recovery.Update(reserved: true, 50_000);
+        recovery.Update(reserved: false, shrinkAllowed: true, 0);
+        recovery.Update(reserved: false, shrinkAllowed: true, 1500);
+        recovery.Update(reserved: true, shrinkAllowed: true, 2000);
 
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 145_000), recovery.Update(reserved: false, 100_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 101_500), recovery.Update(reserved: false, shrinkAllowed: true, 100_000));
     }
 
     [Fact]
@@ -162,17 +175,17 @@ public class AppBarReservationTests
     {
         // Used up every attempt, then undocked (Reset) and docked again: the new strip gets every attempt again.
         var recovery = new StripRecovery();
-        recovery.Update(reserved: false, 0);
-        recovery.Update(reserved: false, 45_000);
-        recovery.Update(reserved: false, 105_000);
-        recovery.Update(reserved: false, 225_000);
-        Assert.Equal(StripRecoveryKind.GiveUp, recovery.Update(reserved: false, 465_000).Kind);
+        recovery.Update(reserved: false, shrinkAllowed: true, 0);
+        recovery.Update(reserved: false, shrinkAllowed: true, 1500);
+        recovery.Update(reserved: false, shrinkAllowed: true, 6500);
+        recovery.Update(reserved: false, shrinkAllowed: true, 26500);
+        Assert.Equal(StripRecoveryKind.GiveUp, recovery.Update(reserved: false, shrinkAllowed: true, 46500).Kind);
 
         recovery.Reset();
 
         Assert.False(recovery.IsMissing);
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 545_000), recovery.Update(reserved: false, 500_000));
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Reregister, 605_000), recovery.Update(reserved: false, 545_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 501_500), recovery.Update(reserved: false, shrinkAllowed: true, 500_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Shrink, 506_500), recovery.Update(reserved: false, shrinkAllowed: true, 501_500));
     }
 
     [Fact]

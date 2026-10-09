@@ -156,11 +156,11 @@ internal sealed class DockFeature : IFeature
             }
         }
 
-        var reregistered = recheckStrips ? _docks.Count(EnsureReserved) : 0;
-        if (steps.Count > 0 || reregistered > 0 || reason == "display change")
+        var acted = recheckStrips ? _docks.Count(EnsureReserved) : 0;
+        if (steps.Count > 0 || acted > 0 || reason == "display change")
         {
             var summary = string.Join(", ", steps.Select(s => $"{s.Kind} {s.Key}{(s.Monitor is { } m && m.Key != s.Key ? "->" + m.Key : "")}"));
-            Log.Info($"Dock: reconcile ({reason}): [{summary}] in {timer.ElapsedMilliseconds} ms, {AppBar.MessageCount - callsBefore} SHAppBarMessage calls, {_docks.Count} docks, {reregistered} strips registered again, edge poll {(_poller?.IsRunning == true ? "running" : "idle")}");
+            Log.Info($"Dock: reconcile ({reason}): [{summary}] in {timer.ElapsedMilliseconds} ms, {AppBar.MessageCount - callsBefore} SHAppBarMessage calls, {_docks.Count} docks, {acted} missing strips acted on, edge poll {(_poller?.IsRunning == true ? "running" : "idle")}");
         }
     }
 

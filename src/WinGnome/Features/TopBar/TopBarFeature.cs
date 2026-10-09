@@ -121,13 +121,13 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
             }
         }
 
-        var reregistered = recheckStrips ? _bars.Count(EnsureReserved) : 0;
+        var acted = recheckStrips ? _bars.Count(EnsureReserved) : 0;
         UpdateTrayHostBounds();
         RefreshFocusedApps();
-        if (steps.Count > 0 || reregistered > 0 || reason is "start" or "display change")
+        if (steps.Count > 0 || acted > 0 || reason is "start" or "display change")
         {
             var summary = string.Join(", ", steps.Select(s => $"{s.Kind} {s.Key}{(s.Monitor is { } m && m.Key != s.Key ? "->" + m.Key : "")}"));
-            Log.Info($"Top bar: reconcile ({reason}): [{summary}] in {timer.ElapsedMilliseconds} ms, {AppBar.MessageCount - callsBefore} SHAppBarMessage calls, {_bars.Count} bars, {reregistered} strips registered again");
+            Log.Info($"Top bar: reconcile ({reason}): [{summary}] in {timer.ElapsedMilliseconds} ms, {AppBar.MessageCount - callsBefore} SHAppBarMessage calls, {_bars.Count} bars, {acted} missing strips acted on");
         }
     }
 

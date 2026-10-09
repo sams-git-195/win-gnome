@@ -106,8 +106,8 @@ internal sealed class TopBarInstance : IDisposable
     }
 
     /// <summary>
-    /// Registers the AppBar again if the monitor's work area no longer leaves the strip out (see
-    /// <see cref="AppBar.EnsureReserved"/>). Returns true when it did.
+    /// Acts if the monitor's work area no longer leaves the strip out: it is set directly, or the AppBar is
+    /// registered again where that isn't allowed (see <see cref="AppBar.EnsureReserved"/>). Returns true when it did.
     /// </summary>
     public bool EnsureReserved()
     {

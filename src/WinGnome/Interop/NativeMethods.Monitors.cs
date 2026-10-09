@@ -51,6 +51,15 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool GetMonitorInfo(nint monitor, ref MONITORINFOEXW info);
 
+    /// <summary>
+    /// SystemParametersInfo for actions whose pvParam is a RECT (SPI_SETWORKAREA, which sets the work area of the
+    /// monitor the rectangle lies on). The scalar and int-array overloads live in NativeMethods.Input.cs. Never pass
+    /// SPIF_UPDATEINIFILE: a work area is session state, not a user preference.
+    /// </summary>
+    [LibraryImport("user32.dll", EntryPoint = "SystemParametersInfoW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SystemParametersInfoRect(uint action, uint uiParam, ref RECT value, uint winIni);
+
     // Delegate parameters are not supported by LibraryImport, so this stays DllImport.
 #pragma warning disable SYSLIB1054
     [DllImport("user32.dll")]

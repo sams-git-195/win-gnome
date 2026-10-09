@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using WinGnome.Core.Geometry;
 using WinGnome.Core.Shell;
 using WinGnome.Infrastructure;
+using WinGnome.Services;
 
 namespace WinGnome.Interop;
 
@@ -101,8 +102,9 @@ internal sealed partial class AppBar : IDisposable
     public bool IsRegistered => _registered;
 
     /// <summary>
-    /// Crash path (any thread, plain Win32 only): sends ABM_REMOVE for every window that still holds a registration.
-    /// The instances are not told; a later <see cref="Undock"/> on one of them sends a harmless second ABM_REMOVE.
+    /// Crash path (any thread, plain Win32 only): sends ABM_REMOVE for every window that still holds a registration,
+    /// then gives back every work area set directly for them. The instances are not told; a later
+    /// <see cref="Undock"/> on one of them sends a harmless second ABM_REMOVE.
     /// </summary>
     public static void UndockAll()
     {
@@ -119,6 +121,9 @@ internal sealed partial class AppBar : IDisposable
                 Log.Warn($"Could not remove the AppBar of window 0x{hwnd:X}", ex);
             }
         }
+
+        // After the removals, so nothing can claim a strip while the work areas are put back.
+        WorkAreaController.ReleaseAll();
     }
 
     /// <summary>
@@ -162,9 +167,10 @@ internal sealed partial class AppBar : IDisposable
     /// Checks that the monitor's work area still leaves the strip out (display passes call this; shell notifications
     /// and the bar's own one-shot timer use the same check). Explorer applies strips late on its own (seen ~35 s
     /// after the taskbar went auto-hide) and can recompute work areas without them (a monitor unplugged), so a missing
-    /// strip is handled by <see cref="StripRecovery"/>: wait 45 s, then register again (ABM_REMOVE, ABM_NEW and the
-    /// docking sequence; a SETPOS of the unchanged rectangle does not bring a strip back) at most three times with a
-    /// doubling back-off. A one-shot timer runs only while a strip is missing. Returns true when it registered again.
+    /// strip is handled by <see cref="StripRecovery"/>: wait 1.5 s, then set the work area directly — or, where that
+    /// isn't allowed, register the AppBar again (ABM_REMOVE, ABM_NEW and the docking sequence; a SETPOS of the
+    /// unchanged rectangle does not bring a strip back) — at most three times, 5 s and 20 s apart. A one-shot timer
+    /// runs only while a strip is missing. Returns true when it acted on a missing strip.
     /// </summary>
     public bool EnsureReserved() => CheckStrip("a display pass");
 
@@ -176,7 +182,7 @@ internal sealed partial class AppBar : IDisposable
         }
 
         var wasMissing = _recovery.IsMissing;
-        var step = _recovery.Update(IsStripReserved(), Environment.TickCount64);
+        var step = _recovery.Update(IsStripReserved(), WorkAreaController.CanShrink, Environment.TickCount64);
         switch (step.Kind)
         {
             case StripRecoveryKind.None:
@@ -192,11 +198,24 @@ internal sealed partial class AppBar : IDisposable
             case StripRecoveryKind.Wait:
                 if (!wasMissing)
                 {
-                    Log.Info($"AppBar 0x{_hwnd:X}: after {trigger} the work area of monitor {Format(_monitor)} doesn't leave out the strip {Format(Bounds)}; leaving it to Explorer for {StripRecovery.GraceMs / 1000} s");
+                    Log.Info($"AppBar 0x{_hwnd:X}: after {trigger} the work area of monitor {Format(_monitor)} doesn't leave out the strip {Format(Bounds)}; leaving it to Explorer for {StripRecovery.FirstActionMs / 1000.0:0.#} s");
                 }
 
                 StartRecoveryTimer(step.DueMs);
                 return false;
+
+            case StripRecoveryKind.Shrink:
+            {
+                // WorkAreaController logs the change itself, with the monitor, both rectangles and the strip.
+                var shrunk = WorkAreaController.TryShrink(_hwnd, _monitor, (Core.Shell.AppBarEdge)(int)_edge, Bounds);
+                if (!shrunk)
+                {
+                    Log.Info($"AppBar 0x{_hwnd:X}: the strip {Format(Bounds)} is still missing from monitor {Format(_monitor)}'s work area (seen after {trigger}), which could not be set directly");
+                }
+
+                StartRecoveryTimer(step.DueMs);
+                return shrunk;
+            }
 
             case StripRecoveryKind.Reregister:
                 Log.Info($"AppBar 0x{_hwnd:X}: the strip {Format(Bounds)} is still missing from monitor {Format(_monitor)}'s work area (seen after {trigger}); registering again");
@@ -208,7 +227,7 @@ internal sealed partial class AppBar : IDisposable
                 if (!_gaveUp)
                 {
                     _gaveUp = true;
-                    Log.Warn($"AppBar 0x{_hwnd:X}: Explorer still hasn't reserved the strip {Format(Bounds)} after {StripRecovery.MaxAttempts} registrations; giving up until the next display change");
+                    Log.Warn($"AppBar 0x{_hwnd:X}: Explorer still hasn't reserved the strip {Format(Bounds)} after {StripRecovery.MaxAttempts} attempts; giving up until the next display change");
                 }
 
                 StopRecoveryTimer();
@@ -263,6 +282,10 @@ internal sealed partial class AppBar : IDisposable
         _gaveUp = false;
         StopRecoveryTimer();
         Unregister();
+
+        // After ABM_REMOVE: give back a work area we set directly for this bar, newest first while it is still the
+        // live value, so a dock still using the same monitor keeps its own strip.
+        WorkAreaController.Release(_hwnd);
     }
 
     private void Unregister()
