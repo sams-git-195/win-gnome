@@ -8,6 +8,7 @@ using WinGnome.Features.Settings.Panels.Mouse;
 using WinGnome.Features.Settings.Panels.Multitasking;
 using WinGnome.Features.Settings.Panels.Notifications;
 using WinGnome.Features.Settings.Panels.Power;
+using WinGnome.Features.Settings.Panels.Privacy;
 using WinGnome.Features.Settings.Panels.Sound;
 
 namespace WinGnome.Features.Settings.Panels;
@@ -33,5 +34,6 @@ internal static class PanelRegistry
             [PanelIds.DateTime] = context => new DateTimePanelViewModel(context),
             [PanelIds.About] = context => new AboutPanelViewModel(context),
             [PanelIds.Notifications] = context => new NotificationsPanelViewModel(context),
+            [PanelIds.Privacy] = context => new PrivacyPanelViewModel(context),
         };
 }

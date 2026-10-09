@@ -9,5 +9,6 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ResourceDictionary.MergedDictionaries>
         <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/Notifications/NotificationsPanelResources.xaml" />
+        <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/Privacy/PrivacyPanelResources.xaml" />
     </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>
