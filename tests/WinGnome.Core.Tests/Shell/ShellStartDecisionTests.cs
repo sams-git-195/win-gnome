@@ -147,22 +147,45 @@ public class ShellStartDecisionTests
     }
 
     [Fact]
-    public void Decide_ReadyTimeoutCountsAsACrash()
+    public void Decide_ReadyTimedOut_StartsExplorerAndRemovesTheValue()
     {
-        var twoCrashes = Healthy with { Crashes = CrashesAgo(10, 60) };
-
-        Assert.Equal(ShellStartAction.StartWinGnome, ShellStartDecision.Decide(twoCrashes).Action);
         Assert.Equal(
-            new ShellStartOutcome(ShellStartAction.StartExplorer, ExplorerReason.CrashLoop, true, false),
-            ShellStartDecision.Decide(twoCrashes with { ReadyTimedOut = true }));
+            new ShellStartOutcome(ShellStartAction.StartExplorer, ExplorerReason.ReadyTimeout, true, false),
+            ShellStartDecision.Decide(Healthy with { ReadyTimedOut = true }));
     }
 
     [Fact]
-    public void Decide_ReadyTimeoutAlone_RestartsWinGnome()
+    public void Decide_ReadyTimedOutDuringTrial_EndsTheTrial()
     {
-        var outcome = ShellStartDecision.Decide(Healthy with { ReadyTimedOut = true });
+        var outcome = ShellStartDecision.Decide(Healthy with { ReadyTimedOut = true, Trial = ShellTrialState.TrialPending });
 
-        Assert.Equal(ShellStartAction.StartWinGnome, outcome.Action);
+        Assert.Equal(new ShellStartOutcome(ShellStartAction.StartExplorer, ExplorerReason.ReadyTimeout, true, false), outcome);
+    }
+
+    [Fact]
+    public void Decide_UnreadableTrialState_FailsClosedToExplorer()
+    {
+        Assert.Equal(
+            new ShellStartOutcome(ShellStartAction.StartExplorer, ExplorerReason.UnknownState, true, false),
+            ShellStartDecision.Decide(Healthy with { Trial = null }));
+    }
+
+    [Fact]
+    public void Decide_UndefinedTrialValue_FailsClosedToExplorer()
+    {
+        Assert.Equal(
+            new ShellStartOutcome(ShellStartAction.StartExplorer, ExplorerReason.UnknownState, true, false),
+            ShellStartDecision.Decide(Healthy with { Trial = (ShellTrialState)42 }));
+    }
+
+    [Theory]
+    [InlineData(-1, 0)]
+    [InlineData(0, -1)]
+    public void Decide_NegativeCounters_FailClosedToExplorer(int restarts, int explorerAttempts)
+    {
+        var outcome = ShellStartDecision.Decide(Healthy with { RestartsSoFar = restarts, ExplorerFallbackAttempts = explorerAttempts });
+
+        Assert.Equal(new ShellStartOutcome(ShellStartAction.StartExplorer, ExplorerReason.UnknownState, true, false), outcome);
     }
 
     [Fact]
@@ -208,9 +231,9 @@ public class ShellStartDecisionTests
     }
 
     [Fact]
-    public void Decide_SessionEnding_DoesNothingEvenAfterCrashes()
+    public void Decide_SessionEnding_DoesNothingWhateverElseIsWrong()
     {
-        var inputs = Healthy with { IsSessionEnding = true, Crashes = CrashesAgo(1, 2, 3), ShiftHeld = true, ReadyTimedOut = true };
+        var inputs = Healthy with { IsSessionEnding = true, Crashes = CrashesAgo(1, 2, 3), ShiftHeld = true, ReadyTimedOut = true, Trial = null };
 
         Assert.Equal(
             new ShellStartOutcome(ShellStartAction.DoNothing, ExplorerReason.None, false, false),
@@ -248,7 +271,7 @@ public class ShellStartDecisionTests
     [Fact]
     public void RecordExit_NormalExit_AddsACrash()
     {
-        var history = ShellStartDecision.RecordExit(CrashHistory.Empty, Now, isSessionEnding: false);
+        var history = ShellStartDecision.RecordExit(CrashHistory.Empty, Now, isSessionEnding: false, cleanExit: false);
 
         Assert.Equal([Now], history.Crashes);
     }
@@ -256,7 +279,15 @@ public class ShellStartDecisionTests
     [Fact]
     public void RecordExit_DuringSessionEnd_IsNotACrash()
     {
-        var history = ShellStartDecision.RecordExit(CrashHistory.Empty, Now, isSessionEnding: true);
+        var history = ShellStartDecision.RecordExit(CrashHistory.Empty, Now, isSessionEnding: true, cleanExit: false);
+
+        Assert.Empty(history.Crashes);
+    }
+
+    [Fact]
+    public void RecordExit_DeliberateCleanQuit_IsNotACrash()
+    {
+        var history = ShellStartDecision.RecordExit(CrashHistory.Empty, Now, isSessionEnding: false, cleanExit: true);
 
         Assert.Empty(history.Crashes);
     }

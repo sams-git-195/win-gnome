@@ -8,6 +8,9 @@ public enum StartupSource
     RunOnceMachine,
     RunOnceUser,
     RunMachine,
+
+    /// <summary>32-bit Run key (WOW6432Node); its approval flags live under <c>StartupApproved\Run32</c>.</summary>
+    RunMachine32,
     RunUser,
     FolderCommon,
     FolderUser,
@@ -50,7 +53,7 @@ public sealed record SkippedStartup(StartupEntry Entry, StartupSkipReason Reason
 
 public sealed record StartupPlan(IReadOnlyList<StartupStep> Steps, IReadOnlyList<SkippedStartup> Skipped);
 
-/// <summary>StartupApproved flags: <c>StartupApproved\Run</c> and <c>\StartupFolder</c>, per hive.</summary>
+/// <summary>StartupApproved flags: <c>StartupApproved\Run</c>, <c>\Run32</c> and <c>\StartupFolder</c>, per hive. Keyed by source, so each key stays separate.</summary>
 public sealed class StartupApprovedSet
 {
     private readonly Dictionary<(StartupSource, string), byte[]> _flags = [];

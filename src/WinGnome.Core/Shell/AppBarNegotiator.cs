@@ -19,7 +19,9 @@ public readonly record struct MonitorWorkArea(int MonitorId, PixelRect Bounds, P
 /// The geometry half of the AppBar protocol (ABM_NEW, QUERYPOS, SETPOS, REMOVE, SETAUTOHIDEBAREX)
 /// for a shell that serves it: which rectangle each docked bar gets so bars never overlap, and each
 /// monitor's resulting work area. All rectangles are integer physical pixels, so DPI doesn't enter.
-/// Not thread-safe: call from the UI thread, like the window messages that drive it.
+/// Not thread-safe: call from the UI thread, like the window messages that drive it. Windows are
+/// identified by handle value, so the phase-1 server must call <see cref="Remove"/> when an
+/// appbar window is destroyed without ABM_REMOVE; a reused HWND would otherwise inherit its slot.
 /// </summary>
 /// <remarks>
 /// Rules: a bar's monitor is the one it overlaps most (ties: the earlier in the list; none: the first,
@@ -33,6 +35,8 @@ public sealed class AppBarNegotiator
     private sealed record Docked(AppBarEdge Edge, PixelRect Rect);
 
     private readonly Dictionary<long, Docked?> _bars = [];
+    private readonly Dictionary<long, int> _registrationOrder = [];
+    private int _nextOrder;
     private readonly Dictionary<(int MonitorId, AppBarEdge Edge), long> _autoHide = [];
     private IReadOnlyList<AppBarMonitor> _monitors = [];
 
@@ -48,7 +52,16 @@ public sealed class AppBarNegotiator
     }
 
     /// <summary>ABM_NEW. False when the window is already registered.</summary>
-    public bool Register(long hwnd) => _bars.TryAdd(hwnd, null);
+    public bool Register(long hwnd)
+    {
+        if (!_bars.TryAdd(hwnd, null))
+        {
+            return false;
+        }
+
+        _registrationOrder[hwnd] = _nextOrder++;
+        return true;
+    }
 
     /// <summary>ABM_REMOVE. False when the window wasn't registered.</summary>
     public bool Remove(long hwnd)
@@ -58,6 +71,7 @@ public sealed class AppBarNegotiator
             return false;
         }
 
+        _registrationOrder.Remove(hwnd);
         foreach (var key in _autoHide.Where(a => a.Value == hwnd).Select(a => a.Key).ToList())
         {
             _autoHide.Remove(key);
@@ -159,7 +173,10 @@ public sealed class AppBarNegotiator
             Math.Min(proposed.Right, b.Right),
             Math.Min(proposed.Bottom, b.Bottom));
 
-        foreach (var other in _bars.Where(p => p.Key != hwnd && p.Value is not null).Select(p => p.Value!))
+        // Only bars registered earlier are avoided (as Explorer does), so a bar re-querying its own
+        // rectangle can't be pushed past a bar that came after it and bars never leapfrog.
+        var order = _registrationOrder[hwnd];
+        foreach (var other in _bars.Where(p => p.Key != hwnd && p.Value is not null && _registrationOrder[p.Key] < order).Select(p => p.Value!))
         {
             if (MonitorFor(other.Rect) is { } otherMonitor && otherMonitor.Id != monitor.Id)
             {

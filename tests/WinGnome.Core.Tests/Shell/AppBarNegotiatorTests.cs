@@ -158,6 +158,48 @@ public class AppBarNegotiatorTests
     }
 
     [Fact]
+    public void QueryPos_InnerBarRequeryingItsOwnRectangle_IsNotPushedPastTheOuterOne()
+    {
+        var n = With(Main);
+        n.Register(10);
+        n.Register(11);
+        n.SetPos(10, AppBarEdge.Top, new PixelRect(0, 0, 1920, 32));
+        n.SetPos(11, AppBarEdge.Top, new PixelRect(0, 32, 1920, 64));
+
+        Assert.Equal(new PixelRect(0, 0, 1920, 32), n.QueryPos(10, AppBarEdge.Top, new PixelRect(0, 0, 1920, 32)));
+        Assert.Equal(new PixelRect(0, 32, 1920, 64), n.QueryPos(11, AppBarEdge.Top, new PixelRect(0, 32, 1920, 64)));
+    }
+
+    [Fact]
+    public void SetPos_EarlierBarResetAfterALaterOne_KeepsBothReservations()
+    {
+        var n = With(Main);
+        n.Register(10);
+        n.Register(11);
+        n.SetPos(10, AppBarEdge.Top, new PixelRect(0, 0, 1920, 32));
+        n.SetPos(11, AppBarEdge.Top, new PixelRect(0, 32, 1920, 64));
+
+        n.SetPos(10, AppBarEdge.Top, new PixelRect(0, 0, 1920, 32));
+
+        Assert.Equal(new PixelRect(0, 64, 1920, 1080), Area(n, 1));
+    }
+
+    [Fact]
+    public void SetPos_ReRegisteredBar_CountsAsLatest()
+    {
+        var n = With(Main);
+        n.Register(10);
+        n.Register(11);
+        n.SetPos(10, AppBarEdge.Top, new PixelRect(0, 0, 1920, 32));
+        n.Remove(10);
+        n.Register(10);
+
+        Assert.Equal(new PixelRect(0, 0, 1920, 0), n.SetPos(11, AppBarEdge.Top, new PixelRect(0, 0, 1920, 0)));
+        n.SetPos(11, AppBarEdge.Top, new PixelRect(0, 0, 1920, 20));
+        Assert.Equal(new PixelRect(0, 20, 1920, 52), n.QueryPos(10, AppBarEdge.Top, new PixelRect(0, 0, 1920, 52)));
+    }
+
+    [Fact]
     public void QueryPos_SameBarRequeried_IgnoresItsOwnPreviousRectangle()
     {
         var n = With(Main);
