@@ -34,6 +34,9 @@ public enum ExplorerReason
     SafeMode,
     DisabledFlag,
     CrashLoop,
+
+    /// <summary>WinGnome didn't signal ready within <see cref="ShellStartDecision.ReadyTimeout"/>.</summary>
+    ReadyTimeout,
     RestartsExhausted,
     WinGnomeMissing,
 
@@ -52,14 +55,14 @@ public enum ExplorerReason
 /// <param name="SafeMode">Windows is in Safe Mode (clean boot).</param>
 /// <param name="DisabledFlagPresent">The <c>shell-disabled</c> flag file exists.</param>
 /// <param name="Crashes">Recorded shell crashes before this decision.</param>
-/// <param name="ReadyTimedOut">WinGnome didn't signal ready within <see cref="ShellStartDecision.ReadyTimeout"/> of starting; counts as one more crash.</param>
-/// <param name="RestartsSoFar">Restarts already done in this session.</param>
+/// <param name="ReadyTimedOut">WinGnome didn't signal ready within <see cref="ShellStartDecision.ReadyTimeout"/> of its process start: fall back to Explorer.</param>
+/// <param name="RestartsSoFar">Restarts already done in this session; negative counts as unknown.</param>
 /// <param name="Now">The current time (passed in, never read from the clock).</param>
-/// <param name="Trial">Trial state.</param>
-/// <param name="ExplorerFallbackAttempts">How many times this session the bootstrap already tried to start Explorer.</param>
+/// <param name="Trial">Trial state; <c>null</c> or an undefined value means it couldn't be read.</param>
+/// <param name="ExplorerFallbackAttempts">How many times this session the bootstrap already tried to start Explorer; negative counts as unknown.</param>
 /// <param name="WinGnomeExeExists">WinGnome.exe is present at the expected path.</param>
 /// <param name="IsSessionEnding">Logoff or shutdown is in progress.</param>
-/// <param name="RestoreRequested">The user asked to restore Explorer (<c>--restore-shell</c>).</param>
+/// <param name="RestoreRequested">The user asked to restore Explorer (<c>WinGnomeShell.exe --restore</c>).</param>
 public sealed record ShellStartInputs(
     bool ShiftHeld,
     bool? SafeMode,
@@ -68,7 +71,7 @@ public sealed record ShellStartInputs(
     bool ReadyTimedOut,
     int RestartsSoFar,
     DateTimeOffset Now,
-    ShellTrialState Trial,
+    ShellTrialState? Trial,
     int ExplorerFallbackAttempts,
     bool WinGnomeExeExists,
     bool IsSessionEnding,
@@ -133,7 +136,7 @@ public static class ShellStartDecision
             return Explorer(ExplorerReason.DisabledFlag, remove: true, keepTrial: false);
         }
 
-        if (i.SafeMode is null || i.DisabledFlagPresent is null || i.Crashes is null)
+        if (i.SafeMode is null || i.DisabledFlagPresent is null || i.Crashes is null || IsUnknown(i))
         {
             return Explorer(ExplorerReason.UnknownState, remove: true, keepTrial: false);
         }
@@ -143,8 +146,12 @@ public static class ShellStartDecision
             return Explorer(ExplorerReason.WinGnomeMissing, remove: true, keepTrial: false);
         }
 
-        var crashes = i.ReadyTimedOut ? i.Crashes.Record(i.Now, i.Now) : i.Crashes;
-        if (crashes.IsCrashLoop(i.Now))
+        if (i.ReadyTimedOut)
+        {
+            return Explorer(ExplorerReason.ReadyTimeout, remove: true, keepTrial: false);
+        }
+
+        if (i.Crashes.IsCrashLoop(i.Now))
         {
             return Explorer(ExplorerReason.CrashLoop, remove: true, keepTrial: false);
         }
@@ -159,10 +166,14 @@ public static class ShellStartDecision
     }
 
     /// <summary>
-    /// Records a shell exit. An exit while the session is ending (logoff kills the process) is not a crash.
+    /// Records a shell exit. An exit while the session is ending (logoff kills the process) or a
+    /// deliberate clean quit is not a crash.
     /// </summary>
-    public static CrashHistory RecordExit(CrashHistory history, DateTimeOffset now, bool isSessionEnding) =>
-        isSessionEnding ? history : history.Record(now, now);
+    public static CrashHistory RecordExit(CrashHistory history, DateTimeOffset now, bool isSessionEnding, bool cleanExit) =>
+        isSessionEnding || cleanExit ? history : history.Record(now, now);
+
+    private static bool IsUnknown(ShellStartInputs i) =>
+        i.Trial is not { } trial || !Enum.IsDefined(trial) || i.RestartsSoFar < 0 || i.ExplorerFallbackAttempts < 0;
 
     private static ShellStartOutcome Explorer(ExplorerReason reason, bool remove, bool keepTrial) =>
         new(ShellStartAction.StartExplorer, reason, remove, keepTrial);

@@ -176,6 +176,30 @@ public class StartupRunnerTests
     }
 
     [Fact]
+    public void BuildPlan_32BitRunEntries_UseTheirOwnApprovalFlags()
+    {
+        var approved = new StartupApprovedSet().Add(StartupSource.RunMachine32, "tool", [0x03]);
+
+        var plan = Plan([E("tool", "a.exe", StartupSource.RunMachine), E("tool", "b.exe", StartupSource.RunMachine32)], approved);
+
+        Assert.Equal("a.exe", plan.Steps.Single().Command.Executable);
+        Assert.Equal(StartupSkipReason.Disabled, plan.Skipped.Single().Reason);
+    }
+
+    [Fact]
+    public void BuildPlan_32BitRunComesAfterMachineRunAndBeforeUserRun()
+    {
+        var plan = Plan(
+        [
+            E("user", "u.exe", StartupSource.RunUser),
+            E("m32", "m32.exe", StartupSource.RunMachine32),
+            E("m", "m.exe", StartupSource.RunMachine),
+        ]);
+
+        Assert.Equal(["m", "m32", "user"], Names(plan));
+    }
+
+    [Fact]
     public void BuildPlan_RunOnceIgnoresStartupApproved()
     {
         var approved = new StartupApprovedSet().Add(StartupSource.RunOnceUser, "once", [0x03]);
