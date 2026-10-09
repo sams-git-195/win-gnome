@@ -533,7 +533,7 @@ provided it changes as little as possible, records it before it changes it, and 
   than the monitor). It never grows a work area and never touches the other axis, however far the strip reaches.
 - `WorkAreaBudget.TrySpend(long nowMs) -> bool`: a sliding window of three applications per 60 s, the clock injected
   by the caller (`Environment.TickCount64`), so tests use literal times.
-- `WorkAreaRecord(int Owner, string Key, PixelRect Bounds, PixelRect Original, PixelRect Applied)`: one shrink.
+- `WorkAreaRecord(long Owner, string Key, PixelRect Bounds, PixelRect Original, PixelRect Applied)`: one shrink.
   `Owner` is the shrinking bar's HWND (unique per bar, needs no plumbing); `Original` is the fresh work area before
   the shrink, `Applied` the one we set. Records are kept **in application order**, which is the restore order.
 - `WorkAreaLedger.Add(records, record)`: the list rule behind the marker — at most one record per (owner, monitor
@@ -546,15 +546,18 @@ provided it changes as little as possible, records it before it changes it, and 
 - `WorkAreaFile(IReadOnlyList<WorkAreaRecord> Records, bool Unreadable)` with `WorkAreaState.Parse(string? json)` and
   `Serialize(records)`: an absent or empty file is "no records"; a corrupt one is `Unreadable` (never an exception),
   because silently reading it as empty would strand the shrinks it described.
-- `WorkAreaRecovery.Plan(records, MonitorLayout monitors, IReadOnlySet<int> released) -> WorkAreaPlan`: the whole
+- `WorkAreaRecovery.Plan(records, MonitorLayout monitors, IReadOnlySet<long> released) -> WorkAreaPlan`: the whole
   restore decision, pure. Per monitor key it walks that key's records **newest first**, restoring one only when its
   owner has released *and* the running work area still equals its `Applied`, then continuing from its `Original`; it
   stops at the first record that fails either test. A record whose monitor is gone, or whose `Bounds` differ from the
   live monitor's, is dropped as stale (a mode change reset the work area anyway). The plan carries the ordered
   `Restores` (key + rectangle to write), the records to `Keep` (a live bar still owns a newer one) and `Nudge` (true
-  when something was dropped or a chain broke, so Explorer gets a chance to recompute). Restoring newest first is
-  what makes a top bar's and a bottom dock's strips on one monitor unwind in the right order; restoring an older
-  record while a newer one is still applied would leave the newer strip behind.
+  only for a record whose monitor still exists with unchanged bounds and whose `Applied` and `Original` both differ
+  from the running work area: someone else's value is in effect, and writing our original would take it away, so
+  Explorer gets a chance to recompute. A record dropped as already given back or as stale does not nudge, and
+  neither does a chain a live bar blocks). Restoring newest first is what makes a top bar's and a bottom dock's
+  strips on one monitor unwind in the right order; restoring an older record while a newer one is still applied
+  would leave the newer strip behind.
 - `StripRecovery` reworked, same class and same call sites: `Update(bool reserved, bool shrinkAllowed, long nowMs)`
   returns `None` (reserved — and resets), `Wait(due)`, `Shrink`, `Reregister` (only when `shrinkAllowed` is false) or
   `GiveUp`. Attempts land at +1.5 s, +5 s and +20 s, then it gives up until `Reset()`. The 45 s grace and the
@@ -569,8 +572,10 @@ provided it changes as little as possible, records it before it changes it, and 
 - `Services/WorkAreaController.cs` (new, static so the crash path can use it from any thread; plain Win32, no
   dispatcher, one lock spanning read-compute-write): `Initialize(settingsDirectory, enabled)`,
   `TryShrink(nint owner, PixelRect monitor, AppBarEdge edge, PixelRect strip) -> bool`, `Release(nint owner)`,
-  `ReleaseAll(bool broadcast)` and `RecoverFromMarker(settingsDirectory)`. It holds the record list, a
-  `WorkAreaBudget` per monitor key and the marker path. The record list only ever changes through
+  `ReleaseAll()` and `RecoverFromMarker(settingsDirectory)`. It holds the record list, a `WorkAreaBudget` per
+  monitor key and the marker path. `ReleaseAll()` — the crash path — broadcasts nothing, because `SPIF_SENDCHANGE`
+  sends synchronously to every top-level window and one hung window would block it (the work areas change all the
+  same), and does not nudge, because the next start's janitor makes one. The record list only ever changes through
   `WorkAreaLedger.Add`, so a re-shrink replaces its pair's record instead of accumulating duplicates, and a shrink
   whose marker write or `SPI_SETWORKAREA` call fails rolls the list back to the exact snapshot from before it.
   **It derives the monitor key itself** (`MonitorFromRect` +
@@ -585,7 +590,7 @@ provided it changes as little as possible, records it before it changes it, and 
   refusal cannot spin. `TryShrink` returns false when the fresh read shows the strip already reserved, which is the
   common case and costs one `GetMonitorInfo`.
 - `AppBar.Undock` (and so `Dispose`): after `ABM_REMOVE`, `WorkAreaController.Release(_hwnd)`. `AppBar.UndockAll()`
-  (crash path): `ABM_REMOVE` for every bar, then `ReleaseAll(broadcast: false)`, guarded so file I/O on a faulting
+  (crash path): `ABM_REMOVE` for every bar, then `ReleaseAll()`, guarded so file I/O on a faulting
   thread can never throw.
 - `App.OnStartup`: `WorkAreaController.Initialize(dir, enabled: !options.Safe)` before any feature starts, and
   `RecoverFromMarker(dir)` immediately after `TaskbarController.RestoreFromMarker` and before `AppBarJanitor.Nudge()`,
@@ -618,7 +623,7 @@ warning and does nothing, so a force-kill can never leave a work area WinGnome c
 |---|---|
 | Normal exit, feature off, `TopBar.Monitors` → Primary | Bars undock in reverse creation order; each `ABM_REMOVE` releases its owner, and the plan unwinds the chain newest first, so a top bar's and a dock's strips on one monitor both go back. |
 | One bar off, another still docked on the same monitor | The older record is kept, not written over: its `Applied` is no longer the live work area. Explorer's `ABM_REMOVE` recompute normally gives the strip back; if it doesn't, the record is still there for the next release or the next start, and the nudge is logged. |
-| Crash | `AppBar.UndockAll()` → `ABM_REMOVE` for every bar → `ReleaseAll(broadcast: false)` → features' `EmergencyRestore` → `TaskbarController.RestoreFromMarker`. |
+| Crash | `AppBar.UndockAll()` → `ABM_REMOVE` for every bar → `ReleaseAll()` → features' `EmergencyRestore` → `TaskbarController.RestoreFromMarker`. |
 | Force-kill | Nothing runs. The next start's `RecoverFromMarker` restores every record whose monitor and work area still match; `--restore-taskbar` does the same on demand. |
 | Two instances | Separate profiles, separate markers, and each chain is walked only while the live work area equals the record's `Applied`, so neither can write over the other's strip. |
 | Explorer recomputes late | While our AppBar is registered it grants the same strip, so its rectangle equals ours and the plan finds nothing to do. A different one is caught by the next check, within the budget. |
