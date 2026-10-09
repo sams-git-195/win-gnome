@@ -36,6 +36,8 @@ public class AppPathMatchTests
     [Fact]
     public void IsSameInstall_AppFolderThatIsNotAVersion_IsFalse()
     {
+        // Intent: the Squirrel regex rejects a non-version "app-foo" folder. The exe name differs deliberately:
+        // a same-named exe in a direct child folder is now matched by the launcher-stub rule (KI-100).
         Assert.False(AppPathMatch.IsSameInstall(GitHubRoot + @"\GitHubDesktop.exe", GitHubRoot + @"\app-foo\Other.exe"));
     }
 

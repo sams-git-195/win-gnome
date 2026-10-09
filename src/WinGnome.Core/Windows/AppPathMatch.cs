@@ -45,8 +45,11 @@ public static partial class AppPathMatch
 
     /// <summary>
     /// True when the process is a same-file-named executable in a direct child folder of the target's folder, both
-    /// already canonical. The shared folder must be a real directory: a drive root ("c:") has no parent of its own,
-    /// so <c>C:\frontend\X.exe</c> never pairs with <c>C:\X.exe</c>.
+    /// already canonical; <c>C:\frontend\X.exe</c> pairs with <c>C:\X.exe</c>, never the other way round — the
+    /// reverse layout needs no rule, because a pin to a launcher in a subfolder is a path pin whose UI-at-the-root
+    /// window already matches by identity or by the exe-name fallback. The guard rejects a drive root ("c:") and a
+    /// folder-less relative path as the shared folder; a UNC share root (<c>\\server\share</c>) is not guarded and
+    /// does pair with its child folders (KI-100: shortcut targets are almost always local).
     /// </summary>
     private static bool IsLauncherChild(string target, string process) =>
         string.Equals(PathText.FileName(target), PathText.FileName(process), StringComparison.Ordinal)

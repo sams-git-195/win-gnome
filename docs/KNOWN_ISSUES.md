@@ -13,7 +13,8 @@ for when to add, update and close entries.
 | **S4 Low** | Cosmetic, rare, or a documented limitation. | One-pixel misalignment; tooltip wording; behaviour Windows doesn't allow us to change. |
 
 Status is one of *Open*, *In progress*, *By design* (a limitation we've chosen to accept, with the reason),
-or *Fixed* (with the commit). When in doubt, pick the higher severity.
+or *Fixed* (with the commit). When in doubt, pick the higher severity. A resolved entry may carry a `### KI-…`
+detail section below the Resolved table when the measured evidence behind the fix is worth keeping (KI-100).
 
 ## Open
 
@@ -595,8 +596,10 @@ pinned slots.
 
 *Fix:* `AppPathMatch.IsSameInstall` now also matches the launcher-stub layout — a same-file-named executable in
 a direct child folder of the target's folder, with the shared folder required to be a real directory (never a
-drive root). `DockModelBuilder` is unchanged; its gate (a named-AUMID pin only takes a window with no AUMID of
-its own) still keeps browser-PWA windows separate.
+drive root). The rule is one-way, the process below the target; the reverse layout (launcher in a subfolder, UI
+at the root) needs no rule, because such a pin is a path pin whose root-UI window already matches by identity or
+by the exe-name fallback. `DockModelBuilder` is unchanged; its gate (a named-AUMID pin only takes a window with
+no AUMID of its own) still keeps browser-PWA windows separate.
 
 *Deliberately flipped guardrail:* the 632e8ac test `IsSameInstall_ProcessInASubfolderThatIsNotSquirrel_IsFalse`
 (`...\Foo\bin\Foo.exe` against `...\Foo\Foo.exe`) asserted exactly the shape that is now true. No documented
@@ -605,7 +608,10 @@ two-folders-down case `IsSameInstall_ProcessInAGrandchildFolder_IsFalse`.
 
 *Accepted trade-off:* a different product installed one level inside a pinned app's folder with the same binary
 name now groups with that pin (for example `...\GitHubDesktop\app-foo\GitHubDesktop.exe` joins the stub pin).
-Windows that report their own AUMID are still exempt for named-AUMID pins.
+Windows that report their own AUMID are still exempt for named-AUMID pins. The real-directory guard covers drive
+roots and folder-less relative paths only: a UNC share root (`\\server\share`) is not guarded, so a same-named
+exe in a child folder of a share would also pair — accepted because Start-menu pins resolve through
+`System.Link.TargetParsingPath`, which is almost always local.
 
 *Fix direction (not done, out of scope):* `AppCatalog.FindForWindow` falls back to the Squirrel stub only, so an
 **unpinned** Docker dashboard still gets its name and icon from the `frontend\` exe rather than the catalogue
