@@ -713,8 +713,16 @@ internal sealed partial class OverviewWindow : Window
     {
         // Launch while the overview still owns the foreground, so the new app is allowed to take it
         // (AllowSetForegroundWindow only works for the foreground process).
-        _context.Launcher.Launch(request);
-        Dismiss(restoreFocus: false);
+        if (!request.Elevate)
+        {
+            _context.Launcher.Launch(request);
+            Dismiss(restoreFocus: false);
+            return;
+        }
+
+        // UAC opens its prompt in front only while the window that asked (this one) is in front, so the overview
+        // stays up until the elevated app has started. If the prompt is cancelled it stays open for another choice.
+        _context.Launcher.Launch(request, () => Dismiss(restoreFocus: false), _hwnd);
     }
 
     private PinnedApp? PinOf(AppTile tile) => DockPins.Find(_context.Settings.Current.Dock.PinnedApps, tile.LaunchId);

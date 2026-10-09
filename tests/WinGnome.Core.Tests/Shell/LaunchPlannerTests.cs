@@ -35,7 +35,7 @@ public class LaunchPlannerTests
     [InlineData(LaunchModifiers.Control | LaunchModifiers.Shift, PinState.AlwaysElevated, true)]
     public void Plan_DesktopApp_ElevatesOnCtrlShiftOrAlwaysPin(LaunchModifiers modifiers, PinState pin, bool elevate)
     {
-        var request = LaunchPlanner.Plan(Desktop, modifiers, Pin(Desktop, pin));
+        var request = LaunchPlanner.Plan(Desktop, modifiers, Pin(Desktop, pin), AppHost.Desktop);
 
         Assert.Equal(new LaunchRequest(Desktop, null, elevate), request);
     }
@@ -136,7 +136,7 @@ public class LaunchPlannerTests
     [Fact]
     public void Plan_CtrlShiftWithAlt_StillElevates()
     {
-        var request = LaunchPlanner.Plan(Desktop, LaunchModifiers.Control | LaunchModifiers.Shift | LaunchModifiers.Alt, null);
+        var request = LaunchPlanner.Plan(Desktop, LaunchModifiers.Control | LaunchModifiers.Shift | LaunchModifiers.Alt, null, AppHost.Desktop);
 
         Assert.True(request.Elevate);
     }
@@ -201,11 +201,30 @@ public class LaunchPlannerTests
     [InlineData("ms-settings:", false)]
     [InlineData("shell:RecycleBinFolder", false)]
     [InlineData(Packaged, false)]
-    [InlineData(Desktop, true)]
+    [InlineData(Desktop, false)] // a desktop AUMID needs the catalogue's host, see below
     [InlineData("", false)]
     [InlineData("   ", false)]
     public void CanElevate_OnlyDesktopAppsAndExecutables(string launchId, bool expected)
     {
         Assert.Equal(expected, LaunchPlanner.CanElevate(launchId));
+    }
+
+    [Theory]
+    [InlineData(Desktop, AppHost.Desktop, true)]
+    [InlineData(Desktop, AppHost.Unknown, false)]
+    [InlineData(Desktop, AppHost.Immersive, false)]
+    [InlineData("Microsoft.Windows.Explorer", AppHost.Desktop, false)]
+    [InlineData("microsoft.windows.explorer", AppHost.Desktop, false)]
+    public void CanElevate_DesktopAumid_NeedsAWin32Host_AndNeverFileExplorer(string launchId, AppHost host, bool expected)
+    {
+        Assert.Equal(expected, LaunchPlanner.CanElevate(launchId, host));
+    }
+
+    [Fact]
+    public void Plan_CtrlShift_OnFileExplorer_LaunchesNormally()
+    {
+        var request = LaunchPlanner.Plan("Microsoft.Windows.Explorer", LaunchPlanner.ElevateModifiers, null, AppHost.Desktop);
+
+        Assert.False(request.Elevate);
     }
 }

@@ -68,6 +68,8 @@ internal interface IAppLauncher
     /// <paramref name="started"/> runs on the calling (UI) thread once the app has been started: straight away for a
     /// normal launch, and only after the UAC prompt is accepted for an elevated one. "No" on the prompt is logged,
     /// and <paramref name="started"/> is not called. Returns false when the launch failed immediately.
+    /// <paramref name="owner"/> is the WinGnome window the user clicked (dock, overview): for an elevated launch it is
+    /// brought to the front and passed to UAC, so the prompt opens in front instead of as a flashing taskbar button.
     /// </summary>
-    bool Launch(LaunchRequest request, Action? started = null);
+    bool Launch(LaunchRequest request, Action? started = null, nint owner = 0);
 }
