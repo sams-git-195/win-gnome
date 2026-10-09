@@ -32,6 +32,12 @@ internal sealed class CaptionOverlayManager : IDisposable
     private static readonly TimeSpan[] RestackDelays =
         [TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(1000)];
 
+    /// <summary>
+    /// How long a window moved or resized by code must hold still before its patch colour is sampled again
+    /// (KI-016): the same 450 ms the activation samples above add up to, so Mica has settled too.
+    /// </summary>
+    private const long ResampleDelayMs = 450;
+
     /// <summary>How long a custom title bar's size must hold still before it is probed (spec 0009).</summary>
     private const long ProbeSettleMs = 300;
 
@@ -56,6 +62,8 @@ internal sealed class CaptionOverlayManager : IDisposable
     private readonly Dictionary<nint, CaptionProbeThrottle> _throttles = [];
     private readonly DeadlineTimer _probeTimer;
 
+    // Decorated windows moved or resized by code, waiting to be re-sampled once they hold still.
+    private readonly DeadlineTimer _resampleTimer;
     private readonly HashSet<DecoratedWindow> _pendingSamples = [];
     private readonly List<nint> _scratch = [];
     private readonly DispatcherTimer _sampleTimer;
@@ -76,6 +84,7 @@ internal sealed class CaptionOverlayManager : IDisposable
         _sampleTimer = new DispatcherTimer(SampleDelays[0], DispatcherPriority.Background, OnSampleTimer, dispatcher) { IsEnabled = false };
         _restackTimer = new DispatcherTimer(RestackDelays[0], DispatcherPriority.Normal, OnRestackTimer, dispatcher) { IsEnabled = false };
         _probeTimer = new DeadlineTimer(dispatcher, DispatcherPriority.Background, OnProbeDue);
+        _resampleTimer = new DeadlineTimer(dispatcher, DispatcherPriority.Background, OnResampleDue);
     }
 
     /// <summary>Number of windows currently decorated.</summary>
@@ -149,6 +158,7 @@ internal sealed class CaptionOverlayManager : IDisposable
         _sampleTimer.Stop();
         _restackTimer.Stop();
         _probeTimer.Dispose();
+        _resampleTimer.Dispose();
         _scratch.Clear();
         _scratch.AddRange(_windows.Keys);
         foreach (var hwnd in _scratch)
@@ -417,6 +427,14 @@ internal sealed class CaptionOverlayManager : IDisposable
         !window.IsProbed
         || (_style.Settings.DecorateCustomTitleBars && (!window.IsClientHoles || _style.Settings.DecorateWebTitleBarButtons));
 
+    private void OnResampleDue(nint hwnd)
+    {
+        if (_windows.TryGetValue(hwnd, out var window))
+        {
+            window.SampleTitleBar();
+        }
+    }
+
     private bool IsStillDecoratable(nint hwnd, bool drawsOwnButtons)
     {
         // Minimised or cloaked windows keep their (hidden) overlay; only settings-driven reasons drop it here.
@@ -463,6 +481,10 @@ internal sealed class CaptionOverlayManager : IDisposable
         {
             case WinEventHook.EVENT_OBJECT_LOCATIONCHANGE:
                 window.UpdatePlacement();
+
+                // Moved or resized by code (snap, maximise, an app restoring its position) gets no
+                // EVENT_SYSTEM_MOVESIZEEND: sample the patch colour again once it holds still (KI-016).
+                _resampleTimer.Set(hwnd, ResampleDelayMs);
                 break;
             case WinEventHook.EVENT_SYSTEM_MINIMIZESTART:
                 window.SetMinimized(true);
@@ -491,6 +513,8 @@ internal sealed class CaptionOverlayManager : IDisposable
 
                 break;
             case WinEventHook.EVENT_SYSTEM_MOVESIZEEND:
+                // A user drag ended: the sample request below covers the location changes it raised.
+                _resampleTimer.Remove(hwnd);
                 window.UpdatePlacement();
                 window.Restack();
                 OnSampleRequested(window);
@@ -604,6 +628,7 @@ internal sealed class CaptionOverlayManager : IDisposable
         }
 
         _pendingSamples.Remove(window);
+        _resampleTimer.Remove(hwnd);
         window.RemovalRequested -= OnRemovalRequested;
         window.SampleRequested -= OnSampleRequested;
         window.ReprobeRequested -= OnReprobeRequested;
