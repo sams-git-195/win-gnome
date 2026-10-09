@@ -117,6 +117,22 @@ internal sealed partial class AppBar : IDisposable
     }
 
     /// <summary>
+    /// Registers <paramref name="hwnd"/> as an AppBar and removes it at once, without ever claiming space. Any AppBar
+    /// traffic makes Explorer re-check its registrations (see <c>AppBarJanitor</c>). Returns false when ABM_NEW failed.
+    /// </summary>
+    public static bool RegisterAndRemove(nint hwnd)
+    {
+        var data = new APPBARDATA { cbSize = Marshal.SizeOf<APPBARDATA>(), hWnd = hwnd };
+        if (Send(ABM_NEW, ref data) == 0)
+        {
+            return false;
+        }
+
+        Send(ABM_REMOVE, ref data);
+        return true;
+    }
+
+    /// <summary>
     /// Registers (if needed) and docks the bar on <paramref name="edge"/> of <paramref name="monitor"/>: the full
     /// QUERYPOS, SETPOS, move and WINDOWPOSCHANGED sequence, for first registration and explicit re-docks.
     /// </summary>

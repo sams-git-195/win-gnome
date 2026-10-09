@@ -16,7 +16,8 @@ internal sealed record ShellContext(
     IAppCatalog Apps,
     IIconProvider Icons,
     IAppLauncher Launcher,
-    ShellCommands Commands)
+    ShellCommands Commands,
+    DisplayLayoutService Displays)
 {
     /// <summary>
     /// True in --safe or --selftest mode: no taskbar hiding, registry tweaks or input hooks. A self-test runs
