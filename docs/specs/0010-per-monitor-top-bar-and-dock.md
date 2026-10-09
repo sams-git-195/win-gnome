@@ -582,8 +582,8 @@ provided it changes as little as possible, records it before it changes it, and 
   `GetMonitorInfoEx`, the `MonitorKeyOf` fallback pattern) inside the lock, so `AppBar` needs no key field and no
   stale key can survive a display change; a monitor whose bounds no longer equal the cached rectangle is refused.
   Every application, restore, refusal and drop is logged: `Log.Info` with the key, the edge and both rectangles for
-  an application or restore, and with a count for records dropped without a write (they no longer matched the live
-  work area — given back by Explorer, stale, or someone else's value in effect); `Log.Warn` for a spent budget, a
+  an application or restore, and with a count for records dropped without a write (they no longer describe a live
+  work area — given back, stale, or someone else's value in effect); `Log.Warn` for a spent budget, a
   failed call (with the Win32 error) and an unwritable marker.
 - `AppBar.CheckStrip`: a `Shrink` step calls `TryShrink(_hwnd, _monitor, _edge, Bounds)`, a `Reregister` step calls
   the existing `Reregister()`. Applied or refused, the bar re-checks on the schedule `StripRecovery` gives it, so a

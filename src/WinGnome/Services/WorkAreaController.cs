@@ -109,7 +109,11 @@ internal static class WorkAreaController
                 // rollback state: removing the new record alone would lose an old one the ledger replaced.
                 var before = Records.ToList();
                 ReplaceRecords(WorkAreaLedger.Add(before, record));
-                Released.Remove(owner); // An HWND can be recycled: whoever shrinks now is live again.
+                // An HWND can be recycled: whoever shrinks now is live again. The failure paths below deliberately
+                // leave the owner live rather than re-adding it to Released: a record an older bar left on this
+                // recycled HWND then waits for a later release, which is safe — the terminal paths (ReleaseAll, the
+                // next start's recovery) still restore it, and the plan only ever writes a value some record carried.
+                Released.Remove(owner);
                 if (!WriteMarker())
                 {
                     ReplaceRecords(before);
@@ -284,7 +288,7 @@ internal static class WorkAreaController
 
         if (dropped > 0)
         {
-            Log.Info($"Dropped {dropped} work area record(s) that no longer matched the live work area; nothing was written back");
+            Log.Info($"Dropped {dropped} work area record(s) that no longer describe a live work area (given back, stale, or someone else's value in effect); nothing was written back for them");
         }
 
         Prune(layout);

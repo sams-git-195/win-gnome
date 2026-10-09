@@ -133,6 +133,21 @@ public class WorkAreaRecoveryTests
     }
 
     [Fact]
+    public void Plan_IdenticalDuplicateRecords_RestoresOnceAndDropsTheOlder()
+    {
+        // Markers written before the one-record-per-pair rule (WorkAreaLedger) could hold byte-identical
+        // duplicates. Newest first: the newer restores to Original; the older then finds its Original equal to
+        // the running value and leaves through the already-given-back branch — one restore, nothing kept.
+        var record = new WorkAreaRecord(1, Display1, PrimaryBounds, Full, Shrunk);
+
+        var plan = WorkAreaRecovery.Plan([record, record], Layout(Mon(Display1, PrimaryBounds, Shrunk, primary: true)), Released(1));
+
+        Assert.Equal([new WorkAreaRestore(Display1, Full)], plan.Restores);
+        Assert.Empty(plan.Keep);
+        Assert.False(plan.Nudge);
+    }
+
+    [Fact]
     public void Plan_MonitorIsGone_DropsTheRecord()
     {
         var record = new WorkAreaRecord(1, Display2, UpperBounds, UpperBounds, new PixelRect(-447, -1408, 2993, 0));

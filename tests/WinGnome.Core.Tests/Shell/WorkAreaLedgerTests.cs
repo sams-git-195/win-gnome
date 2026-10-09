@@ -49,6 +49,17 @@ public class WorkAreaLedgerTests
     }
 
     [Fact]
+    public void Add_TwoIdenticalRecordsForThePair_OnlyTheNewOneSurvives()
+    {
+        // A marker written by a build before the ledger rule can be recovered holding duplicates; one Add must
+        // clear every record of the pair, not just the first match, or the marker never stops accumulating.
+        var old = Rec(1, Display1, Full, BarApplied);
+        var reshrunk = Rec(1, Display1, BarMissing, BarReshrunk);
+
+        Assert.Equal([reshrunk], WorkAreaLedger.Add([old, old], reshrunk));
+    }
+
+    [Fact]
     public void Add_SameOwnerOnAnotherMonitor_KeepsBoth()
     {
         // A bar re-docked onto a different monitor after a display change: one record per monitor, not per bar.
