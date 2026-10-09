@@ -100,15 +100,57 @@ public sealed class CaptionHitTestProbeTests
     }
 
     [Theory]
-    [InlineData(1.0, 11, null)]  // 22 px buttons are too narrow at 100 % (minimum 24 DIPs, 2 px sampling slack)
-    [InlineData(1.0, 12, 929)]
-    [InlineData(2.0, 23, null)]  // 46 px is too narrow at 200 %
-    [InlineData(2.0, 24, 857)]
-    public void FindGroupLeft_RejectsZonesNarrowerThanAButton(double scale, int samplesPerZone, int? expected)
+    [InlineData(1.0, 14, null)]  // 84 px: narrower than 3 × 30 DIPs (2 px sampling slack)
+    [InlineData(1.0, 16, 905)]   // 95 px
+    [InlineData(2.0, 29, null)]  // 173 px is too narrow at 200 %
+    [InlineData(2.0, 31, 815)]   // 185 px
+    public void FindGroupLeft_RejectsGroupsNarrowerThanThreeButtons(double scale, int samplesPerZone, int? expected)
     {
         var (xs, codes) = Row((Close, samplesPerZone), (Max, samplesPerZone), (Min, samplesPerZone), (Caption, 5));
 
         Assert.Equal(expected, CaptionHitTestProbe.FindGroupLeft(xs, codes, scale));
+    }
+
+    [Fact]
+    public void FindGroupLeft_DockerDesktopRow_AcceptsTheShortGapBetweenMaximiseAndMinimise()
+    {
+        // Docker Desktop at 125 %: 45 px close, 43 px maximise, a 2 px HTCAPTION gap, 43 px minimise.
+        var (xs, codes) = Row((Border, 1), (Close, 22), (Max, 22), (Caption, 1), (Min, 21), (Caption, 10));
+
+        // The last minimise sample is at 1000 - 66 * 2 = 868, the first caption sample after it at 866.
+        Assert.Equal(867, CaptionHitTestProbe.FindGroupLeft(xs, codes, 1.25));
+    }
+
+    [Theory]
+    [InlineData(1.25, 22, 1, 865)]   // 2 px
+    [InlineData(1.25, 22, 3, null)]  // 6 px: a 5 DIP gap is not one group
+    [InlineData(2.0, 31, 2, 809)]    // 4 px is 2 DIPs at 200 %
+    [InlineData(2.0, 31, 3, null)]
+    public void FindGroupLeft_GapsBetweenButtonsAreLimitedToTwoDips(double scale, int samplesPerZone, int gapSamples, int? expected)
+    {
+        var (xs, codes) = Row((Border, 1), (Close, samplesPerZone), (Caption, gapSamples), (Max, samplesPerZone), (Min, samplesPerZone), (Caption, 10));
+
+        Assert.Equal(expected, CaptionHitTestProbe.FindGroupLeft(xs, codes, scale));
+    }
+
+    [Fact]
+    public void FindGroupLeft_ClientGapBetweenButtons_IsNull()
+    {
+        // Only a short drag strip may separate two buttons, not something the app reacts to.
+        var (xs, codes) = Row((Close, 22), (Client, 1), (Max, 22), (Min, 22), (Caption, 10));
+
+        Assert.Null(CaptionHitTestProbe.FindGroupLeft(xs, codes, 1.25));
+    }
+
+    [Theory]
+    [InlineData(22, 22, 18, 877)]   // 44/44/36 px: within 25 %
+    [InlineData(22, 22, 17, null)]  // 44/44/34 px: the minimise zone is too narrow
+    [InlineData(30, 22, 22, null)]  // 60/44/44 px: the close zone is too wide
+    public void FindGroupLeft_ButtonsMustBeRoughlyEqual(int close, int max, int min, int? expected)
+    {
+        var (xs, codes) = Row((Close, close), (Max, max), (Min, min), (Caption, 10));
+
+        Assert.Equal(expected, CaptionHitTestProbe.FindGroupLeft(xs, codes, 1.25));
     }
 
     [Fact]
@@ -132,6 +174,30 @@ public sealed class CaptionHitTestProbeTests
         int[] codes = [.. Enumerable.Repeat(Caption, 6), .. Enumerable.Repeat(Close, 30), Client];
 
         Assert.Null(CaptionHitTestProbe.FindCloseExtent(codes, maxTopGap: 4));
+    }
+
+    [Theory]
+    [InlineData(9, 9)]      // Docker Desktop: the close button starts 9 px below the top at 125 %
+    [InlineData(10, 10)]    // 8 DIPs
+    [InlineData(11, null)]
+    [InlineData(15, null)]  // 12 DIPs
+    public void FindCloseExtent_AllowsEightDipsAboveTheCloseButton(int rowsAbove, int? expectedTop)
+    {
+        int[] codes = [.. Enumerable.Repeat(Caption, rowsAbove), .. Enumerable.Repeat(Close, 30), Client];
+
+        var extent = CaptionHitTestProbe.FindCloseExtent(codes, CaptionHitTestProbe.MaxTopGapPixels(1.25));
+
+        Assert.Equal(expectedTop, extent?.Top);
+    }
+
+    [Theory]
+    [InlineData(1.0, 8)]
+    [InlineData(1.25, 10)]
+    [InlineData(1.5, 12)]
+    [InlineData(double.NaN, 8)]
+    public void MaxTopGapPixels_ScalesWithDpi(double scale, int expected)
+    {
+        Assert.Equal(expected, CaptionHitTestProbe.MaxTopGapPixels(scale));
     }
 
     [Fact]
