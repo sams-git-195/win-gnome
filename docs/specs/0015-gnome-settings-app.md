@@ -90,14 +90,16 @@ What is native and what is linked, as built:
 
 Design decisions taken while building:
 - Display changes use the documented CCD API: `QueryDisplayConfig`, then the source modes (size, position) and, for a
-  new refresh rate, the path's refresh rate are rewritten, and `SetDisplayConfig` with the supplied configuration
+  new refresh rate, the path's exact rate (Core `DisplayPathPlan`: GDI's 59 is 60000/1001) are rewritten, with the
+  target timing left to Windows for a new rate or resolution, and `SetDisplayConfig` with the supplied configuration
   validates (`SDC_VALIDATE`) and applies (`SDC_APPLY | SDC_ALLOW_CHANGES`) all displays at once, so a resize that moves
   a neighbour or a change of primary lands atomically. The apply leaves out `SDC_SAVE_TO_DATABASE`, so an unconfirmed
   change lasts for the session only; *Keep Changes* saves it. Mode lists, names and the cheap current-settings read
   still use `EnumDisplaySettingsEx`/`QueryDisplayConfig`. Changes are staged in the panel and applied with *Apply*.
 - The safety order lives in Core (`DisplayChangeFlow`, tested with injected system calls): at *Apply* the current
   settings are re-read and the configuration validated, the original and target are written to `display-revert.json`,
-  then the target is applied for the session; a failed apply reverts at once. *Keep Changes* deletes the record on the
+  then the target is applied for the session and what is really showing is read back (recorded as the target if Windows
+  adjusted it); a failed apply reverts at once. *Keep Changes* deletes the record on the
   UI thread before the save is queued. Reverting applies the database's configuration (`SDC_USE_DATABASE_CURRENT`),
   then the original explicitly if needed, and deletes the record only when the original shows again. The countdown
   reverts on timeout, on *Revert*, and when the panel is left or the window closed (on the display queue); at WinGnome
