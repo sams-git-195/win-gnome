@@ -103,7 +103,7 @@ public partial class App : Application
         }
         else if (options.OpenSettings)
         {
-            _context!.Commands.ShowSettings();
+            _context!.Commands.ShowSettings(options.SettingsPanel);
         }
     }
 

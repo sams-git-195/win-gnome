@@ -53,7 +53,8 @@ internal sealed class ShellCommands
 {
     public event EventHandler<OverviewRequest>? OverviewRequested;
     public event EventHandler? OverviewHideRequested;
-    public event EventHandler? SettingsRequested;
+    /// <summary>The argument is the settings panel to show (a <c>PanelIds</c> value), or null for the current one.</summary>
+    public event EventHandler<string?>? SettingsRequested;
     public event EventHandler? TaskbarPeekRequested;
     public event EventHandler? QuitRequested;
     public event EventHandler<int>? DockItemActivationRequested;
@@ -65,7 +66,8 @@ internal sealed class ShellCommands
 
     public void HideOverview() => OverviewHideRequested?.Invoke(this, EventArgs.Empty);
 
-    public void ShowSettings() => SettingsRequested?.Invoke(this, EventArgs.Empty);
+    /// <summary>Opens the settings window, at <paramref name="panelId"/> when given (see <c>PanelIds</c>).</summary>
+    public void ShowSettings(string? panelId = null) => SettingsRequested?.Invoke(this, panelId);
 
     /// <summary>Temporarily reveals the native taskbar (system tray access) while it is hidden.</summary>
     public void PeekTaskbar() => TaskbarPeekRequested?.Invoke(this, EventArgs.Empty);
