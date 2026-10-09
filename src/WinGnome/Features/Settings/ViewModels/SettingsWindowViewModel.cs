@@ -4,15 +4,7 @@ using WinGnome.Core.ControlCenter;
 using WinGnome.Core.Settings;
 using WinGnome.Core.Tweaks;
 using WinGnome.Features.Settings.Panels;
-using WinGnome.Features.Settings.Panels.About;
-using WinGnome.Features.Settings.Panels.Appearance;
-using WinGnome.Features.Settings.Panels.DateAndTime;
 using WinGnome.Features.Settings.Panels.Displays;
-using WinGnome.Features.Settings.Panels.Keyboard;
-using WinGnome.Features.Settings.Panels.Mouse;
-using WinGnome.Features.Settings.Panels.Multitasking;
-using WinGnome.Features.Settings.Panels.Power;
-using WinGnome.Features.Settings.Panels.Sound;
 using WinGnome.Features.Settings.Tweaks;
 using WinGnome.Infrastructure;
 
@@ -42,15 +34,6 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
         var panels = new SystemPanelContext(settings, context.Dispatcher, context.IsSafeMode, OpenLink, settings.Directory);
         var pages = new Dictionary<string, SettingsPageViewModel>(StringComparer.Ordinal)
         {
-            [PanelIds.Displays] = new DisplaysPanelViewModel(panels),
-            [PanelIds.Sound] = new SoundPanelViewModel(panels),
-            [PanelIds.Power] = new PowerPanelViewModel(panels),
-            [PanelIds.Mouse] = new MousePanelViewModel(panels),
-            [PanelIds.Keyboard] = new KeyboardPanelViewModel(panels),
-            [PanelIds.Appearance] = new AppearancePanelViewModel(panels),
-            [PanelIds.Multitasking] = new MultitaskingPanelViewModel(panels),
-            [PanelIds.DateTime] = new DateTimePanelViewModel(panels),
-            [PanelIds.About] = new AboutPanelViewModel(panels),
             [PanelIds.General] = new GeneralPageViewModel(settings, context.IsSafeMode, context.ManagesStartupEntry, ShowTaskbarTweaks),
             [PanelIds.TopBar] = new TopBarPageViewModel(settings),
             [PanelIds.Dock] = new DockPageViewModel(settings, context.Theme, context.Icons, dialogs),
@@ -59,6 +42,10 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
             [PanelIds.Streamline] = new StreamlinePageViewModel(settings, tweaks, dialogs),
             [PanelIds.AboutWinGnome] = new AboutPageViewModel(settings, context.Commands, dialogs),
         };
+        foreach (var (id, create) in PanelRegistry.SystemPanels)
+        {
+            pages.Add(id, create(panels));
+        }
 
         Entries = SettingsPanelCatalog.All
             .Select(panel => new SidebarEntry(panel, pages.GetValueOrDefault(panel.Id)))
