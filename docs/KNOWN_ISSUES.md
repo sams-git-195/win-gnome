@@ -41,6 +41,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-041](#ki-041) | S4 | Window buttons | Clicks on custom title bars wait for one hit test, and clicks meanwhile are ignored | By design |
 | [KI-042](#ki-042) | S4 | Window buttons | WinGnome builds from before the window-buttons role still decorate alongside newer ones | Open |
 | [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
+| [KI-052](#ki-052) | S4 | Top bar | The Wi-Fi icon doesn't show signal strength | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -281,6 +282,15 @@ role), so with current builds this happens only when the decorating instance is 
 instance whose header bar is shown, e.g. a QA profile's settings window while the everyday instance holds the
 role. A pre-role build (KI-042) still decorates regardless and overlays every other instance's header bars. One
 instance alone is unaffected. Capture header bars with `PrintWindow` to see only the window's own drawing.
+
+### KI-052
+**The Wi-Fi icon doesn't show signal strength** · S4 · Top bar · Open
+
+`NetworkMonitor` only knows whether the connection is wired, wireless or absent, so the bar shows one
+"connected" Wi-Fi wedge (spec 0012) where GNOME shows 0–4 bars. Signal strength changes without a network-change
+event, so adding it means either polling (WLAN API or `ConnectionProfile.GetSignalBars`) or refreshing it only on
+network changes and when quick settings opens. Draw the 0–3 bar icons in `Theme/SymbolicIcons.xaml` (GNOME dims
+the unlit part of the wedge) when a source is added.
 
 ## Resolved
 

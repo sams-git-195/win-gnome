@@ -1,6 +1,6 @@
 # 0012 — A crisp, GNOME-quality top bar
 
-Status: Agreed
+Status: Implemented (95b22df, on its branch)
 
 ## Problem
 The top bar's text and icons look low resolution (user report, 2026-10-09; measured at 125 % on 2560×1600):
@@ -54,3 +54,32 @@ Idle private memory within ±2 MB of before.
 ## Risks and open questions
 - Ideal mode can be slightly softer at very small sizes: compare captures before and after.
 - Hand-drawn icons need a visual review against GNOME's style.
+
+## Implementation notes
+- **Font.** GNOME's `adwaita-fonts` 51.0 release ships Adwaita Sans only as a variable font
+  (`sans/AdwaitaSans-Regular.ttf`, 879,796 bytes; the italic isn't needed). Its `LICENSE` is the SIL OFL 1.1 with
+  copyright lines only, no Reserved Font Name. WPF lists the font's named instances (Thin..Black) under the family
+  name **"Adwaita Sans Text"** (its default instance), and a test render at 40 px gave `StyleSimulations=None` for
+  Normal, SemiBold and Bold with distinct advances (341.6 / 354.2 / 360.5 DIP for the same string) and visibly
+  real weights, so no static instances or Inter fallback were needed. The file is embedded unmodified
+  (`src/WinGnome/Assets/Fonts`), with `assets/fonts/OFL.txt` as the licence. The exe's managed DLL grows by
+  ~0.9 MB.
+- **Where the font applies.** `TopBarFonts.Apply` publishes the chosen family as the application resource
+  `TopBarFont` (only when it changes), used by the bar, `PopupHost`'s card frame, the popup button styles and the
+  end-session dialog. Popups inherit the bar's weight through their placement target, so the frame resets it to
+  Regular; titles keep their own SemiBold/Bold.
+- **Icon sizes.** `SymbolicIconPx` keeps the 16 / 13.5 ratio and rounds: 16, 20, 24, 28 and 32 px at 100–200 %
+  (28 px at 175 %, not 32). `SymbolicIcon` moves on-curve points to whole pixels with `SnapIconUnit`, so a
+  2-unit stroke is 2 or 3 px at 125 %; curves stay antialiased.
+- **Tray icon size.** `Imaging.CreateBitmapSourceFromHIcon` with empty size options already yields the icon's own
+  pixel size at 96 DPI (checked: a 20 px icon gives 20×20 at 96 DPI, a 40 px one 40×40), so the bitmap's
+  `PixelWidth` is used instead of a separate `GetIconInfo`/`GetObject` call.
+- **Icon states.** WinGnome has no Wi-Fi signal-strength source, so Wi-Fi shows one connected icon rather than
+  0–4 bars (KI-052). Volume 0 shows the muted speaker, as GNOME does. The caret is used for the calendar's
+  previous and next buttons, turned left and right.
+- **Verified at 125 % (2560×1600)** against the old build with the same isolated profile: bold Adwaita Sans with
+  even spacing, symbolic icon edges on whole pixels, live switch to Segoe UI and back, and the quick-settings
+  popup. Idle private memory over two alternating runs: 84.9 / 88.0 MB before, 88.5 / 84.6 MB after; about 19
+  threads in both. 100 %, 150 % and the other scales are covered by the `BarMetrics` tests. The calendar popup
+  and a 16 px tray icon were not checked live: a second instance has no tray (the everyday one hosts it), and a
+  popup opened through UI Automation closes at once because it can't take activation.
