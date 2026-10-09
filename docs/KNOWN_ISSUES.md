@@ -51,6 +51,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-065](#ki-065) | S4 | Settings | Quick settings and Win+I don't open the matching native panel yet | Open |
 | [KI-066](#ki-066) | S4 | Settings | Input sources are listed but not switched or reordered in the Keyboard panel | Open |
 | [KI-067](#ki-067) | S4 | Settings | Appearance style and accent are read-only while the matching Streamline tweak is on | By design |
+| [KI-068](#ki-068) | S4 | Settings | A few exit paths leave an unconfirmed display change until sign-out | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -345,9 +346,9 @@ in light and dark mode at 125 %, but in `--safe` mode: to avoid changing the dev
 default device, power plan value, power mode, time zone, wallpaper, accent, style, mouse, keyboard or snap value was
 written during development. The write paths follow the documented APIs, run off the UI thread, log Win32 errors and
 show the problem banner; Displays tests every mode before applying, records the previous and new settings first,
-applies the change for the session only (no registry write until *Keep Changes*) and always counts down to a revert.
-Whether Windows accepts a session-only primary-display change (`CDS_SET_PRIMARY` without `CDS_UPDATEREGISTRY`) is
-unverified; if it refuses, the panel restores the original and reports it. Multi-display arrangement was exercised only through `DisplayArrangement` tests.
+applies the whole configuration atomically for the session only (`SetDisplayConfig` without `SDC_SAVE_TO_DATABASE`
+until *Keep Changes*) and always counts down to a revert. The refresh-rate rewrite (path refresh rate with the target
+mode left for Windows to choose) is the part most worth checking live. Multi-display arrangement was exercised only through `DisplayArrangement` tests.
 *Next step:* a manual pass per panel on a test machine (acceptance criteria 2 of spec 0015): change, confirm it
 shows in Windows Settings, change back; for Displays, let the countdown revert, kill WinGnome during a countdown
 and restart it.
@@ -387,6 +388,16 @@ them when turned off. If the Appearance panel changed them too, reverting the tw
 change, so the rows are disabled with a note pointing to the Streamline page while the tweak is on. The same holds
 for *Snap Layouts* and the *Disable the snap layouts flyout* tweak.
 
+### KI-068
+**A few exit paths leave an unconfirmed display change until sign-out** · S4 · Settings · Open
+
+An unconfirmed display change is never saved to Windows' display database, so signing out or restarting always
+drops it, and the revert record makes the next WinGnome start revert it. Between those, the change stays showing
+when: WinGnome quits while the change is still being applied (the countdown hasn't started, so shutdown has nothing
+to revert; the record does it at the next start); the UI thread is hung, so neither the countdown nor *Revert* runs;
+WinGnome is force-killed and next started with a different `--settings-dir` (the record is per profile) or with
+`--safe` (which never changes system state, so it leaves the record for a normal start). *Workaround:* sign out, or
+start WinGnome normally with the same profile.
 ## Resolved
 
 | ID | Severity | Area | Summary | Fixed in |

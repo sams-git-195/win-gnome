@@ -62,7 +62,7 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | Tray | `ShellTrayData`, `TrayIconRegistry`, `TrayFrontCheckSchedule` | Tray-host message parsing, icon list, how often the host re-checks it is in front |
 | Collections | `LruCache`, `DeadlineSchedule` | Bounded least-recently-used cache; one deadline per key for debouncing on a single timer |
 | Workspaces | `VirtualDesktopState` | Parses Explorer's virtual-desktop registry blobs |
-| ControlCenter | `SettingsPanelCatalog`, `SettingsPanel`, `PanelIds`, `DisplayArrangement`, `KeepChangesCountdown`, `DisplayRevertRecord`, `DisplayModes`, `PowerTimeouts`, `TimeZoneList`, `InputTuning`, `SystemInfoText` | The GNOME Settings style app (spec 0015): sidebar panels, groups, links and search; display arrangement geometry (edge snapping, primary at the origin, preview fit), the 15-second keep-or-revert state machine and the crash-safe revert record; resolution and refresh choices; GNOME's power timeouts; time zone ordering and search; SystemParametersInfo value ranges; About and Sound text |
+| ControlCenter | `SettingsPanelCatalog`, `SettingsPanel`, `PanelIds`, `DisplayArrangement`, `KeepChangesCountdown`, `DisplayRevertRecord`, `DisplayChangeFlow`, `DisplayModes`, `PowerTimeouts`, `TimeZoneList`, `InputTuning`, `SystemInfoText` | The GNOME Settings style app (spec 0015): sidebar panels, groups, links and search; display arrangement geometry (edge snapping, primary at the origin, preview fit), the 15-second keep-or-revert state machine, the crash-safe revert record and the order of apply, keep, revert and recovery; resolution and refresh choices; GNOME's power timeouts; time zone ordering and search; SystemParametersInfo value ranges; About and Sound text |
 | Tweaks | `TweakCatalog`, `TweakDefinition`, `RegistryChange`, `IRegistryStore`, `TweakEngine`, `TweakBackup`, `AccentColorChanges` | Reversible HKCU tweaks, accent-colour registry values (also read back and handed to Windows by the Appearance panel) |
 
 ## App modules (WinGnome)
@@ -86,7 +86,7 @@ All Win32 work lives in the app project, and every decision that can be expresse
 - Taskbar: restore on normal exit, on unhandled exceptions, on `SessionEnding`, and on `--restore-taskbar`.
 - Registry tweaks touch **HKCU only**, back up the previous value (including "absent"), and can be reverted one by one or all at once.
 - Never act on elevated windows (UIPI would block us anyway); skip them explicitly.
-- Settings panels change Windows settings on purpose and don't back them up, except Displays: the previous display settings are written to `display-revert.json` before a change and restored unless the change is kept within 15 s (also after a crash, at the next start). Safe mode never writes system settings.
+- Settings panels change Windows settings on purpose and don't back them up, except Displays: a change is validated and applied atomically for the session only (`SetDisplayConfig` without saving), the previous and new settings are written to `display-revert.json` first, and the change is reverted unless kept within 15 s (also after a crash, at the next start, if it is still showing). Safe mode never writes system settings.
 - Command-line switches: `--settings-dir <path>` (isolated profile), `--safe` (no taskbar hiding, tweaks, hooks or system setting changes), `--selftest` (start every feature in safe mode, run for 5 s, exit 0 or 1), `--restore-taskbar`, `--settings` / `--settings-panel <id>`.
 
 ## QA plan
