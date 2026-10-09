@@ -96,11 +96,37 @@ internal struct DISPLAYCONFIG_PATH_INFO
     public uint flags;
 }
 
-/// <summary>DISPLAYCONFIG_MODE_INFO, kept opaque: QueryDisplayConfig needs the buffer but WinGnome reads no mode from it.</summary>
-[StructLayout(LayoutKind.Sequential, Size = 64)]
+/// <summary>
+/// DISPLAYCONFIG_MODE_INFO (64 bytes). The union is a source mode (size and desktop position) when
+/// <see cref="infoType"/> is <see cref="NativeMethods.DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE"/>; target and desktop-image
+/// modes are never written, so their part of the union is left opaque.
+/// </summary>
+[StructLayout(LayoutKind.Explicit, Size = 64)]
 internal struct DISPLAYCONFIG_MODE_INFO
 {
+    [FieldOffset(0)]
     public uint infoType;
+
+    [FieldOffset(4)]
+    public uint id;
+
+    [FieldOffset(8)]
+    public LUID adapterId;
+
+    [FieldOffset(16)]
+    public uint sourceWidth;
+
+    [FieldOffset(20)]
+    public uint sourceHeight;
+
+    [FieldOffset(24)]
+    public uint sourcePixelFormat;
+
+    [FieldOffset(28)]
+    public int sourcePositionX;
+
+    [FieldOffset(32)]
+    public int sourcePositionY;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -147,19 +173,18 @@ internal static partial class NativeMethods
     public const uint DISPLAY_DEVICE_PRIMARY_DEVICE = 0x00000004;
     public const uint DISPLAY_DEVICE_MIRRORING_DRIVER = 0x00000008;
 
-    public const uint DM_POSITION = 0x00000020;
-    public const uint DM_BITSPERPEL = 0x00040000;
-    public const uint DM_PELSWIDTH = 0x00080000;
-    public const uint DM_PELSHEIGHT = 0x00100000;
-    public const uint DM_DISPLAYFREQUENCY = 0x00400000;
-
-    public const uint CDS_UPDATEREGISTRY = 0x00000001;
-    public const uint CDS_TEST = 0x00000002;
-    public const uint CDS_SET_PRIMARY = 0x00000010;
-    public const uint CDS_NORESET = 0x10000000;
-    public const int DISP_CHANGE_SUCCESSFUL = 0;
 
     public const uint QDC_ONLY_ACTIVE_PATHS = 0x00000002;
+    public const uint DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE = 1;
+    public const uint DISPLAYCONFIG_PATH_MODE_IDX_INVALID = 0xFFFFFFFF;
+
+    // SetDisplayConfig flags. Without SDC_SAVE_TO_DATABASE a change lasts for the session only.
+    public const uint SDC_USE_DATABASE_CURRENT = 0x0000000F;
+    public const uint SDC_USE_SUPPLIED_DISPLAY_CONFIG = 0x00000020;
+    public const uint SDC_VALIDATE = 0x00000040;
+    public const uint SDC_APPLY = 0x00000080;
+    public const uint SDC_SAVE_TO_DATABASE = 0x00000200;
+    public const uint SDC_ALLOW_CHANGES = 0x00000400;
     public const int DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME = 1;
     public const int DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME = 2;
     public const uint DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL = 0x80000000;
@@ -174,19 +199,17 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool EnumDisplaySettingsEx(string device, int modeNum, ref DEVMODE devMode, uint flags);
 
-    [DllImport("user32.dll", EntryPoint = "ChangeDisplaySettingsExW", CharSet = CharSet.Unicode)]
-    public static extern int ChangeDisplaySettingsEx(string device, ref DEVMODE devMode, nint hwnd, uint flags, nint param);
-
-    /// <summary>With every argument null/zero, applies the registry's settings (including any staged with CDS_NORESET) to all displays.</summary>
-    [DllImport("user32.dll", EntryPoint = "ChangeDisplaySettingsExW", CharSet = CharSet.Unicode)]
-    public static extern int ChangeDisplaySettingsExApplyStaged(string? device, nint devMode, nint hwnd, uint flags, nint param);
-
     [DllImport("user32.dll")]
     public static extern int DisplayConfigGetDeviceInfo(ref DISPLAYCONFIG_SOURCE_DEVICE_NAME request);
 
     [DllImport("user32.dll")]
     public static extern int DisplayConfigGetDeviceInfo(ref DISPLAYCONFIG_TARGET_DEVICE_NAME request);
 #pragma warning restore SYSLIB1054
+
+    /// <summary>Validates or applies a whole display configuration atomically (CCD API, Windows 7+).</summary>
+    [LibraryImport("user32.dll")]
+    public static partial int SetDisplayConfig(uint pathCount, [In] DISPLAYCONFIG_PATH_INFO[]? paths, uint modeCount,
+        [In] DISPLAYCONFIG_MODE_INFO[]? modes, uint flags);
 
     [LibraryImport("user32.dll")]
     public static partial int GetDisplayConfigBufferSizes(uint flags, out uint pathCount, out uint modeCount);
