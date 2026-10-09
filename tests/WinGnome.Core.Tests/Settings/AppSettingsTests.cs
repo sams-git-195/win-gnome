@@ -485,4 +485,30 @@ public class AppSettingsTests
         Assert.Equal(DockPosition.Left, original.Dock.Position);
         Assert.Single(original.EnabledTweaks);
     }
+
+    [Fact]
+    public void Normalize_RepairsEveryUndefinedEnumSetting()
+    {
+        // The settings reader turns unknown enum names into undefined values and relies on Normalize to restore each
+        // setting's default, so a new enum setting without a Normalize line would leak an undefined value.
+        var settings = new AppSettings();
+        var sections = typeof(AppSettings).GetProperties().Where(p => p.PropertyType.IsClass && p.PropertyType != typeof(string)
+            && p.PropertyType.Namespace == typeof(AppSettings).Namespace);
+        var enumSettings = sections
+            .SelectMany(section => section.PropertyType.GetProperties()
+                .Where(p => p.PropertyType.IsEnum && p.CanWrite)
+                .Select(p => (Section: section.GetValue(settings)!, Property: p)))
+            .ToList();
+        foreach (var (section, property) in enumSettings)
+        {
+            property.SetValue(section, Enum.ToObject(property.PropertyType, int.MinValue));
+        }
+
+        settings.Normalize();
+
+        Assert.Equal(11, enumSettings.Count);
+        Assert.All(enumSettings, s => Assert.True(
+            Enum.IsDefined(s.Property.PropertyType, s.Property.GetValue(s.Section)!),
+            $"{s.Property.DeclaringType!.Name}.{s.Property.Name} is not normalised"));
+    }
 }
