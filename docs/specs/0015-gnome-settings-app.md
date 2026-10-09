@@ -1,6 +1,6 @@
 # 0015 — A GNOME Settings app for Windows
 
-Status: Agreed (MVP scope chosen by the user on 2026-10-09: native panels for daily settings, links for the rest)
+Status: Implemented (MVP), 2026-10-09. Scope chosen by the user on 2026-10-09: native panels for daily settings, links for the rest. Live write checks are pending (KI-063).
 
 ## Problem
 Windows Settings looks and works nothing like GNOME, and in shell mode (spec 0013) it is one of the Windows
@@ -68,3 +68,33 @@ Nothing while the window is closed. Services exist only for the open panel.
 - Undocumented APIs (`IPolicyConfig`, display scale, power mode) can break with Windows updates.
 - A bad `SetDisplayConfig` could blank a screen: validate first, auto-revert always.
 - Policy-managed machines may block changes: show the error state.
+
+## Implementation notes (MVP)
+
+What is native and what is linked, as built:
+
+| Panel | Native | Linked or left to Windows Settings |
+|---|---|---|
+| Displays | Arrangement (drag, edge snapping), primary display, resolution, refresh rate, 15 s keep-or-revert with a crash-safe revert record (`display-revert.json`) | Scale (shown read-only, KI-062), rotation, HDR, mirroring, turning displays on/off |
+| Sound | Output/input device (via `IPolicyConfig`, KI-060), output volume and mute, input volume, per-app volume | Per-app devices (volume mixer link), sound effects |
+| Power | Battery state, power mode (KI-061), screen blank and automatic suspend per power source | Lid and button actions, plans |
+| Mouse & Touchpad | Primary button, pointer speed, acceleration, scroll lines | Touchpad gestures and tapping (link) |
+| Keyboard | Repeat delay and rate, input sources (listed, KI-066) | Adding/removing sources, typing settings (links) |
+| Appearance | Style, accent (GNOME's nine colours or automatic), wallpaper (Windows' pictures or a file) | Themes, contrast |
+| Multitasking | Hot corner, workspace indicator (WinGnome), snap, snap layouts, snap suggestions, Alt+Tab scope (KI-064) | — |
+| Date & Time | Time zone (searchable; `SetDynamicTimeZoneInformation` with `SeTimeZonePrivilege`), top bar clock format | Automatic date, time and time zone (link) |
+| About | Device name, hardware model, memory, processor, graphics, disk, Windows version | Rename, product key (link) |
+| Wi-Fi, Network, Bluetooth, Printers, Removable Media, Colour, Notifications, Apps, Default Apps, Online Accounts, Sharing, Privacy & Security, Region & Language, Users, Accessibility, Windows Update | — | Matching `ms-settings:` page (Colour opens `colorcpl.exe`) |
+
+Design decisions taken while building:
+- Display changes use the documented `ChangeDisplaySettingsEx` (test every display's mode with `CDS_TEST`, stage all
+  with `CDS_UPDATEREGISTRY | CDS_NORESET`, apply together) rather than `SetDisplayConfig`, because it carries the
+  refresh rate directly; `QueryDisplayConfig` is used only for monitor names. Changes are staged in the panel and
+  applied with *Apply*, as GNOME does. The countdown also reverts when the panel or window closes, and at the next
+  normal start after a crash.
+- Every write runs on `SystemSettingWriter` (ordered, off the UI thread, logged, nothing in safe mode), except the
+  sound volume sliders, which call Core Audio directly like the top bar does.
+- Rows whose value a Streamline tweak owns (dark mode, accent, snap layouts) are read-only while that tweak is on
+  (KI-067), so reverting a tweak never silently undoes a panel change.
+- Quick settings rows and Win+I still open Windows Settings pages (KI-065); `ShellCommands.ShowSettings(panelId)`
+  and `--settings-panel <id>` are ready for them.

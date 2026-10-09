@@ -58,7 +58,8 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | Tray | `ShellTrayData`, `TrayIconRegistry`, `TrayFrontCheckSchedule` | Tray-host message parsing, icon list, how often the host re-checks it is in front |
 | Collections | `LruCache`, `DeadlineSchedule` | Bounded least-recently-used cache; one deadline per key for debouncing on a single timer |
 | Workspaces | `VirtualDesktopState` | Parses Explorer's virtual-desktop registry blobs |
-| Tweaks | `TweakCatalog`, `TweakDefinition`, `RegistryChange`, `IRegistryStore`, `TweakEngine`, `TweakBackup`, `AccentColorChanges` | Reversible HKCU tweaks, accent-colour registry values |
+| ControlCenter | `SettingsPanelCatalog`, `SettingsPanel`, `PanelIds`, `DisplayArrangement`, `KeepChangesCountdown`, `DisplayRevertRecord`, `DisplayModes`, `PowerTimeouts`, `TimeZoneList`, `InputTuning`, `SystemInfoText` | The GNOME Settings style app (spec 0015): sidebar panels, groups, links and search; display arrangement geometry (edge snapping, primary at the origin, preview fit), the 15-second keep-or-revert state machine and the crash-safe revert record; resolution and refresh choices; GNOME's power timeouts; time zone ordering and search; SystemParametersInfo value ranges; About and Sound text |
+| Tweaks | `TweakCatalog`, `TweakDefinition`, `RegistryChange`, `IRegistryStore`, `TweakEngine`, `TweakBackup`, `AccentColorChanges` | Reversible HKCU tweaks, accent-colour registry values (also read back and handed to Windows by the Appearance panel) |
 
 ## App modules (WinGnome)
 
@@ -73,14 +74,16 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | `Controls/TrafficLights/` | shared | `TrafficLightButtonsView`, its automation peers and `GlyphGeometry` (the circles, used by the overlay and header bars), `HeaderBarWindow` (WindowChrome header bar with round buttons and Snap Layouts for WinGnome's own windows) |
 | `Features/WindowButtons/` | traffic-light agent | Overlay manager and per-window overlay, custom title bar probing and click guard |
 | `Features/Overview/` | overview agent | Activities overview with DWM thumbnails and search, hot corner, Super key hook, global hotkey, centring new windows, focus-follows-mouse |
-| `Features/Settings/` | settings agent | Settings window (all pages, header bar), tweaks page with `RegistryStore` (HKCU), start-with-Windows |
+| `Features/Settings/` | settings agent | Settings window as a GNOME Settings style app (header bar, searchable grouped sidebar, links to Windows Settings, WinGnome's pages), tweaks page with `RegistryStore` (HKCU), start-with-Windows |
+| `Features/Settings/Panels/` | settings agent | Native system panels (Displays, Sound, Power, Mouse, Keyboard, Appearance, Multitasking, Date & Time, About): one folder per panel with its view, view model and service; `SystemPanelViewModel` (open/close lifecycle, safe-mode read-only, problem banner and Windows Settings link) and `SystemSettingWriter` (ordered off-UI-thread writes, none in safe mode) |
 
 ## Safety rules
 
 - Taskbar: restore on normal exit, on unhandled exceptions, on `SessionEnding`, and on `--restore-taskbar`.
 - Registry tweaks touch **HKCU only**, back up the previous value (including "absent"), and can be reverted one by one or all at once.
 - Never act on elevated windows (UIPI would block us anyway); skip them explicitly.
-- Command-line switches: `--settings-dir <path>` (isolated profile), `--safe` (no taskbar hiding, tweaks or hooks), `--selftest` (start every feature in safe mode, run for 5 s, exit 0 or 1), `--restore-taskbar`.
+- Settings panels change Windows settings on purpose and don't back them up, except Displays: the previous display settings are written to `display-revert.json` before a change and restored unless the change is kept within 15 s (also after a crash, at the next start). Safe mode never writes system settings.
+- Command-line switches: `--settings-dir <path>` (isolated profile), `--safe` (no taskbar hiding, tweaks, hooks or system setting changes), `--selftest` (start every feature in safe mode, run for 5 s, exit 0 or 1), `--restore-taskbar`, `--settings` / `--settings-panel <id>`.
 
 ## QA plan
 

@@ -42,6 +42,14 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-042](#ki-042) | S4 | Window buttons | WinGnome builds from before the window-buttons role still decorate alongside newer ones | Open |
 | [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
 | [KI-052](#ki-052) | S4 | Dock | Explorer windows other than folder windows don't join the File Explorer pin | Open |
+| [KI-060](#ki-060) | S4 | Settings | Choosing the default sound device uses the undocumented `IPolicyConfig` | Open |
+| [KI-061](#ki-061) | S4 | Settings | The power mode uses undocumented powrprof functions | Open |
+| [KI-062](#ki-062) | S4 | Settings | Display scale, orientation and turning displays on or off are left to Windows Settings | By design |
+| [KI-063](#ki-063) | S3 | Settings | The Settings panels' writes are verified by code review and tests, not yet on a live machine | Open |
+| [KI-064](#ki-064) | S4 | Settings | Snap and Alt+Tab options may need a new sign-in to take effect | Open |
+| [KI-065](#ki-065) | S4 | Settings | Quick settings and Win+I don't open the matching native panel yet | Open |
+| [KI-066](#ki-066) | S4 | Settings | Input sources are listed but not switched or reordered in the Keyboard panel | Open |
+| [KI-067](#ki-067) | S4 | Settings | Appearance style and accent are read-only while the matching Streamline tweak is on | By design |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -291,6 +299,80 @@ spec 0006). Other un-owned `explorer.exe` windows that pass the alt-tab filter, 
 window, have no AUMID and still show as a separate unpinned "Explorer" icon, where the Windows taskbar groups them
 under File Explorer. *Fix direction:* list the classes seen live (for example `OperationStatusWindow`) and add
 them to the rule, keeping the desktop, taskbar and other shell windows out.
+
+### KI-060
+**Choosing the default sound device uses the undocumented `IPolicyConfig`** · S4 · Settings · Open
+
+Windows has no documented API to change the default audio endpoint. The Sound panel uses `IPolicyConfig`
+(`CPolicyConfigClient` `{870AF99C-…}`, interface `{F8679F50-…}`, `SetDefaultEndpoint` for the console,
+multimedia and communications roles), as Windows' own sound settings and tools such as SoundSwitch do. It has been
+stable since Windows 7, but an update could change it. The panel checks that the interface answers when it opens;
+if not, the device drop-downs are disabled and point to Windows Settings, and a failed call shows the problem banner
+with the link (`Interop/PolicyConfig.cs`, `Panels/Sound/AudioDevices.cs`).
+
+### KI-061
+**The power mode uses undocumented powrprof functions** · S4 · Settings · Open
+
+`PowerGetEffectiveOverlayScheme` and `PowerSetActiveOverlayScheme` (the power mode behind Windows 11's *Best power
+efficiency / Balanced / Best performance*) are exported by `powrprof.dll` but not documented. They are resolved at
+run time (`NativeMethods.Power.cs`); when they are missing, or Windows reports no power mode (Windows 11 has none
+while a plan other than Balanced is active), the Power Mode group is hidden and the rest of the panel works.
+
+### KI-062
+**Display scale, orientation and turning displays on or off are left to Windows Settings** · S4 · Settings · By design
+
+Changing the scale needs the undocumented `DisplayConfigSetDeviceInfo` type −4, so the Displays panel shows the
+effective scale (documented `GetDpiForMonitor`) read-only with a *Change in Windows Settings* button. Rotation,
+mirroring, HDR, and enabling or disabling a display aren't offered in this MVP; *More in Windows Settings* opens
+the page. Modes are listed at the current colour depth; a display rotated to portrait reports its modes as Windows
+gives them.
+
+### KI-063
+**The Settings panels' writes are verified by code review and tests, not yet on a live machine** · S3 · Settings · Open
+
+Every panel was opened and read on Windows 11 25H2 (single display, laptop) and checked against Windows Settings,
+in light and dark mode at 125 %, but in `--safe` mode: to avoid changing the developer's machine, no display mode,
+default device, power plan value, power mode, time zone, wallpaper, accent, style, mouse, keyboard or snap value was
+written during development. The write paths follow the documented APIs, run off the UI thread, log Win32 errors and
+show the problem banner; Displays tests every mode before applying, records the previous settings first and always
+counts down to a revert. Multi-display arrangement was exercised only through `DisplayArrangement` tests.
+*Next step:* a manual pass per panel on a test machine (acceptance criteria 2 of spec 0015): change, confirm it
+shows in Windows Settings, change back; for Displays, let the countdown revert, kill WinGnome during a countdown
+and restart it.
+
+### KI-064
+**Snap and Alt+Tab options may need a new sign-in to take effect** · S4 · Settings · Open
+
+The Multitasking panel writes `SnapAssist`, `EnableSnapAssistFlyout` and `VirtualDesktopAltTabFilter` under
+`HKCU\…\Explorer\Advanced`, the values Windows Settings writes, without a broadcast; Explorer may read some of them
+only when it starts (the Streamline snap-flyout tweak restarts Explorer for that reason). *Snap Windows* uses
+`SPI_SETWINARRANGING` and applies at once. *Fix direction:* find the notification Windows Settings sends, or offer
+an Explorer restart as the Streamline page does.
+
+### KI-065
+**Quick settings and Win+I don't open the matching native panel yet** · S4 · Settings · Open
+
+Spec 0015 asks for the top bar's quick-settings rows and gear to open the matching panel, and for Win+I to open the
+settings app in shell mode (spec 0013). `ShellCommands.ShowSettings(panelId)` and `--settings-panel <id>` are in
+place, but the top bar files were being changed by another branch at the time, so its rows still open Windows
+Settings pages. *Fix direction:* call `ShowSettings(PanelIds.Sound)` and friends from `TopBarActions`.
+
+### KI-066
+**Input sources are listed but not switched or reordered in the Keyboard panel** · S4 · Settings · Open
+
+`ActivateKeyboardLayout` only switches the calling process, so the panel lists the session's input sources (from
+`GetKeyboardLayoutList`), marks the one in use, and leaves switching to Win+Space and adding or removing to Windows
+Settings (linked). Layout names are derived from the HKL (the layout's language), not the registry's layout text,
+so a variant shows as "Keyboard variant N". *Fix direction:* `ITfInputProcessorProfileMgr` for names, switching and
+order.
+
+### KI-067
+**Appearance style and accent are read-only while the matching Streamline tweak is on** · S4 · Settings · By design
+
+The *Dark mode* and *Adwaita blue accent* tweaks own those registry values and back up the originals to restore
+them when turned off. If the Appearance panel changed them too, reverting the tweak would silently undo the panel's
+change, so the rows are disabled with a note pointing to the Streamline page while the tweak is on. The same holds
+for *Snap Layouts* and the *Disable the snap layouts flyout* tweak.
 
 ## Resolved
 
