@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Windows;
 using System.Windows.Controls;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
@@ -10,6 +11,9 @@ namespace WinGnome.Features.Dock;
 internal static class DockMenuBuilder
 {
     private const int MaxTitleLength = 60;
+
+    /// <summary>Segoe Fluent Icons "CheckMark".</summary>
+    private const string CheckGlyph = "";
 
     /// <summary>The menu for <paramref name="entry"/>, or null when it has none (Show Applications).</summary>
     public static ContextMenu? Build(DockEntry entry, DockActions actions, WindowTracker windows) => entry switch
@@ -38,6 +42,17 @@ internal static class DockMenuBuilder
         var launch = Item(app.IsRunning ? "New window" : "Open", () => actions.LaunchNew(entry));
         launch.IsEnabled = actions.CanLaunch(app);
         menu.Items.Add(launch);
+
+        // Packaged apps and URIs cannot be elevated, so they get neither item.
+        if (actions.CanRunAsAdministrator(app))
+        {
+            menu.Items.Add(Item("Run as administrator", () => actions.RunAsAdministrator(entry)));
+            if (app.IsPinned)
+            {
+                var always = actions.IsAlwaysRunAsAdministrator(app);
+                menu.Items.Add(CheckItem("Always run as administrator", always, () => actions.SetAlwaysRunAsAdministrator(app, !always)));
+            }
+        }
 
         if (app.IsPinned)
         {
@@ -95,6 +110,24 @@ internal static class DockMenuBuilder
         // A TextBlock header keeps underscores in window titles literal instead of turning them into access keys.
         var item = new MenuItem { Header = new TextBlock { Text = text } };
         item.Click += (_, _) => Run(action);
+        return item;
+    }
+
+    /// <summary>
+    /// A toggle item. The shared MenuItem template draws no check mark, so the header carries its own glyph column;
+    /// menus are rebuilt on every open, so the state never goes stale.
+    /// </summary>
+    private static MenuItem CheckItem(string text, bool isChecked, Action toggle)
+    {
+        var glyph = new TextBlock { Text = isChecked ? CheckGlyph : "", Width = 20, VerticalAlignment = VerticalAlignment.Center };
+        glyph.SetResourceReference(TextBlock.FontFamilyProperty, "IconFont");
+
+        var header = new StackPanel { Orientation = Orientation.Horizontal };
+        header.Children.Add(glyph);
+        header.Children.Add(new TextBlock { Text = text });
+
+        var item = new MenuItem { Header = header, IsCheckable = true, IsChecked = isChecked };
+        item.Click += (_, _) => Run(toggle);
         return item;
     }
 

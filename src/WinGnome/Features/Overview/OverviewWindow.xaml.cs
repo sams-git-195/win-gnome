@@ -6,10 +6,12 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using WinGnome.Core.Dock;
 using WinGnome.Core.Geometry;
 using WinGnome.Core.Overview;
 using WinGnome.Core.Search;
 using WinGnome.Core.Settings;
+using WinGnome.Core.Shell;
 using WinGnome.Core.Windows;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
@@ -683,12 +685,12 @@ internal sealed partial class OverviewWindow : Window
         (container as FrameworkElement)?.BringIntoView();
     }
 
-    private void OpenItem(SelectableItem item)
+    private void OpenItem(SelectableItem item, LaunchModifiers modifiers)
     {
         switch (item)
         {
             case AppTile tile:
-                Launch(tile);
+                Launch(tile, modifiers);
                 break;
             case WindowResult window:
                 ActivateWindow(window.Handle);
@@ -700,16 +702,43 @@ internal sealed partial class OverviewWindow : Window
 
     private void ActivateWindow(nint hwnd) => DismissAndFocus(hwnd);
 
-    private void Launch(AppTile tile)
+    /// <summary>Launches a tile; Ctrl+Shift (or the pin's "Always run as administrator") elevates desktop apps.</summary>
+    private void Launch(AppTile tile, LaunchModifiers modifiers) =>
+        Launch(LaunchPlanner.Plan(tile.LaunchId, modifiers, PinOf(tile)));
+
+    private void Launch(LaunchRequest request)
     {
         // Launch while the overview still owns the foreground, so the new app is allowed to take it
         // (AllowSetForegroundWindow only works for the foreground process).
-        _context.Launcher.Launch(tile.LaunchId);
+        _context.Launcher.Launch(request);
         Dismiss(restoreFocus: false);
     }
 
-    private bool IsPinned(AppTile tile) =>
-        _context.Settings.Current.Dock.PinnedApps.Any(p => string.Equals(p.LaunchId, tile.LaunchId, StringComparison.OrdinalIgnoreCase));
+    private PinnedApp? PinOf(AppTile tile) => DockPins.Find(_context.Settings.Current.Dock.PinnedApps, tile.LaunchId);
+
+    private bool IsPinned(AppTile tile) => PinOf(tile) is not null;
+
+    private static LaunchModifiers CurrentModifiers()
+    {
+        var keys = Keyboard.Modifiers;
+        var modifiers = LaunchModifiers.None;
+        if (keys.HasFlag(ModifierKeys.Control))
+        {
+            modifiers |= LaunchModifiers.Control;
+        }
+
+        if (keys.HasFlag(ModifierKeys.Shift))
+        {
+            modifiers |= LaunchModifiers.Shift;
+        }
+
+        if (keys.HasFlag(ModifierKeys.Alt))
+        {
+            modifiers |= LaunchModifiers.Alt;
+        }
+
+        return modifiers;
+    }
 
     private void SetPinned(AppTile tile, bool pinned)
     {
@@ -728,8 +757,17 @@ internal sealed partial class OverviewWindow : Window
     {
         var menu = new ContextMenu();
         var open = new MenuItem { Header = "Open" };
-        open.Click += (_, _) => Launch(tile);
+        open.Click += (_, _) => Launch(tile, LaunchModifiers.None);
         menu.Items.Add(open);
+
+        // Packaged apps cannot be elevated, so they don't offer it.
+        if (LaunchPlanner.CanElevate(tile.LaunchId))
+        {
+            var elevated = new MenuItem { Header = "Run as administrator" };
+            elevated.Click += (_, _) => Launch(LaunchPlanner.PlanElevated(tile.LaunchId, PinOf(tile)));
+            menu.Items.Add(elevated);
+        }
+
         menu.Items.Add(new Separator());
 
         var pinned = IsPinned(tile);
@@ -766,7 +804,8 @@ internal sealed partial class OverviewWindow : Window
                 break;
 
             case Key.Enter:
-                OpenSelection(resultsShown);
+                // Ctrl+Shift+Enter runs the selected app as administrator, as in Start.
+                OpenSelection(resultsShown, CurrentModifiers());
                 break;
 
             case Key.Tab:
@@ -789,20 +828,20 @@ internal sealed partial class OverviewWindow : Window
         e.Handled = true;
     }
 
-    private void OpenSelection(bool resultsShown)
+    private void OpenSelection(bool resultsShown, LaunchModifiers modifiers)
     {
         if (resultsShown)
         {
             if (_resultIndex >= 0 && _resultIndex < _results.Count)
             {
-                OpenItem(_results[_resultIndex]);
+                OpenItem(_results[_resultIndex], modifiers);
             }
         }
         else if (_request.Mode == OverviewMode.Applications)
         {
             if (_gridIndex >= 0 && _gridIndex < _apps.Tiles.Count)
             {
-                Launch(_apps.Tiles[_gridIndex]);
+                Launch(_apps.Tiles[_gridIndex], modifiers);
             }
         }
         else if (_thumbnails.SelectedWindow is var hwnd and not 0)
@@ -845,7 +884,7 @@ internal sealed partial class OverviewWindow : Window
         if ((e.OriginalSource as FrameworkElement)?.DataContext is AppTile tile)
         {
             e.Handled = true;
-            Launch(tile);
+            Launch(tile, CurrentModifiers());
         }
     }
 

@@ -278,6 +278,12 @@ public sealed class PinnedApp
 
     /// <summary>Optional command-line arguments (file-system launches only).</summary>
     public string? Arguments { get; set; }
+
+    /// <summary>
+    /// Launch this pin elevated (UAC prompt) on every click. Ignored for packaged apps and URIs, which cannot be
+    /// elevated this way. Files written before this field existed load as false.
+    /// </summary>
+    public bool RunAsAdministrator { get; set; }
 }
 
 public enum TrafficLightPreset { MacOS, Gnome, Graphite, Pastel, Custom }

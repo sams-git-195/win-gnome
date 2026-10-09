@@ -1,4 +1,5 @@
 using System.Windows.Media;
+using WinGnome.Core.Shell;
 
 namespace WinGnome.Services.Apps;
 
@@ -60,4 +61,10 @@ internal interface IAppLauncher
     /// or a URI (ms-settings:, shell:...). Returns false (and logs) on failure.
     /// </summary>
     bool Launch(string launchId, string? arguments = null);
+
+    /// <summary>
+    /// Launches as planned by <see cref="LaunchPlanner"/>; <see cref="LaunchRequest.Elevate"/> asks for UAC ("runas").
+    /// An elevated launch returns true once the prompt is requested; "No" on the prompt is logged, not reported.
+    /// </summary>
+    bool Launch(LaunchRequest request);
 }

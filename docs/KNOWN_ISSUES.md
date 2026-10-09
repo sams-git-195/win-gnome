@@ -42,6 +42,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-042](#ki-042) | S4 | Window buttons | WinGnome builds from before the window-buttons role still decorate alongside newer ones | Open |
 | [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
 | [KI-052](#ki-052) | S4 | Dock | Explorer windows other than folder windows don't join the File Explorer pin | Open |
+| [KI-053](#ki-053) | S4 | Dock | An elevated launch plays the launch animation even when the UAC prompt is cancelled | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -291,6 +292,15 @@ spec 0006). Other un-owned `explorer.exe` windows that pass the alt-tab filter, 
 window, have no AUMID and still show as a separate unpinned "Explorer" icon, where the Windows taskbar groups them
 under File Explorer. *Fix direction:* list the classes seen live (for example `OperationStatusWindow`) and add
 them to the rule, keeping the desktop, taskbar and other shell windows out.
+
+### KI-053
+**An elevated launch plays the launch animation even when the UAC prompt is cancelled** · S4 · Dock · Open
+
+An elevated `ShellExecuteEx` blocks until the UAC prompt is answered, so `AppLauncher` runs it on its own STA
+thread and reports success as soon as the prompt is requested (spec 0014). The dock therefore plays its launch
+bounce before the user answers, and still plays it when they choose No (which is logged at Info, as intended).
+*Fix direction:* give `IAppLauncher` an asynchronous result for elevated launches and play the feedback only when
+it succeeds.
 
 ## Resolved
 

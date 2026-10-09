@@ -53,7 +53,7 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | Dock | `DockModelBuilder`, `DockApp`, `RunningWindow`, `DockLayout`, `DockClickPlanner` | Dock items, geometry, magnification, click behaviour |
 | Overview | `OverviewLayout`, `SelectionNavigator`, `OverviewTransition`, `ThumbnailTrack`, `OverviewTransitionState` | Arranges window thumbnails in a grid that preserves aspect ratios, keyboard selection, open/close animation (ease-out-quad, retargetable tracks, dim alpha, the reversible open/close state machine) |
 | Search | `FuzzyMatcher` | Ranks apps and windows by a query |
-| Shell | `KnownFolderPath` | Resolves `{GUID}\path` AppsFolder parsing names |
+| Shell | `KnownFolderPath`, `LaunchPlanner`, `LaunchRequest`, `LaunchModifiers` | Resolves `{GUID}\path` AppsFolder parsing names; classifies launch ids and decides elevation (Ctrl+Shift or a pin's `RunAsAdministrator`; never packaged apps or URIs) |
 | TopBar | `ClockFormatter`, `BatteryStatus`, `BrightnessScale`, `BrightnessWheel`, `WriteCoalescer` | GNOME-style clock text, battery state and whether to poll it, brightness levels, wheel steps and coalesced writes |
 | Tray | `ShellTrayData`, `TrayIconRegistry`, `TrayFrontCheckSchedule` | Tray-host message parsing, icon list, how often the host re-checks it is in front |
 | Collections | `LruCache`, `DeadlineSchedule` | Bounded least-recently-used cache; one deadline per key for debouncing on a single timer |
@@ -67,7 +67,7 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | `Infrastructure/` | lead | `Log`, `IFeature`, `SettingsService`, `ObservableObject`, `RelayCommand`, `SessionRole` (one instance per session does a job, e.g. window buttons), theme resources |
 | `Interop/` | shared | `NativeMethods.*.cs` partials, `WinEventHook`, `AppBar`, `BlurBackdrop` (blur window under the dock and top bar bodies) |
 | `Services/WindowTracker.cs` | lead | Enumerates alt-tab windows, raises `WindowsChanged` and `ForegroundChanged`, plus raw location events |
-| `Services/Apps/` | dock agent | `AppCatalog` (shell:AppsFolder), `IconProvider`, `AppLauncher` |
+| `Services/Apps/` | dock agent | `AppCatalog` (shell:AppsFolder), `IconProvider`, `AppLauncher` (in-process `ShellExecuteEx`, never `explorer.exe`) |
 | `Features/Dock/` | dock agent | Dock window, intellihide, trigger strip, context menu, `TaskbarController` |
 | `Features/TopBar/` | top-bar agent | Top-bar AppBar, clock and calendar, indicators (network, volume, battery), quick settings, power menu, workspace dots |
 | `Controls/TrafficLights/` | shared | `TrafficLightButtonsView`, its automation peers and `GlyphGeometry` (the circles, used by the overlay and header bars), `HeaderBarWindow` (WindowChrome header bar with round buttons and Snap Layouts for WinGnome's own windows) |
