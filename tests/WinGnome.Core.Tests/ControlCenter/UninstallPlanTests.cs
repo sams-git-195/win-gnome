@@ -53,6 +53,16 @@ public class UninstallPlanTests
     public void For_BareSystemProgram_IsRootedAtSystem32(string uninstall, string exe, string args) =>
         Assert.Equal(new PlannedCommand(exe, args), Plan(App(uninstall)));
 
+    [Theory]
+    [InlineData("rundll32 app.dll,Uninstall")]
+    [InlineData("rundll32.exe app.dll Uninstall")]
+    [InlineData(@"rundll32 ""App Dir\app.dll"",Remove")]
+    [InlineData(@"rundll32 %ProgramFiles%\App\app.dll,Remove")]
+    [InlineData("rundll32")]
+    [InlineData(@"rundll32 ""C:\App\app.dll")]
+    public void For_Rundll32WithoutAFullyQualifiedDll_GivesNone(string uninstall) =>
+        Assert.Null(Plan(App(uninstall)));
+
     [Fact]
     public void For_SystemDirectoryWithTrailingSlash_GivesOneSeparator() =>
         Assert.Equal(new PlannedCommand(@"C:\Windows\System32\msiexec.exe", "/x {A}"),

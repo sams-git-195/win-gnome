@@ -17,7 +17,8 @@ public static class UninstallPlan
     /// <list type="number">
     /// <item><c>NoRemove</c> set: null.</item>
     /// <item>A Windows Installer key whose name is a product code: <c>&lt;System32&gt;\msiexec.exe /X {GUID}</c>.</item>
-    /// <item>Otherwise the parsed <c>UninstallString</c>, with a bare <c>msiexec</c> or <c>rundll32</c> rooted at System32.</item>
+    /// <item>Otherwise the parsed <c>UninstallString</c>, with a bare <c>msiexec</c> or <c>rundll32</c> rooted at System32
+    /// (rundll32 only when the DLL it loads is fully qualified).</item>
     /// <item>Any other executable must be a fully qualified <c>.exe</c>; a bare name, relative path, other file type or
     /// unexpanded <c>%VAR%</c> gives null.</item>
     /// </list>
@@ -51,6 +52,12 @@ public static class UninstallPlan
         var executable = command.Executable.Trim();
         if (SystemProgram(executable) is { } program)
         {
+            // rundll32 loads the DLL it is given through the DLL search path unless the path is fully qualified.
+            if (program == "rundll32" && !WindowsPath.IsFullyQualified(Rundll32Library(command.Arguments)))
+            {
+                return null;
+            }
+
             return new PlannedCommand(InSystem(systemDirectory, program + ".exe"), command.Arguments);
         }
 
@@ -74,6 +81,20 @@ public static class UninstallPlan
         }
 
         return null;
+    }
+
+    /// <summary>The DLL in rundll32's "<c>dll,Entry args</c>" (quoted or not), or an empty string.</summary>
+    private static string Rundll32Library(string arguments)
+    {
+        var text = arguments.Trim();
+        if (text.StartsWith('"'))
+        {
+            var close = text.IndexOf('"', 1);
+            return close > 1 ? text[1..close] : "";
+        }
+
+        var end = text.IndexOfAny([',', ' ', '\t']);
+        return end < 0 ? text : text[..end];
     }
 
     private static string InSystem(string systemDirectory, string fileName) => systemDirectory.TrimEnd('\\', '/') + "\\" + fileName;
