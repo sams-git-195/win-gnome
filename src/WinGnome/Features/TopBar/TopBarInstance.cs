@@ -105,6 +105,23 @@ internal sealed class TopBarInstance : IDisposable
         Log.Info($"Top bar docked on {monitor.Key} at {granted.Left},{granted.Top} {granted.Width}x{granted.Height} px (DPI scale {scale:0.##})");
     }
 
+    /// <summary>
+    /// Registers the AppBar again if the monitor's work area no longer leaves the strip out (see
+    /// <see cref="AppBar.EnsureReserved"/>). Returns true when it did.
+    /// </summary>
+    public bool EnsureReserved()
+    {
+        if (_disposed || IsDetached || !_appBar.EnsureReserved())
+        {
+            return false;
+        }
+
+        _window.RaiseToTop();
+        _viewModel.Tray.BarBounds = _appBar.Bounds;
+        BoundsChanged?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
     /// <summary>Gives the strip back to the work area, keeping the window for a later <see cref="DockOn"/>.</summary>
     public void Undock() => _appBar.Undock();
 
@@ -140,6 +157,12 @@ internal sealed class TopBarInstance : IDisposable
             // re-docks the bar if the monitor changed).
             _context.Displays.Invalidate();
             _context.Dispatcher.BeginInvoke(RestoreStrip, System.Windows.Threading.DispatcherPriority.Background);
+        }
+        else if (msg == NativeMethods.WM_SETTINGCHANGE && wParam == NativeMethods.SPI_SETWORKAREA)
+        {
+            // A work area changed (ours or another AppBar's, or Explorer recomputing them): one debounced pass re-checks
+            // that every strip is still reserved. Acting only on a missing strip keeps this from feeding itself.
+            _context.Displays.Invalidate(force: true);
         }
         else if (TaskbarCreatedMessage != 0 && msg == (int)TaskbarCreatedMessage && !TrayHost.IsOwnBroadcast(wParam))
         {

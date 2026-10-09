@@ -22,8 +22,8 @@ internal sealed class DisplayLayoutChangedEventArgs(MonitorLayout previous, Moni
 /// The one place that reads the monitors. Display events (resolution, arrangement, hot-plug, resume, unlock, DPI
 /// changes reported by our windows, and AppBars that detached themselves) restart one 250 ms one-shot timer; on
 /// its tick the layout is read, diffed and <see cref="LayoutChanged"/> raised when something changed. A pass that
-/// found changes is followed by one more 1.5 s later, because Windows settles some layouts late (hot-plug). No
-/// timer runs at idle.
+/// found changes is followed by one more 1.5 s later, always raised, because Windows settles some layouts late
+/// (hot-plug) and Explorer may reset work areas after the first pass. No timer runs at idle.
 /// </summary>
 internal sealed class DisplayLayoutService : IDisposable
 {
@@ -191,11 +191,14 @@ internal sealed class DisplayLayoutService : IDisposable
             return;
         }
 
-        Log.Info($"Displays changed{(followUp ? " (follow-up)" : "")}: removed {diff.Removed.Count}, changed {diff.Changed.Count}, added {diff.Added.Count}. {Describe(now)}");
+        Log.Info($"Displays {(diff.IsEmpty ? "re-checked" : "changed")}{(followUp ? " (follow-up)" : "")}: removed {diff.Removed.Count}, changed {diff.Changed.Count}, added {diff.Added.Count}. {Describe(now)}");
         LayoutChanged?.Invoke(this, new DisplayLayoutChangedEventArgs(previous, now, diff));
         if (!diff.IsEmpty && !followUp && !_timer.IsEnabled)
         {
+            // Forced: even when the layout has settled by then, owners re-check that their strips are still reserved
+            // (Explorer recomputes work areas after a topology change on its own schedule).
             _nextIsFollowUp = true;
+            _forced = true;
             Restart(FollowUpDelay);
         }
     }

@@ -68,6 +68,9 @@ internal sealed class DockReservation : IDisposable
         }
     }
 
+    /// <summary>Registers the strip again if the work area no longer leaves it out (see <see cref="AppBar.EnsureReserved"/>).</summary>
+    public bool EnsureReserved() => _reserved is not null && _appBar is not null && _appBar.EnsureReserved();
+
     /// <summary>Undocks without forgetting the reservation, so <see cref="Redock"/> can register it again.</summary>
     public void Undock() => _appBar?.Undock();
 

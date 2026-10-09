@@ -334,6 +334,19 @@ So the janitor is the outcome A shape (one nudge at start and on `--restore-task
   rectangle at the origin would have treated (0,0) as a corner.
 - Bars and docks also restore their exact strip after `WM_DPICHANGED` (as before), but only when a fresh read shows
   their monitor with unchanged bounds; otherwise the coordinator's pass decides.
+- **Lost strip after unplugging a monitor** (found in the live session, 2026-10-09). When the upper monitor was
+  unplugged, Explorer reset the primary's work area to the whole monitor while our primary bar stayed registered,
+  sent it no `ABN_POSCHANGED`, and every later full docking sequence on that registration (QUERYPOS, SETPOS,
+  WINDOWPOSCHANGED; the user changed bar settings many times, each logged as "Top bar docked") left the work area
+  unreserved. The layout diff ignores work areas by design (our own strips change them), so the pass saw nothing to
+  do for the kept bar. Fix: after every display pass, including the 1.5 s follow-up (now always raised), and on
+  `WM_SETTINGCHANGE`/`SPI_SETWORKAREA` (debounced through the layout service), every bar and reserving dock checks
+  with a fresh `GetMonitorInfo` that the work area still leaves its strip out (`AppBarReservation.IsReserved`, Core,
+  tested) and, only if not, registers again (`ABM_REMOVE`, `ABM_NEW`, then the docking sequence; logged "registering
+  again"). Re-registration rather than SETPOS because SETPOS on the existing registration was seen not to help; that
+  re-registration restores it is expected but still to be confirmed in the next unplug test. A strip that is present
+  costs one `GetMonitorInfo` and no `SHAppBarMessage`, so the storm guard is unchanged. Settings changes now re-dock
+  bars only when the height, margin or corner radius changed (every settings change used to re-dock every bar).
 - Turning the dock off now destroys its instances (it used to hide the window and keep it).
 - `AppBar.RegisterAndRemove` serves the janitor, so `SHAppBarMessage` stays in one place and is counted.
 - Footprint measured on the QA machine (`--safe`, top bar only, 20 s idle): main display only 91.9 MB private,

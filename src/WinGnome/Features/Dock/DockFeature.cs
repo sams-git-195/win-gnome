@@ -125,17 +125,21 @@ internal sealed class DockFeature : IFeature
     {
         if (_enabled)
         {
-            Reconcile("display change");
-            QueueRefresh();
+            Reconcile(e.Diff.IsEmpty ? "re-check" : "display change", recheckStrips: true);
+            if (!e.Diff.IsEmpty)
+            {
+                QueueRefresh();
+            }
         }
     }
 
     /// <summary>
     /// Brings the docks in line with the layout and <see cref="DockSettings.Monitors"/>, in <see cref="SurfacePlan"/>
-    /// order. A primary swap with a dock on the primary only moves the one dock. Logs the pass with its count of
-    /// SHAppBarMessage calls.
+    /// order. A primary swap with a dock on the primary only moves the one dock. On display passes
+    /// (<paramref name="recheckStrips"/>) every reserving dock then checks that the work area still leaves its strip
+    /// out (Explorer resets work areas on some topology changes). Logs the pass with its count of SHAppBarMessage calls.
     /// </summary>
-    private void Reconcile(string reason)
+    private void Reconcile(string reason, bool recheckStrips = false)
     {
         var timer = Stopwatch.StartNew();
         var callsBefore = AppBar.MessageCount;
@@ -152,10 +156,24 @@ internal sealed class DockFeature : IFeature
             }
         }
 
-        if (steps.Count > 0 || reason != "settings")
+        var reregistered = recheckStrips ? _docks.Count(EnsureReserved) : 0;
+        if (steps.Count > 0 || reregistered > 0 || reason == "display change")
         {
             var summary = string.Join(", ", steps.Select(s => $"{s.Kind} {s.Key}{(s.Monitor is { } m && m.Key != s.Key ? "->" + m.Key : "")}"));
-            Log.Info($"Dock: reconcile ({reason}): [{summary}] in {timer.ElapsedMilliseconds} ms, {AppBar.MessageCount - callsBefore} SHAppBarMessage calls, {_docks.Count} docks, edge poll {(_poller?.IsRunning == true ? "running" : "idle")}");
+            Log.Info($"Dock: reconcile ({reason}): [{summary}] in {timer.ElapsedMilliseconds} ms, {AppBar.MessageCount - callsBefore} SHAppBarMessage calls, {_docks.Count} docks, {reregistered} strips registered again, edge poll {(_poller?.IsRunning == true ? "running" : "idle")}");
+        }
+    }
+
+    private static bool EnsureReserved(DockInstance dock)
+    {
+        try
+        {
+            return dock.EnsureReserved();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Dock: could not re-check the strip on {dock.Monitor.Key}", ex);
+            return false;
         }
     }
 

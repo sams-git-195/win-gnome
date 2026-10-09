@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using WinGnome.Core.Geometry;
+using WinGnome.Core.Shell;
 using WinGnome.Infrastructure;
 
 namespace WinGnome.Interop;
@@ -151,6 +152,45 @@ internal sealed partial class AppBar : IDisposable
             Apply(_registered ? QueryRect() : ProposedRect());
         });
         return Bounds;
+    }
+
+    /// <summary>
+    /// Registers the bar again (ABM_REMOVE, ABM_NEW, then the full docking sequence) when its monitor's work area no
+    /// longer leaves its strip out. Explorer resets work areas on some display changes (a monitor unplugged) and keeps
+    /// our registration, but sends no ABN_POSCHANGED, and a plain SETPOS on that registration was seen not to reserve
+    /// the strip again. Only acts when the strip is really missing, so it cannot feed a notification storm; skipped
+    /// when the cached monitor no longer exists with the same bounds (the owner's reconcile pass handles that).
+    /// Returns true when it registered again.
+    /// </summary>
+    public bool EnsureReserved()
+    {
+        if (!_registered || Bounds.IsEmpty)
+        {
+            return false;
+        }
+
+        var monitor = NativeMethods.MonitorFromRect(RECT.From(_monitor), NativeMethods.MONITOR_DEFAULTTONULL);
+        var (bounds, workArea) = monitor == 0 ? default : NativeMethods.GetMonitorRects(monitor);
+        if (bounds != _monitor || AppBarReservation.IsReserved((Core.Shell.AppBarEdge)(int)_edge, Bounds, workArea))
+        {
+            return false;
+        }
+
+        Log.Info($"AppBar 0x{_hwnd:X}: the work area {workArea} of monitor {_monitor} no longer leaves out the strip {Bounds}; registering again");
+        var before = Bounds;
+        Guarded(() =>
+        {
+            Undock();
+            Register();
+            Apply(_registered ? QueryRect() : ProposedRect());
+        });
+
+        if (Bounds != before)
+        {
+            Moved?.Invoke(this, EventArgs.Empty);
+        }
+
+        return true;
     }
 
     /// <summary>Unregisters the bar, giving the reserved space back to the work area.</summary>

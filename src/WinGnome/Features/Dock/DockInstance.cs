@@ -124,6 +124,9 @@ internal sealed class DockInstance : IDisposable
 
     public void CloseMenu() => _menu.Close();
 
+    /// <summary>Always-visible mode: registers the strip again if the work area no longer leaves it out.</summary>
+    public bool EnsureReserved() => !_disposed && _reservation.EnsureReserved();
+
     public void ApplyStyle()
     {
         try
@@ -284,6 +287,11 @@ internal sealed class DockInstance : IDisposable
         if (TaskbarCreatedMessage != 0 && msg == (int)TaskbarCreatedMessage && !TrayHost.IsOwnBroadcast(wParam))
         {
             ExplorerRestarted?.Invoke(this, EventArgs.Empty);
+        }
+        else if (msg == NativeMethods.WM_SETTINGCHANGE && wParam == NativeMethods.SPI_SETWORKAREA && _dock.Visibility == DockVisibility.AlwaysVisible)
+        {
+            // A work area changed: one debounced pass re-checks that the strip is still reserved (see TopBarInstance).
+            _context.Displays.Invalidate(force: true);
         }
 
         return 0;

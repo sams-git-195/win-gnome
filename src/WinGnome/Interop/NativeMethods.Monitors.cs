@@ -39,6 +39,9 @@ internal static partial class NativeMethods
     // ---- user32: monitors (per-monitor bars and docks, spec 0010) ----------------------------
     public const uint MONITORINFOF_PRIMARY = 1;
 
+    /// <summary>wParam of the WM_SETTINGCHANGE broadcast after a work area changed.</summary>
+    public const nint SPI_SETWORKAREA = 0x002F;
+
     public delegate bool MonitorEnumProc(nint monitor, nint hdc, nint rect, nint data);
 
     [LibraryImport("user32.dll")]

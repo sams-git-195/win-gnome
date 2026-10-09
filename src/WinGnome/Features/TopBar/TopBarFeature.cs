@@ -46,6 +46,7 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
 
     public void ApplySettings(AppSettings settings)
     {
+        var geometryBefore = (_settings.Height, _settings.Margin, _settings.CornerRadius);
         _settings = settings.TopBar;
         if (!_settings.Enabled)
         {
@@ -69,11 +70,16 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
         _services.ApplySettings(_settings);
         Reconcile("settings");
 
-        // The height, margin or corner radius may have changed: lay every bar out again on its own monitor.
+        // Every settings change arrives here (any page); only a new height, margin or corner radius changes the strip,
+        // so only then is every bar laid out and docked again on its own monitor.
+        var redock = geometryBefore != (_settings.Height, _settings.Margin, _settings.CornerRadius);
         foreach (var bar in _bars)
         {
             bar.ApplySettings(_settings);
-            bar.RestoreStrip();
+            if (redock)
+            {
+                bar.RestoreStrip();
+            }
         }
     }
 
@@ -82,15 +88,18 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
     private void OnLayoutChanged(object? sender, DisplayLayoutChangedEventArgs e)
     {
         _focus.OnLayoutChanged(e.Current);
-        Reconcile("display change");
+        Reconcile(e.Diff.IsEmpty ? "re-check" : "display change", recheckStrips: true);
         UpdateFocusTable();
     }
 
     /// <summary>
     /// Brings the bars in line with the current layout and settings, in <see cref="SurfacePlan"/> order (removals,
     /// releases, docks, additions), and logs the pass with its count of SHAppBarMessage calls (storm diagnostics).
+    /// On display passes (<paramref name="recheckStrips"/>) every bar then checks that its monitor's work area still
+    /// leaves its strip out: Explorer resets work areas on some topology changes (a monitor unplugged) without telling
+    /// the bars that stay, and the diff ignores work areas by design.
     /// </summary>
-    private void Reconcile(string reason)
+    private void Reconcile(string reason, bool recheckStrips = false)
     {
         if (_services is null)
         {
@@ -112,12 +121,26 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
             }
         }
 
+        var reregistered = recheckStrips ? _bars.Count(EnsureReserved) : 0;
         UpdateTrayHostBounds();
         RefreshFocusedApps();
-        if (steps.Count > 0 || reason != "settings")
+        if (steps.Count > 0 || reregistered > 0 || reason is "start" or "display change")
         {
             var summary = string.Join(", ", steps.Select(s => $"{s.Kind} {s.Key}{(s.Monitor is { } m && m.Key != s.Key ? "->" + m.Key : "")}"));
-            Log.Info($"Top bar: reconcile ({reason}): [{summary}] in {timer.ElapsedMilliseconds} ms, {AppBar.MessageCount - callsBefore} SHAppBarMessage calls, {_bars.Count} bars");
+            Log.Info($"Top bar: reconcile ({reason}): [{summary}] in {timer.ElapsedMilliseconds} ms, {AppBar.MessageCount - callsBefore} SHAppBarMessage calls, {_bars.Count} bars, {reregistered} strips registered again");
+        }
+    }
+
+    private static bool EnsureReserved(TopBarInstance bar)
+    {
+        try
+        {
+            return bar.EnsureReserved();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Top bar: could not re-check the strip on {bar.Monitor.Key}", ex);
+            return false;
         }
     }
 
