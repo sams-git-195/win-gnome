@@ -26,6 +26,16 @@ internal static class CoreAudio
 
     /// <summary>HRESULT_FROM_WIN32(ERROR_NOT_FOUND): there is no default endpoint (no audio device).</summary>
     public const int E_NOTFOUND = unchecked((int)0x80070490);
+
+    /// <summary>EnumAudioEndpoints state mask for devices that are present and enabled.</summary>
+    public const uint DEVICE_STATE_ACTIVE = 0x1;
+
+    /// <summary>PKEY_Device_FriendlyName, e.g. "Speakers (Realtek(R) Audio)".</summary>
+    public static readonly WindowProperties.PROPERTYKEY DeviceFriendlyNameKey = new()
+    {
+        fmtid = new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"),
+        pid = 14,
+    };
 }
 
 [ComImport]
@@ -59,6 +69,113 @@ internal interface IMMDevice
 {
     [return: MarshalAs(UnmanagedType.IUnknown)]
     object Activate(ref Guid iid, uint clsCtx, nint activationParams);
+
+    /// <summary><paramref name="access"/> is an STGM value; 0 (STGM_READ) is all WinGnome needs.</summary>
+    WindowProperties.IPropertyStore OpenPropertyStore(uint access);
+
+    [return: MarshalAs(UnmanagedType.LPWStr)]
+    string GetId();
+
+    uint GetState();
+}
+
+[ComImport]
+[Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IMMDeviceCollection
+{
+    uint GetCount();
+
+    IMMDevice Item(uint index);
+}
+
+/// <summary>Lists the audio sessions (one per app stream) on an endpoint.</summary>
+[ComImport]
+[Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IAudioSessionManager2
+{
+    // IAudioSessionManager
+    void GetAudioSessionControl(nint sessionGuid, uint flags, out nint control);
+
+    void GetSimpleAudioVolume(nint sessionGuid, uint flags, out nint volume);
+
+    // IAudioSessionManager2
+    IAudioSessionEnumerator GetSessionEnumerator();
+}
+
+[ComImport]
+[Guid("E2F5BB11-0570-40CA-ACDD-3AA01277DEE8")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IAudioSessionEnumerator
+{
+    int GetCount();
+
+    IAudioSessionControl2 GetSession(int index);
+}
+
+/// <summary>IAudioSessionControl2 with its IAudioSessionControl base methods repeated (COM dispatch is by vtable slot).</summary>
+[ComImport]
+[Guid("BFB7FF88-7239-4FC9-8FA2-07C950BE9C6D")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IAudioSessionControl2
+{
+    // IAudioSessionControl
+    AudioSessionState GetState();
+
+    [return: MarshalAs(UnmanagedType.LPWStr)]
+    string GetDisplayName();
+
+    void SetDisplayName([MarshalAs(UnmanagedType.LPWStr)] string name, ref Guid eventContext);
+
+    [return: MarshalAs(UnmanagedType.LPWStr)]
+    string GetIconPath();
+
+    void SetIconPath([MarshalAs(UnmanagedType.LPWStr)] string path, ref Guid eventContext);
+
+    Guid GetGroupingParam();
+
+    void SetGroupingParam(ref Guid grouping, ref Guid eventContext);
+
+    void RegisterAudioSessionNotification(nint events);
+
+    void UnregisterAudioSessionNotification(nint events);
+
+    // IAudioSessionControl2
+    [return: MarshalAs(UnmanagedType.LPWStr)]
+    string GetSessionIdentifier();
+
+    [return: MarshalAs(UnmanagedType.LPWStr)]
+    string GetSessionInstanceIdentifier();
+
+    uint GetProcessId();
+
+    /// <summary>S_OK (0) for the system sounds session, S_FALSE (1) otherwise.</summary>
+    [PreserveSig]
+    int IsSystemSoundsSession();
+}
+
+internal enum AudioSessionState
+{
+    Inactive = 0,
+    Active = 1,
+    Expired = 2,
+}
+
+/// <summary>Volume of one audio session; obtained by QueryInterface on the session control.</summary>
+[ComImport]
+[Guid("87CE5498-68D6-44E5-9215-6DA47EF883D8")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface ISimpleAudioVolume
+{
+    void SetMasterVolume(float level, ref Guid eventContext);
+
+    float GetMasterVolume();
+
+    void SetMute([MarshalAs(UnmanagedType.Bool)] bool mute, ref Guid eventContext);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    bool GetMute();
 }
 
 [ComImport]

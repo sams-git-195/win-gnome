@@ -1,0 +1,48 @@
+<UserControl x:Class="WinGnome.Features.Settings.Panels.Mouse.MousePanel" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls"
+             xmlns:p="clr-namespace:WinGnome.Features.Settings.Panels">
+    <StackPanel>
+        <p:PanelNotices />
+
+        <StackPanel IsEnabled="{Binding CanEdit}">
+            <c:SettingsGroup Header="General">
+                <c:SettingsRow Title="Primary Button" Subtitle="Order of physical buttons on mice and touchpads.">
+                    <ListBox Style="{DynamicResource SegmentedListBox}" ItemsSource="{Binding PrimaryButtons}"
+                             SelectedItem="{Binding PrimaryButton}" />
+                </c:SettingsRow>
+            </c:SettingsGroup>
+
+            <c:SettingsGroup Header="Mouse">
+                <c:SettingsRow Title="Pointer Speed">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Slow" Style="{DynamicResource RowSubtitleText}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                        <Slider Minimum="1" Maximum="20" SmallChange="1" LargeChange="2" IsSnapToTickEnabled="True" TickFrequency="1"
+                                Value="{Binding Speed}" Width="220" />
+                        <TextBlock Text="Fast" Style="{DynamicResource RowSubtitleText}" VerticalAlignment="Center" Margin="10,0,0,0" />
+                    </StackPanel>
+                </c:SettingsRow>
+                <c:SettingsRow Title="Mouse Acceleration" Subtitle="Recommended for most users and applications (Windows calls it Enhance pointer precision).">
+                    <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding Acceleration}" />
+                </c:SettingsRow>
+                <c:SettingsRow Title="Scroll Speed" Subtitle="How far one notch of the wheel scrolls.">
+                    <StackPanel Orientation="Horizontal">
+                        <Slider Minimum="1" Maximum="{Binding ScrollLinesMaximum}" SmallChange="1" LargeChange="3" IsSnapToTickEnabled="True"
+                                TickFrequency="1" Value="{Binding ScrollLines}" Width="220" />
+                        <TextBlock Text="{Binding ScrollLinesText}" Width="80" Margin="12,0,0,0" TextAlignment="Right" VerticalAlignment="Center"
+                                   FontSize="13" Foreground="{DynamicResource SecondaryForegroundBrush}" />
+                    </StackPanel>
+                </c:SettingsRow>
+            </c:SettingsGroup>
+        </StackPanel>
+
+        <c:SettingsGroup Header="Touchpad">
+            <c:SettingsRow Title="Touchpad gestures, tapping and natural scrolling" Subtitle="These live in Windows Settings.">
+                <Button Content="Open Touchpad Settings" Style="{DynamicResource SettingsButton}" Command="{Binding OpenTouchpadCommand}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <p:PanelFooter />
+    </StackPanel>
+</UserControl>

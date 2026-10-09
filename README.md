@@ -60,6 +60,23 @@ the way it was when it exits.
 - **Hot corner**: top-left, with a configurable delay.
 - Optional: **Super key alone opens the overview** instead of the Start menu. Win+X, Win+E and other Win+key shortcuts keep working.
 
+### Settings (a GNOME Settings app for Windows)
+WinGnome's settings window works like GNOME Settings: a header bar, a **searchable sidebar** grouped like GNOME
+(Ctrl+F jumps to the search box; Enter opens the best match), and the panel on the right.
+- **Native panels** that change Windows itself, each read when you open it and released when you leave it:
+  - **Displays**: arrangement (drag displays in the preview; they snap edge to edge), primary display, resolution and refresh rate. Changes are collected and applied together with *Apply*, then GNOME's **"Keep these display settings?"** countdown reverts them after 15 seconds unless you keep them. Scale is shown, and changed in Windows Settings.
+  - **Sound**: output and input device, their volumes and mute, and per-app volume levels.
+  - **Power**: battery state, power mode (Performance / Balanced / Power Saver), screen blank and automatic suspend (separately on battery and plugged in on laptops).
+  - **Mouse & Touchpad**: primary button, pointer speed, mouse acceleration and scroll speed.
+  - **Keyboard**: key repeat delay and speed (with a test field) and the installed input sources.
+  - **Appearance**: Default (light) or Dark style, GNOME's accent colours (or automatic from the wallpaper), and the wallpaper (Windows' own pictures or your own).
+  - **Multitasking**: hot corner, workspace indicator, Windows snapping (snap, snap layouts, snap suggestions) and whether Alt+Tab shows windows from all workspaces.
+  - **Date & Time**: time zone (searchable) and the top bar clock's format.
+  - **About**: device name, hardware model, memory, processor, graphics, disk capacity and Windows version.
+- **Linked panels** open the matching Windows Settings page and are marked with an arrow: Wi-Fi, Network, Bluetooth, Printers, Removable Media, Colour (the colour management control panel), Notifications, Apps, Default Apps, Online Accounts, Sharing, Privacy & Security, Region & Language, Users, Accessibility and Windows Update.
+- **WinGnome's own pages** (General, Top Bar, Dock, Window Buttons, Activities, Streamline, About WinGnome) sit in their own group at the bottom.
+- In `--safe` mode the system panels are read-only. If Windows refuses a change (a policy, a missing API), the panel says so and offers the Windows Settings page.
+
 ### Streamline
 - **Centre new windows** (GNOME behaviour).
 - **Focus follows mouse** (X-Mouse style). This lasts for the session only and is restored on exit.
@@ -113,6 +130,7 @@ top right), or run `WinGnome.exe` again: a second launch opens the running insta
 | Switch | Effect |
 |---|---|
 | `--settings` | Open the settings window on start |
+| `--settings-panel <id>` | Start WinGnome with the settings window open at a panel, e.g. `displays`, `sound`, `power`, `appearance` or `wingnome-dock` (ids in `PanelIds`). If WinGnome is already running, it just opens its settings window (the panel isn't passed on). |
 | `--settings-dir <path>` | Use a separate profile folder (settings, tweak backups, log) |
 | `--safe` | Safe mode: no taskbar hiding, no registry writes, no keyboard hooks (tray icons still show in the top bar; nothing to undo) |
 | `--selftest` | Start every feature in safe mode, run for 5 s, exit with code 0 on success (used by CI and QA) |
@@ -127,6 +145,8 @@ WinGnome changes as little as possible, and it undoes everything it changes:
 - **Quitting**: use *Quit WinGnome* in quick settings or Settings → About. `taskkill /im WinGnome.exe` (without `/f`) also quits cleanly.
 - **Registry tweaks** only touch `HKEY_CURRENT_USER`. The original values (including "value did not exist") are stored in `tweaks-backup.json`, and **Settings → Streamline → Revert all** restores them.
 - **Tray icons**: WinGnome passes every tray-icon and AppBar message on to Explorer as it arrives, so Explorer always keeps all icons, even if WinGnome is killed. If Explorer ever fails to answer while WinGnome passes a message on, WinGnome asks apps to register their icons with Explorer again when it exits.
+- **Display changes** from Settings → Displays are applied only after Windows accepts the new mode in a test, and the previous and new settings are saved to `display-revert.json` first. Until you choose *Keep Changes* the change is temporary (a reboot or sign-out drops it, as it is not written to the registry), and it reverts after 15 seconds, when you leave the panel or close the window during the countdown, and on the next start if WinGnome was killed during it.
+- Other **Settings panels** change Windows settings on purpose (like Windows Settings does), so those changes are yours and stay after WinGnome exits. Nothing is changed in `--safe` mode.
 - WinGnome never touches elevated (administrator) windows.
 - Log file: `%APPDATA%\WinGnome\wingnome.log`.
 
