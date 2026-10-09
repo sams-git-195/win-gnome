@@ -50,7 +50,7 @@ disabled (no printers). Pointer uses a custom colour (cursor-size row is disable
 
 ---
 
-## 2. State of `main` (HEAD 56dc6ed, build clean, 2929 tests green)
+## 2. State of `main` (build clean, 2929 tests green; `publish\WinGnome.exe` is built from it)
 
 Merged this session:
 - **Accent colour fix** (bdd4aa5): WinGnome's palette follows Windows' accent (DWM `AccentColor`), `AccentPalette`
@@ -98,11 +98,9 @@ with the user** (they must quit the everyday instance first; nothing else may ru
 Then an independent review of the new commits, merge to main with `--no-ff`, assign KI-098 to "MonitorKeyOf can
 map a recycled HMONITOR for ≤250 ms" (spec 0010 Risk 10).
 
-### 3b. Spec 0020 WP9 docs integration — branch `worktree-agent-aa0f6b446b7913e88`
+### 3b. Spec 0020 docs — merged
 
-Docs-only: folds `docs/specs/0020-notes/*.md` into KNOWN_ISSUES (KI-085..092), PLAN.md, README, the spec's status,
-then deletes the notes folder. Check whether it has commits beyond 56dc6ed; if finished, review and merge; if not,
-do it (the notes files describe exactly what goes where).
+WP9 docs integration is merged (KI-085..092, PLAN.md, README, spec status).
 
 Other `worktree-agent-*` branches are from earlier sessions and already merged; ignore them.
 
@@ -127,16 +125,19 @@ phase) per branch, review, merge, then the next. Specs 0017/0018/0020-dependent 
    `SecurityHealthSystray` (version-4 icon with GUID; may need `NIN_SELECT`/`WM_CONTEXTMENU` with the right
    anchor, or `AllowSetForegroundWindow` for its process). Check if the everyday build has the same problem.
    Add a KNOWN_ISSUES entry if unfixable.
-4. **Spec 0016 GNOME window management**, phased: v1 (Alt+Tab app switcher, Super+A/S/N, Super+Page Up/Down,
+4. **Panel load failures leave rows busy** (KI-089, KI-091): when a panel's background read throws,
+   `SystemPanelViewModel.LoadAsync` never calls `show`, so Printers, Removable Media and the Apps list keep
+   `IsBusy` set until reopened. Add a failure callback to `LoadAsync` (small, shared base) and use it.
+5. **Spec 0016 GNOME window management**, phased: v1 (Alt+Tab app switcher, Super+A/S/N, Super+Page Up/Down,
    tiling halves/quarters/expand with gaps), then v1.1 (layouts, Ctrl+drag zones, neighbour resize), then v1.2
    (Super+drag move/resize). WP0 spike first (which Win+ combos can be `RegisterHotKey`ed). Safety-critical:
    the shared low-level keyboard hook host — never block in the callback, swallow/unswallow symmetry, fail open.
    `Tiling.Enabled` defaults to true only if the 100 %/150 % cross-DPI QA passes.
-5. **Spec 0017 OSD + Night Light / Do Not Disturb** (spike first; OSD on every monitor per the user). When the DND
+6. **Spec 0017 OSD + Night Light / Do Not Disturb** (spike first; OSD on every monitor per the user). When the DND
    service exists, wire it into the Notifications panel's hidden DND row (KI-085).
-6. **Spec 0018 overview**: workspace strip, window-to-workspace move (undocumented COM, strict build/UBR table,
+7. **Spec 0018 overview**: workspace strip, window-to-workspace move (undocumented COM, strict build/UBR table,
    crash marker), app folders, dock pin/unpin by drag, file search. Results order Apps, Windows, Files.
-7. **Spec 0019 connectivity panels**, three parts: (a) Win+I and dock Settings pin redirect (needs 0016's hook
+8. **Spec 0019 connectivity panels**, three parts: (a) Win+I and dock Settings pin redirect (needs 0016's hook
    host), (b) Wi-Fi, (c) Network + Bluetooth.
 
 ## 5. Things that need the user (batch them into one message)
