@@ -67,7 +67,8 @@
     <StackPanel x:Name="Items" Margin="5">
         <Button Style="{StaticResource LogoMenuItem}" Content="About This PC" Tag="{x:Static local:TopBarAction.AboutThisPc}" />
         <Border Style="{StaticResource MenuSeparator}" />
-        <Button Style="{StaticResource LogoMenuItem}" Content="System Settings…" Tag="{x:Static local:TopBarAction.Settings}" AutomationProperties.AcceleratorKey="Win+I" />
+        <Button Style="{StaticResource LogoMenuItem}" Content="Windows Settings…" Tag="{x:Static local:TopBarAction.WindowsSettings}" AutomationProperties.AcceleratorKey="Win+I" />
+        <Button Style="{StaticResource LogoMenuItem}" Content="Control Panel…" Tag="{x:Static local:TopBarAction.ControlPanel}" />
         <Button Style="{StaticResource LogoMenuItem}" Content="WinGnome Settings…" Tag="{x:Static local:TopBarAction.WinGnomeSettings}" />
         <Button Style="{StaticResource LogoMenuItem}" Content="Microsoft Store…" Tag="{x:Static local:TopBarAction.MicrosoftStore}" />
         <Border Style="{StaticResource MenuSeparator}" />

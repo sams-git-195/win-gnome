@@ -37,6 +37,7 @@ internal sealed partial class TopBarWindow : Window
     private readonly PopupHost _popups;
     private readonly TopBarActions _actions;
     private readonly BlurBackdrop _backdrop;
+    private readonly LogoProvider _logo;
 
     // Created on first open: bars on secondary monitors rarely open them, and each is a sizeable visual tree.
     private CalendarCard? _calendarCard;
@@ -56,7 +57,8 @@ internal sealed partial class TopBarWindow : Window
     /// <param name="settings">Initial settings.</param>
     /// <param name="popups">Popup coordinator (owned by the caller, which disposes it after <see cref="Shutdown"/>).</param>
     /// <param name="backdrop">Blur backdrop (owned by the caller, which disposes it after <see cref="Shutdown"/>).</param>
-    public TopBarWindow(ShellContext context, TopBarViewModel viewModel, TopBarSettings settings, PopupHost popups, BlurBackdrop backdrop)
+    /// <param name="logo">Shared logo provider (owned by the caller, which disposes it after <see cref="Shutdown"/>).</param>
+    public TopBarWindow(ShellContext context, TopBarViewModel viewModel, TopBarSettings settings, PopupHost popups, BlurBackdrop backdrop, LogoProvider logo)
     {
         _context = context;
         _backdrop = backdrop;
@@ -73,6 +75,8 @@ internal sealed partial class TopBarWindow : Window
         SizeChanged += (_, _) => SyncBackdrop();
 
         _popups = popups;
+        _logo = logo;
+        _logo.Changed += OnLogoChanged;
         _actions = new TopBarActions(context);
         TrayIcons.IconPressed += OnTrayIconPressed;
     }
@@ -83,6 +87,7 @@ internal sealed partial class TopBarWindow : Window
         _settings = settings;
         TopBarFonts.Apply(settings.FontFamily);
         ApplySizes();
+        ApplyLogo();
         ApplyBackground();
     }
 
@@ -138,6 +143,7 @@ internal sealed partial class TopBarWindow : Window
         }
 
         TrayIcons.IconPressed -= OnTrayIconPressed;
+        _logo.Changed -= OnLogoChanged;
         _allowClose = true;
         Close();
     }
@@ -170,6 +176,17 @@ internal sealed partial class TopBarWindow : Window
         _viewModel.FocusedApp.IconSizePx = iconPx;
         _viewModel.Tray.SetIconSlot(iconPx, _scale);
     }
+
+    /// <summary>Points the logo glyph at the provider's current mark (and its mask, for a custom image).</summary>
+    private void ApplyLogo()
+    {
+        Logo.Kind = _logo.Target.Kind;
+        Logo.GeometryKey = _logo.Target.GeometryKey;
+        Logo.Mask = _logo.Mask;
+    }
+
+    /// <summary>The shared provider resolved a new mark or finished decoding a custom image (always on the dispatcher).</summary>
+    private void OnLogoChanged(object? sender, EventArgs e) => ApplyLogo();
 
     private void ApplyBackground()
     {

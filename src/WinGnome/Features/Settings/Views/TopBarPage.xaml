@@ -14,8 +14,9 @@
                     AutomationProperties.Name="Top bar preview">
                 <Grid Margin="12,0">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
-                        <tb:WindowsLogo Size="13" Fill="{Binding Foreground}" Margin="0,0,16,0" VerticalAlignment="Center"
-                                        Visibility="{Binding ShowLogo, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                        <tb:LogoGlyph Size="13" Fill="{Binding Foreground}" Margin="0,0,16,0" VerticalAlignment="Center"
+                                      Kind="{Binding LogoKind}" GeometryKey="{Binding LogoGeometryKey}" Mask="{Binding LogoMask}"
+                                      Visibility="{Binding ShowLogo, Converter={x:Static c:Converters.BoolToVisibility}}" />
                         <!-- Shown hovered, so the hover corner radius is visible. -->
                         <Border Background="{Binding ItemHover}" tb:PillCorners.Radius="{Binding ItemCornerRadius}" Padding="8,3" Margin="-8,0,4,0"
                                 Visibility="{Binding ShowActivities, Converter={x:Static c:Converters.BoolToVisibility}}">
