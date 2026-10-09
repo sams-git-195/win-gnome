@@ -830,10 +830,13 @@ clears `_attempts` internally and returns `Wait(now + FirstActionMs)` — a fres
 timer type, no polling: the timer runs only while a bar is given up *and* its strip is missing, and `Reset()`
 (undock, reserved) cancels it exactly as today. A *real* display change still re-arms immediately, because it
 re-docks the bar (`SurfacePlan.Reconcile` → `Undock()` → `Reset()`) — that part of the old wording was only ever
-true via the re-dock, and the corrected docs will say so. Worst-case rate with cool-down: one cycle = 5 min
-cool-down + ~46.5 s episode ≈ 5.8 min, and the budget caps a cycle at 3 writes per monitor (two bars' six attempts
-land inside ~27 s, so at most three pass `TrySpend`) → **≤ ~32 writes/h/monitor, of which ≤ 18 broadcast** (three
-per 10-minute fight window), versus today's ≤ 180 broadcast writes/h/monitor until the terminal give-up. Interaction
+true via the re-dock, and the corrected docs will say so. Worst-case rate with cool-down, **per fighting bar**: one
+cycle = 5 min cool-down + ~46.5 s episode = 346.5 s and lands ≤ 3 writes → 3 / 346.5 s ≈ **31.2 writes/h per bar**.
+One monitor with two reserving bars (top bar + always-visible dock) whose cycles drift apart therefore sits at
+≤ ~64 writes/h/monitor — still under `WorkAreaBudget`'s 180/h/monitor, which remains the hard bound and trims
+aligned cycles (both bars' six attempts inside ~27 s → at most three pass `TrySpend`). Broadcasts stay
+≤ 18/h/monitor (three per 10-minute fight window) because the fight detector is per monitor, not per bar. Today, by
+contrast: ≤ 180 broadcast writes/h/monitor until the terminal give-up. Interaction
 with the cap: the 3-attempt cap stays (direction 4) and now bounds work *per cool-down cycle*; re-arming cannot
 recreate the unbounded fight because both the budget and the detector's silence are per write, not per episode.
 
@@ -904,7 +907,9 @@ area — two bars on one monitor share it, exactly like the budget).
   `var fighting = Fight(key).IsFighting(now)` (one `Environment.TickCount64` read for the whole call); the write
   becomes `SetWorkArea(shrunk, broadcast: !fighting)`; on success `Fight(key).Record(now)`, and on a
   false→true transition one `Log.Warn`:
-  `"{key}: Explorer keeps resetting this work area (3 direct sets in 10 minutes); setting it without a broadcast from now on — our own WM_SETTINGCHANGE may be what provokes the resets (KI-102)"`.
+  `"{key}: Explorer keeps resetting this work area (3 direct sets in 10 minutes); setting it without a broadcast from the next write on — our own WM_SETTINGCHANGE may be what provokes the resets (KI-102)"`
+  — "from the next write on", not "from now on": the write that trips the detector has itself just broadcast, and a
+  replayed log must not contradict the behaviour.
   The applied line gains `" (without a broadcast)"` when silent, so every write's mode is greppable. A failed
   `SPI_SETWORKAREA` is not recorded (it never broadcast); detector state is deliberately *not* rolled back with the
   record list — over-counting only makes later writes more silent, and the window bounds it. Restore paths keep
@@ -914,6 +919,10 @@ area — two bars on one monitor share it, exactly like the budget).
   bounds: budget, StripRecovery with its cool-down, fight detector).
 - `Interop/AppBar.cs`: `CheckStrip`'s `default:` branch keeps the log-once `_gaveUp` flag, logs the corrected WARN
   (direction 4 wording) and calls `StartRecoveryTimer(step.DueMs)` — the re-arm rides the existing one-shot timer.
+  The branch forwards `step.DueMs` **verbatim** (it never recomputes a deadline), and re-pointing the timer is
+  idempotent: a forced-pass storm during a fight calls `Update` repeatedly, and every pre-expiry `GiveUp` returns
+  the *same* stamped `_reArmAtMs` (guaranteed by Core, pinned by `Recovery_GiveUp_DoesNotSlideTheCoolDown`), so
+  re-scheduling shortens the remaining interval but can never push the cool-down deadline later.
   In the `Wait` branch, when `_gaveUp` was set, log once
   `"AppBar 0x…: cool-down over; checking the strip … again"` and clear the flag. `EnsureReserved`'s XML doc:
   "… at most three times, 5 s and 20 s apart, then a five-minute cool-down after which the checks resume".
@@ -931,7 +940,7 @@ area — two bars on one monitor share it, exactly like the budget).
 | Recorded/restored state | **Nothing changes.** `workareas.state` format, "no record, no shrink", `WorkAreaLedger` replacement, `WorkAreaRecovery.Plan` unwind, the drop-without-write branches: all untouched. A silent write records identically (the broadcast flag is not part of a record). |
 | Normal exit / crash / force-kill / next start / `--restore-taskbar` | Unchanged (`Release` broadcasts as today; `ReleaseAll` stays broadcast-free; `RecoverFromMarker` unchanged). |
 | `--safe` / `--selftest` | Unchanged: `CanShrink` false ⇒ `Reregister` steps only, the detector is never consulted (no writes), the self-test's work-area equality check is indifferent to broadcast flags. |
-| Worst case, sustained fight | Hard bound unchanged: 3 writes/min/monitor (`WorkAreaBudget`). Effective sustained bound: ≤ ~3 writes per ~5.8-min cool-down cycle ≈ **32/h/monitor (≤ ~64/h on the user's two monitors), of which ≤ 18/h/monitor broadcast** (3 per 10-min window). Today: ≤ 180/h/monitor, *all* broadcast, until the terminal give-up. One small marker rewrite per write, as today. |
+| Worst case, sustained fight | Hard bound unchanged: 3 writes/min/monitor (`WorkAreaBudget`, 180/h). Effective sustained bound: **≤ ~31 writes/h per fighting bar** (≤ 3 writes per 346.5-s cool-down cycle), so ≤ ~64/h/monitor with two reserving bars (top bar + always-visible dock) whose cycles drift apart, and less when the budget trims aligned cycles; broadcasts ≤ 18/h/monitor (the fight detector is per monitor). Today: ≤ 180/h/monitor, *all* broadcast, until the terminal give-up. One small marker rewrite per write, as today. |
 | New degradation | A silent write does not relayout already-maximised windows until the next broadcast (ours after 10 quiet minutes, Explorer's, or a re-maximise). Logged in KNOWN_ISSUES with the fix. |
 | New degradation (safe mode) | A long-running `--safe` instance whose strip stays missing now re-registers every cool-down cycle instead of stopping forever: 3 `ABM_REMOVE`+`ABM_NEW` cycles per bar per ~5.8 min. Bounded, writes no system state; accepted. |
 
@@ -979,8 +988,9 @@ we missed is encoded in legacy format by `TrayCallback.Encode` and silently igno
 - `Deliver`, for click-class actions only (gate: `TrayCallback.MayTakeForeground(action)` — Enter/Hover/Leave stay
   silent, so hovering the tray costs nothing), one line before the send loop:
   `Log.Info($"Tray {action} on \"{tip or "(no tooltip)"}\" (owner 0x{owner:X}, id {state.Id.Id}, guid {state.Id.ItemGuid or "none"}, version {state.Version}, callback 0x{state.CallbackMessage:X}): sending [{notification list, hex}]; anchor {x},{y}, icon {l,t,r,b}, bar {l,t,r,b}")`.
-  A missed SETVERSION shows up as `version 0` on an icon known to be v4 — the exact evidence needed. The existing
-  delivery-failure WARN stays.
+  The tooltip is arbitrary app-supplied text (and potential PII): truncate it to 64 characters with an ellipsis
+  before it reaches the line. A missed SETVERSION shows up as `version 0` on an icon known to be v4 — the exact
+  evidence needed. The existing delivery-failure WARN stays.
 - Silent no-op paths, click-class actions only: `state.CallbackMessage == 0` →
   `Log.Info($"Tray {action} on \"{tip}\" (owner 0x…, id …) did nothing: the icon registered no callback message")`;
   empty notification set (defensive; unreachable for the defined button actions) → `… produced no notifications;
@@ -1016,9 +1026,12 @@ R = code review.
    by the forced re-check pass within ~0.5 s), and write 3 logs the transition WARN after it; write 4 is silent —
    the applied line's "(without a broadcast)" suffix, **no** "Displays re-checked" pass within 2 s of the write, and
    `tools/Get-WorkAreas.ps1` still showing the shrunk work area (the write lands; only the broadcast is gone).
-6. L Cool-down re-arm: four resets inside 60 s exhaust the budget → three refused attempts → the give-up WARN in
-   its new wording → no writes for ~5 minutes → the re-arm INFO line, a fresh `Wait`→`Shrink` episode, and the
-   strip restored with no external help.
+6. L Cool-down re-arm: four resets inside 60 s (spaced ~10 s, so each shrink lands before the next reset) exhaust
+   the budget → three refused attempts → the give-up WARN in its new wording → no writes for ~5 minutes → the
+   re-arm INFO line, a fresh `Wait`→`Shrink` episode, and the strip restored with no external help. Timing note
+   for the tester: the give-up WARN lands one `ThirdActionMs` (20 s) after the third refused attempt — ~46.5 s
+   after the episode's first loss detection — because the exhaustion check rides the next scheduled slot; that
+   tail is the schedule, not a failure.
 7. L Fight-window slide: ≥ 10 quiet minutes after the last application, a fresh reset produces a broadcast write
    again (re-check pass visible) with no transition WARN until three more applications accumulate. (Long pole; may
    run unattended in the session.)
@@ -1076,6 +1089,10 @@ only read through Explorer-launched copies.
 - **Two-instance rule:** profile-B runs and any profile-A run that writes work areas happen only while the
   everyday instance is quit; two instances would each react to the resets (the everyday build still broadcasts),
   invalidating criteria 5–7. Window buttons stay off in both profiles (KI-042).
+- **Session appearance (say so before starting):** every step runs with the everyday instance quit, so for the
+  whole session the Windows taskbar is visible and there is no GNOME shell — the desktop looks "broken" mid-session
+  and that is expected, not a test failure. The session's last step restarts the everyday instance through
+  `explorer.exe` (outside any sandbox, KI-010).
 - **Optional exploratory steps** (evidence for KI-102, not pass/fail): (i) during an artificial fight, run a
   janitor-style 1×1 `ABM_NEW`+`ABM_REMOVE` nudge from a scratch tool and record whether strips return or reset
   faster (direction 2); (ii) [PHYSICAL] with profile B running and both strips reserved, the user powers
@@ -1092,12 +1109,12 @@ only read through Explorer-launched copies.
 | 3 | `Fight_ApplicationExactlyAtTheWindowEdge_LeavesTheWindow` (records at t, t+1 s, t+600 000 → not fighting; t+599 999 → fighting) | prune `>=`→`>` |
 | 4 | `Fight_ApplicationAfterTheWindowSlides_DropsTheOldest` (t, t+60 s, then t+600 001 → not fighting) | delete the prune loop |
 | 5 | `Fight_IsFightingAfterTheWindow_IsFalseWithoutRecording` | `IsFighting` skips pruning |
-| 6 | `Recovery_GiveUp_CarriesTheReArmDueTime` (`AppBarReservationTests.cs`) | `GiveUp` returns `DueMs = 0` |
+| 6 | `Recovery_GiveUp_CarriesTheReArmDueTime` (`AppBarReservationTests.cs`) — asserts every post-exhaustion `GiveUp` step carries the stamped non-zero deadline (never `DueMs = 0`), which is what `CheckStrip` forwards verbatim | `GiveUp` returns `DueMs = 0` |
 | 7 | `Recovery_GiveUp_DoesNotSlideTheCoolDown` (second `GiveUp` keeps the first due time) | re-stamp `_reArmAtMs` on every `GiveUp` |
 | 8 | `Recovery_AfterTheCoolDown_StartsAFreshEpisode` (**the KI-102(b) regression test** — run against unfixed Core first and watch it fail: today `Update` at `due` returns `GiveUp`) | delete the expiry branch (restore today's behaviour) |
 | 9 | `Recovery_BeforeTheCoolDownEnds_StillGivesUp` (`due − 1 ms`) | expiry `>=`→`>` off-by-one |
-| 10 | `Recovery_ReservedDuringTheCoolDown_EndsItAtOnce` | `Reset()` leaves `_reArmAtMs` set |
-| 11 | `Recovery_Reset_ClearsTheCoolDown` (undock path) | same |
+| 10 | `Recovery_ReservedDuringTheCoolDown_EndsItAtOnce` — also asserts `Reset()` cleared the deadline itself: a fresh episode driven to `GiveUp` afterwards stamps a **new** `DueMs` from the new time, not the stale one | `Reset()` leaves `_reArmAtMs` set |
+| 11 | `Recovery_Reset_ClearsTheCoolDown` (undock path; same stale-deadline assertion as row 10) | same |
 | 12 | Updated `Recovery_StillMissing_SetsTheWorkAreaThreeTimes_ThenGivesUp` (new `DueMs` on the `GiveUp` steps; the far-future `Update` now returns `Wait`) | any of the above |
 
 App-layer wiring (broadcast choice, timer re-pointing, log lines) is interop and is covered by criteria 4–15 live,
@@ -1109,12 +1126,18 @@ true` must make criterion 5's "no re-check pass" observation fail), the session 
 - **WP1 — Core fight detector + StripRecovery cool-down + tests** (one implementer, ~half a day, no dependencies).
   Owns: `src/WinGnome.Core/Shell/WorkAreaFightDetector.cs` (new), `src/WinGnome.Core/Shell/AppBarReservation.cs`,
   `tests/WinGnome.Core.Tests/Shell/WorkAreaFightDetectorTests.cs` (new),
-  `tests/WinGnome.Core.Tests/Shell/AppBarReservationTests.cs`. Done when the table's tests 1–12 are green, test 8
-  has been seen red against the pre-fix Core, and no other Core file changed.
+  `tests/WinGnome.Core.Tests/Shell/AppBarReservationTests.cs`. Done when the table's tests 1–12 are green; test 8
+  has been seen red against the pre-fix Core; test 6 asserts no post-exhaustion `GiveUp` step ever carries
+  `DueMs = 0` (the deadline `CheckStrip` forwards verbatim — the forwarding itself is WP2's checklist); tests
+  10–11 assert `Reset()` clears `_reArmAtMs`; and no other Core file changed.
 - **WP2 — App wiring (safety-critical)** (one implementer, ~half a day + session prep; after WP1). Owns:
   `src/WinGnome/Services/WorkAreaController.cs`, `src/WinGnome/Interop/AppBar.cs` (fight-gated broadcast, re-arm
-  timer, corrected WARN/docs, B4's notification-name trigger). `dotnet build -c Release -warnaserror` and
-  `dotnet test` green; no other file touched.
+  timer, corrected WARN/docs, B4's notification-name trigger). Checklist item the implementer must not get wrong:
+  `CheckStrip`'s `default:`/`GiveUp` branch forwards `step.DueMs` **verbatim** (never recomputes a deadline) and
+  re-points the *existing* one-shot `_recoveryTimer` at it; re-pointing must be idempotent under a forced-pass
+  storm — Core returns the same stamped deadline on every pre-expiry `GiveUp`
+  (`Recovery_GiveUp_DoesNotSlideTheCoolDown`), so re-scheduling can shorten the remaining interval but never push
+  the cool-down later. `dotnet build -c Release -warnaserror` and `dotnet test` green; no other file touched.
 - **WP3 — Diagnostic logging** (one implementer, ~half a day; parallel with WP1/WP2 — disjoint files). Owns:
   `src/WinGnome/Infrastructure/ThrottledLog.cs` (moved from `Features/WindowButtons/`, gains `Info`), the six
   WindowButtons call-site files (usings only), `src/WinGnome/Features/Taskbar/TaskbarFeature.cs`,
@@ -1124,7 +1147,9 @@ true` must make criterion 5's "no re-check pass" observation fail), the session 
 - **WP4 — Live verification + docs** (one implementer + the user's session; after WP1–3 merge-candidates exist).
   Runs the live-test plan; then owns: `docs/KNOWN_ISSUES.md` (KI-102: fix summary, the two evidence readings
   above, worst-case rates, the new silent-write degradation, exploratory-step results; close as *Fixed* with the
-  commit once criteria 4–15 pass; KI-099: cross-reference update in its risk paragraph; a new S4 entry for
+  commit once criteria 4–15 pass; KI-099: cross-reference update in its risk paragraph **and** its limits bullet
+  "at most three actions per bar per missing-strip episode … then it gives up until the bar is docked afresh"
+  (~lines 643–644 of KNOWN_ISSUES.md), which the cool-down makes stale; a new S4 entry for
   "silent writes leave already-maximised windows oversized until the next broadcast" if the session confirms it),
   this spec (addendum status → Implemented; risk 12's KI-102 paragraph points at the addendum),
   `docs/PLAN.md` (Core API table, Shell row: add `WorkAreaFightDetector`, replace "then give up" with the
@@ -1154,3 +1179,9 @@ AGENTS.md §7.
    a persistent give-up should ever raise an OS-level notification.
 7. **KI-102's "restart fixes it within ~4 s"** measured 5.1–5.9 s in `everyday-log4` — cosmetic, corrected in the
    KI-102 update.
+
+### Review notes
+
+Advisor review (deepseek-v4-pro-0813, 2026-10-09): plan sound; both must-fix clarifications and all five
+nice-to-haves folded in; the silent-write premise remains a hypothesis whose failure mode is the bounded status
+quo, not a new failure.
