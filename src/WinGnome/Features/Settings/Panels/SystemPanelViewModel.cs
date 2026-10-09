@@ -49,18 +49,10 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
 {
     private readonly string _panelId;
     private string? _problem;
-    private bool _isOpen;
 
-    // Bumped by every open and close, so a LoadAsync result is shown only by the same Open that asked for it.
-    private int _generation;
-
-    // Bumped by every LoadAsync, so when loads on one channel overlap (a re-read after each write) only the newest one is
-    // shown and an older read that finishes late can't put stale values back.
-    private int _loadSequence;
-
-    // The newest load's sequence per channel. Loads on different channels (independent lists on one panel) never drop
-    // each other. Cleared with every open and close; the generation already drops the earlier open's loads.
-    private readonly Dictionary<string, int> _newestLoad = new(StringComparer.Ordinal);
+    // Which load may show its result: the open's generation and the newest load per channel. The rule is pure
+    // counting, so it lives in Core (PanelLoadGate) with the tests; the showing itself stays here on the dispatcher.
+    private readonly PanelLoadGate _loads = new();
 
     protected SystemPanelViewModel(SystemPanelContext context, string panelId)
         : this(context, SettingsPanelCatalog.Find(panelId) ?? throw new ArgumentException($"Unknown panel \"{panelId}\".", nameof(panelId)))
@@ -98,28 +90,24 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
 
     public sealed override void OnSelected()
     {
-        if (_isOpen)
+        if (_loads.IsOpen)
         {
             return;
         }
 
-        _isOpen = true;
-        _generation++;
-        _newestLoad.Clear();
+        _loads.Opened();
         Problem = null;
         Open();
     }
 
     public sealed override void OnDeselected()
     {
-        if (!_isOpen)
+        if (!_loads.IsOpen)
         {
             return;
         }
 
-        _isOpen = false;
-        _generation++;
-        _newestLoad.Clear();
+        _loads.Closed();
         Close();
     }
 
@@ -157,9 +145,8 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
         ArgumentNullException.ThrowIfNull(read);
         ArgumentNullException.ThrowIfNull(show);
         ArgumentNullException.ThrowIfNull(channel);
-        var generation = _generation;
-        var sequence = ++_loadSequence;
-        _newestLoad[channel] = sequence;
+        var generation = _loads.Generation;
+        var sequence = _loads.Begin(channel);
 
         void Work()
         {
@@ -195,7 +182,7 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
     private void ShowIfCurrent(int generation, string channel, int sequence, Action action) =>
         Context.Dispatcher.BeginInvoke(() =>
         {
-            if (!_isOpen || generation != _generation || !_newestLoad.TryGetValue(channel, out var newest) || newest != sequence)
+            if (!_loads.MayShow(generation, channel, sequence))
             {
                 return;
             }
