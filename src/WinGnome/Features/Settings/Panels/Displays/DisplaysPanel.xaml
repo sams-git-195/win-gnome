@@ -1,0 +1,106 @@
+<UserControl x:Class="WinGnome.Features.Settings.Panels.Displays.DisplaysPanel" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls"
+             xmlns:p="clr-namespace:WinGnome.Features.Settings.Panels"
+             xmlns:d="clr-namespace:WinGnome.Features.Settings.Panels.Displays">
+    <StackPanel>
+        <p:PanelNotices />
+
+        <!-- GNOME's "Keep these display settings?" countdown. -->
+        <Border Margin="0,0,0,20" Padding="16,12" CornerRadius="12" Background="{DynamicResource HoverBrush}"
+                BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2"
+                Visibility="{Binding IsWaiting, Converter={x:Static c:Converters.BoolToVisibility}}"
+                AutomationProperties.Name="Keep these display settings?">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Keep these display settings?" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding CountdownText}" Style="{DynamicResource RowSubtitleText}" Margin="0,2,0,0" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="Revert Settings" Style="{DynamicResource SettingsButton}" Margin="12,0,8,0"
+                        Command="{Binding RevertCommand}" />
+                <Button Grid.Column="2" Content="Keep Changes" Style="{DynamicResource SettingsAccentButton}" Command="{Binding KeepCommand}" />
+            </Grid>
+        </Border>
+
+        <!-- Arrangement: drag a display next to another; it snaps flush to the nearest edge. -->
+        <c:SettingsGroup Header="Display Arrangement" Description="Drag displays to match your physical display setup."
+                         Visibility="{Binding HasSeveralDisplays, Converter={x:Static c:Converters.BoolToVisibility}}">
+            <ItemsControl x:Name="Arrangement" ItemsSource="{Binding Displays}" Margin="16" HorizontalAlignment="Center"
+                          Width="{x:Static d:DisplaysPanelViewModel.PreviewWidth}" Height="{x:Static d:DisplaysPanelViewModel.PreviewHeight}"
+                          IsEnabled="{Binding CanEdit}" Focusable="False" AutomationProperties.Name="Display arrangement">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <Canvas />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemContainerStyle>
+                    <Style TargetType="ContentPresenter">
+                        <Setter Property="Canvas.Left" Value="{Binding Preview.X}" />
+                        <Setter Property="Canvas.Top" Value="{Binding Preview.Y}" />
+                    </Style>
+                </ItemsControl.ItemContainerStyle>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border x:Name="Tile" Width="{Binding Preview.Width}" Height="{Binding Preview.Height}" CornerRadius="6"
+                                Background="{DynamicResource PressedBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="2"
+                                Cursor="SizeAll" MouseLeftButtonDown="OnTileMouseDown" MouseMove="OnTileMouseMove"
+                                MouseLeftButtonUp="OnTileMouseUp" LostMouseCapture="OnTileLostCapture"
+                                AutomationProperties.Name="{Binding Label}">
+                            <Border.RenderTransform>
+                                <TranslateTransform />
+                            </Border.RenderTransform>
+                            <Grid>
+                                <Border Width="26" Height="26" CornerRadius="13" Background="{DynamicResource AccentBrush}"
+                                        HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6">
+                                    <TextBlock Text="{Binding Number}" Foreground="{DynamicResource AccentForegroundBrush}" FontWeight="SemiBold"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13" />
+                                </Border>
+                                <TextBlock Text="{Binding Name}" FontSize="12" TextTrimming="CharacterEllipsis" Margin="8,0,8,8"
+                                           VerticalAlignment="Bottom" HorizontalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding IsPrimary}" Value="True">
+                                <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <c:SettingsRow Title="Primary Display" Subtitle="Contains the top bar and the dock." IsEnabled="{Binding CanEdit}">
+                <ComboBox ItemsSource="{Binding Displays}" SelectedItem="{Binding Primary}" DisplayMemberPath="Label" MaxWidth="300" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Display">
+            <c:SettingsRow Title="Display" Visibility="{Binding HasSeveralDisplays, Converter={x:Static c:Converters.BoolToVisibility}}">
+                <ComboBox ItemsSource="{Binding Displays}" SelectedItem="{Binding Selected}" DisplayMemberPath="Label" MaxWidth="300" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Resolution" IsEnabled="{Binding CanEdit}">
+                <ComboBox ItemsSource="{Binding Resolutions}" SelectedItem="{Binding Resolution}" DisplayMemberPath="Label" MinWidth="220" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Refresh Rate" IsEnabled="{Binding CanEdit}">
+                <ComboBox ItemsSource="{Binding RefreshRates}" SelectedItem="{Binding RefreshRate}" ItemStringFormat="{}{0} Hz" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Scale" Subtitle="{Binding ScaleText}">
+                <Button Content="Change in Windows Settings" Style="{DynamicResource SettingsButton}" Command="{Binding ScaleCommand}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <!-- Changes are collected and applied together, as in GNOME. -->
+        <Border Margin="0,0,0,24" Visibility="{Binding IsDirty, Converter={x:Static c:Converters.BoolToVisibility}}">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Reset" Style="{DynamicResource SettingsButton}" Margin="0,0,8,0" Command="{Binding ResetCommand}" />
+                <Button Content="Apply" Style="{DynamicResource SettingsAccentButton}" Command="{Binding ApplyCommand}" />
+            </StackPanel>
+        </Border>
+
+        <p:PanelFooter />
+    </StackPanel>
+</UserControl>
