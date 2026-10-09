@@ -215,4 +215,32 @@ public class WorkAreaRecoveryTests
         Assert.Equal([bar], plan.Keep);
         Assert.False(plan.Nudge);
     }
+
+    [Fact]
+    public void RepairAll_TaskbarHidden_ResetsEveryMonitorThatIsNotFull()
+    {
+        var repairs = WorkAreaRecovery.RepairAll(
+            Layout(Mon(Display1, PrimaryBounds, Shrunk, primary: true), Mon(Display2, UpperBounds, UpperBounds)),
+            taskbarHidden: true);
+
+        // Only DISPLAY1: DISPLAY2's work area already is its full bounds.
+        Assert.Equal([new WorkAreaRestore(Display1, PrimaryBounds)], repairs);
+    }
+
+    [Fact]
+    public void RepairAll_TaskbarVisible_ResetsNothing()
+    {
+        // A visible taskbar's own strip must survive a repair that cannot know what it changed.
+        var repairs = WorkAreaRecovery.RepairAll(
+            Layout(Mon(Display1, PrimaryBounds, Shrunk, primary: true)),
+            taskbarHidden: false);
+
+        Assert.Empty(repairs);
+    }
+
+    [Fact]
+    public void RepairAll_NoMonitors_ResetsNothing()
+    {
+        Assert.Empty(WorkAreaRecovery.RepairAll(MonitorLayout.Empty, taskbarHidden: true));
+    }
 }

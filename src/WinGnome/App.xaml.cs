@@ -72,8 +72,11 @@ public partial class App : Application
 
         if (options.RestoreTaskbar)
         {
-            TaskbarController.RestoreFromMarker(_settingsDirectory);
+            // Work areas first: recovering them while the taskbar is still hidden is what makes "the taskbar marker
+            // is present, so a monitor's correct work area is its full bounds" true for the repair of an unreadable
+            // record. RestoreFromMarker shows the taskbar and deletes that marker, after which Explorer recomputes.
             WorkAreaController.RecoverFromMarker(_settingsDirectory);
+            TaskbarController.RestoreFromMarker(_settingsDirectory);
             AppBarJanitor.Nudge();
             Shutdown(0);
             return;
@@ -87,8 +90,9 @@ public partial class App : Application
         }
 
         // A previous run that crashed (or was killed) may have left the taskbar hidden, and strips reserved.
-        TaskbarController.RestoreFromMarker(_settingsDirectory);
+        // Work areas are recovered before the taskbar is restored; see the --restore-taskbar path for why.
         WorkAreaController.RecoverFromMarker(_settingsDirectory);
+        TaskbarController.RestoreFromMarker(_settingsDirectory);
         AppBarJanitor.Nudge();
         if (options.SelfTest)
         {

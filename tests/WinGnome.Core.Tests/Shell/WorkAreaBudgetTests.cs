@@ -30,6 +30,7 @@ public class WorkAreaBudgetTests
     [Theory]
     [InlineData(59_999, false)] // One millisecond before the first application leaves the window.
     [InlineData(60_000, true)]  // Exactly 60 s after it.
+    [InlineData(60_001, true)]  // And after.
     public void TrySpend_WindowBoundary(long nowMs, bool expected)
     {
         var budget = new WorkAreaBudget();

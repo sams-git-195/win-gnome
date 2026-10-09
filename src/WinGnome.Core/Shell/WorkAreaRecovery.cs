@@ -99,4 +99,25 @@ public static class WorkAreaRecovery
         var keep = records.Where((_, index) => kept[index]).ToList();
         return new(restores, keep, nudge);
     }
+
+    /// <summary>
+    /// The repair for a marker that cannot be trusted, so nobody knows which work areas were changed. Where the
+    /// taskbar is hidden or auto-hidden, every monitor's correct work area is its full bounds, so each monitor that
+    /// differs is reset; where the taskbar is visible its own strip must survive, so nothing is written. Either way
+    /// the caller nudges Explorer afterwards, which brings back any other AppBar's strip.
+    /// </summary>
+    public static IReadOnlyList<WorkAreaRestore> RepairAll(MonitorLayout monitors, bool taskbarHidden)
+    {
+        ArgumentNullException.ThrowIfNull(monitors);
+
+        if (!taskbarHidden)
+        {
+            return [];
+        }
+
+        return monitors.Monitors
+            .Where(m => m.WorkArea != m.Bounds)
+            .Select(m => new WorkAreaRestore(m.Key, m.Bounds))
+            .ToList();
+    }
 }

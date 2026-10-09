@@ -635,7 +635,10 @@ persisted to the user's profile. Limits, all deliberate:
 *Risks:* WinGnome now writes a value Explorer also writes, so Explorer recomputing later can overwrite ours (it
 normally produces the same rectangle while our AppBar is registered; a different one is caught by the next check,
 within the budget). The marker is per profile, so a force-kill followed by a start with a different `--settings-dir`
-cannot recover, as for `display-revert.json` (KI-068).
+cannot recover, as for `display-revert.json` (KI-068). `--restore-taskbar` does not take the single-instance mutex
+(as it already did not for `taskbar.state`), so running it while a healthy instance is up gives back a strip that
+instance's bar still holds and deletes its marker; the broadcast reaches the live bar, which re-shrinks and rewrites
+the marker within ~1.5 s, so only a force-kill inside that window could strand it.
 *Not verified live:* the whole path. Safe-mode runs cannot reach it (verified: `--selftest --safe` exits 0, no
 `workareas.state` written, both strips stacked correctly on the primary). Spec 0010's B6–B12 are the live checks.
 *Workaround:* none needed; without it the strip simply arrives late or not at all.

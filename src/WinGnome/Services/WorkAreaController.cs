@@ -1,6 +1,7 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using WinGnome.Core.Geometry;
+using WinGnome.Core.Monitors;
 using WinGnome.Core.Shell;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
@@ -113,9 +114,11 @@ internal static class WorkAreaController
 
                 if (!SetWorkArea(shrunk, broadcast: true))
                 {
+                    // Read before anything else runs: the marker write below would clobber the thread's last error.
+                    var error = Marshal.GetLastWin32Error();
                     Records.Remove(record);
                     WriteMarker();
-                    Log.Warn($"SPI_SETWORKAREA failed for {key} (error {Marshal.GetLastWin32Error()})");
+                    Log.Warn($"SPI_SETWORKAREA failed for {key} (error {error})");
                     return false;
                 }
 
@@ -247,7 +250,8 @@ internal static class WorkAreaController
     /// <summary>Writes the plan's restores, keeps what a live bar still owns, and nudges Explorer when asked to.</summary>
     private static void Apply(bool broadcast, bool nudge)
     {
-        var plan = WorkAreaRecovery.Plan(Records, DisplayLayoutService.Read(), Released);
+        var layout = DisplayLayoutService.Read();
+        var plan = WorkAreaRecovery.Plan(Records, layout, Released);
         foreach (var restore in plan.Restores)
         {
             if (SetWorkArea(restore.WorkArea, broadcast))
@@ -268,6 +272,7 @@ internal static class WorkAreaController
             WriteMarker();
         }
 
+        Prune(layout);
         if (nudge && plan.Nudge)
         {
             Log.Info("A work area we set is no longer the live one; asking Explorer to recompute");
@@ -275,34 +280,43 @@ internal static class WorkAreaController
         }
     }
 
+    /// <summary>Drops bookkeeping whose owner or monitor is gone, so a long session doesn't accumulate it.</summary>
+    private static void Prune(MonitorLayout layout)
+    {
+        Released.RemoveWhere(owner => Records.TrueForAll(record => record.Owner != owner));
+        if (layout.Monitors.Count > 0)
+        {
+            // Not on an empty layout: a failed read must not reset every monitor's budget.
+            foreach (var key in Budgets.Keys.Where(key => layout.Find(key) is null).ToList())
+            {
+                Budgets.Remove(key);
+            }
+        }
+    }
+
     /// <summary>
-    /// The marker exists but cannot be trusted, so we do not know which work areas we changed. Where the taskbar
-    /// marker says the taskbar is hidden or auto-hidden, every monitor's correct work area is its full bounds; where
-    /// it does not, a visible taskbar's own strip must survive and nothing is written. The janitor nudges Explorer
-    /// right after, which brings back any other AppBar's strip.
+    /// The marker exists but cannot be trusted, so we do not know which work areas we changed; the repair is
+    /// <see cref="WorkAreaRecovery.RepairAll"/>, and the janitor nudges Explorer right after this.
     /// </summary>
     private static void RepairWithoutRecords(string settingsDirectory)
     {
-        if (!TaskbarController.HasMarker(settingsDirectory))
+        var hidden = TaskbarController.HasMarker(settingsDirectory);
+        var repairs = WorkAreaRecovery.RepairAll(DisplayLayoutService.Read(), hidden);
+        if (repairs.Count == 0)
         {
-            Log.Info("The taskbar is not hidden, so no work area is reset");
+            Log.Info(hidden ? "Every work area is already its monitor's full bounds" : "The taskbar is not hidden, so no work area is reset");
             return;
         }
 
-        foreach (var monitor in DisplayLayoutService.Read().Monitors)
+        foreach (var repair in repairs)
         {
-            if (monitor.WorkArea == monitor.Bounds)
+            if (SetWorkArea(repair.WorkArea, broadcast: true))
             {
-                continue;
-            }
-
-            if (SetWorkArea(monitor.Bounds, broadcast: true))
-            {
-                Log.Info($"{monitor.Key}: work area reset to the full monitor {Format(monitor.Bounds)} (the taskbar is hidden)");
+                Log.Info($"{repair.Key}: work area reset to the full monitor {Format(repair.WorkArea)} (the taskbar is hidden)");
             }
             else
             {
-                Log.Warn($"SPI_SETWORKAREA failed while resetting {monitor.Key}'s work area (error {Marshal.GetLastWin32Error()})");
+                Log.Warn($"SPI_SETWORKAREA failed while resetting {repair.Key}'s work area (error {Marshal.GetLastWin32Error()})");
             }
         }
     }

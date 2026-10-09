@@ -485,10 +485,14 @@ placed left of and above the primary (negative coordinates).
 
 Status: chosen by the user 2026-10-09 (option 2 above). Advisor review (DeepSeek V4 Pro) applied 2026-10-09:
 atomic marker writes with a defined repair for an unreadable one, an ordered restore chain instead of a per-bar
-restore, no re-registration immediately before a shrink, and the monitor key derived at use time. The `TbExp`
-experiment still runs in the same live session, to see whether option 1 (hide the taskbar windows only after
-Explorer has applied auto-hide) can later remove the need for this; the fallback also fixes the unplugged-monitor
-case, which option 1 does not.
+restore, no re-registration immediately before a shrink, and the monitor key derived at use time. Implementation
+review (DeepSeek V4 Pro) applied 2026-10-09: work areas are recovered **before** the taskbar is restored, because
+restoring the taskbar deletes the marker the unreadable-record repair tests and shows the taskbar, which made
+"full bounds" both unreachable and wrong; the Win32 error is captured before the marker write that would clobber it;
+that repair moved into tested Core (`WorkAreaRecovery.RepairAll`); a spent budget waits instead of re-registering
+(rule 5); and the per-owner and per-monitor bookkeeping is pruned. The `TbExp` experiment still runs in the same live
+session, to see whether option 1 (hide the taskbar windows only after Explorer has applied auto-hide) can later
+remove the need for this; the fallback also fixes the unplugged-monitor case, which option 1 does not.
 
 ### Why
 
@@ -512,10 +516,11 @@ provided it changes as little as possible, records it before it changes it, and 
 4. **`--safe` and `--selftest` never shrink.** Both *do* recover a leftover marker from an earlier non-safe run: that
    is a repair of our own change, exactly like `TaskbarController.RestoreFromMarker`, which already runs in safe mode.
 5. **Act, don't re-register, and never loop.** A missing strip is acted on at most three times per episode (1.5 s,
-   then 5 s and 20 s later), then left until the bar is docked afresh. The action is a shrink when shrinking is
-   allowed, and a re-registration only when it is not (`--safe`, or the monitor's budget spent) — re-registering
-   during Explorer's deferral is what the third live run showed to be useless and possibly harmful, so it is no
-   longer on the normal path. Per monitor, `WorkAreaBudget` allows three applications per 60 s. Hitting either bound
+   then 5 s and 20 s later), then left until the bar is docked afresh. The action is a shrink, except in `--safe` and
+   the self-test, which change no system state and register the AppBar again instead. A shrink that the monitor's
+   budget refuses does **not** fall back to re-registering — it waits for the next attempt: a budget being spent means
+   something keeps reverting the work area, and re-registering is the one call the third live run showed to be useless
+   there and possibly harmful. Per monitor, `WorkAreaBudget` allows three applications per 60 s. Hitting either bound
    logs once and stops. There is no polling: every check rides an existing trigger (dock, display pass, the debounced
    `WM_SETTINGCHANGE`, `ABN_POSCHANGED`/`ABN_STATECHANGE`, the bar's one-shot recovery timer).
 
@@ -659,3 +664,9 @@ B12. Q Native taskbar mode (taskbar visible, not auto-hidden) with an always-vis
     (the same limitation as `display-revert.json`, KI-068); `--restore-taskbar` from the original profile can.
 15. **The crash path does file I/O** (deleting the marker) on a possibly faulting thread, like `UndockAll`'s tray
     sends (risk 5). Guarded, never fatal; a marker left behind is recovered by the next start.
+16. **`--restore-taskbar` does not take the single-instance mutex** (as it already did not for `taskbar.state`), so
+    running it while a healthy instance is up recovers and deletes that instance's marker, and gives back a strip its
+    bar still holds. It self-heals: the broadcast reaches the live bar, its next check finds the strip missing and
+    re-shrinks within ~1.5 s, rewriting the marker. Only a force-kill inside that window could strand it, and the
+    next start's repair covers that. Noted in KI-099; no guard, because the switch exists to fix a desktop WinGnome
+    itself may have broken.
