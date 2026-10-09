@@ -29,6 +29,7 @@ internal sealed class AppsPanelViewModel : SystemPanelViewModel
     private IReadOnlyList<StartupAppItem> _startup = [];
     private string _search = "";
     private bool _isLoadingApps;
+    private bool _appsFailed;
     private bool _isOpen;
 
     public AppsPanelViewModel(SystemPanelContext context)
@@ -69,7 +70,8 @@ internal sealed class AppsPanelViewModel : SystemPanelViewModel
         private set => SetProperty(ref _isLoadingApps, value);
     }
 
-    public bool HasNoMatches => !_isLoadingApps && _apps.Count == 0;
+    /// <summary>True when the list is empty because nothing matched (not because it is loading or the walk failed).</summary>
+    public bool HasNoMatches => !_isLoadingApps && !_appsFailed && _apps.Count == 0;
 
     public IReadOnlyList<StartupAppItem> StartupApps
     {
@@ -130,12 +132,20 @@ internal sealed class AppsPanelViewModel : SystemPanelViewModel
         }
 
         IsLoadingApps = _desktop.Count == 0;
+        _appsFailed = false;
         OnPropertyChanged(nameof(HasNoMatches));
         LoadAsync(InstalledAppsService.Read, records =>
         {
             _desktop = records;
             IsLoadingApps = false;
             RebuildApps();
+        }, onFailed: () =>
+        {
+            // The walk threw: take the "Loading installed apps…" line down (Refresh retries) and don't claim the
+            // empty list is an answer.
+            IsLoadingApps = false;
+            _appsFailed = true;
+            OnPropertyChanged(nameof(HasNoMatches));
         }, longRunning: true, channel: "installed");
     }
 

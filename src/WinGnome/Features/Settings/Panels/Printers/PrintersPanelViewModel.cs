@@ -122,7 +122,18 @@ internal sealed class PrintersPanelViewModel : SystemPanelViewModel
     {
         IsBusy = true;
         // longRunning: a print server that doesn't answer blocks EnumPrinters for a long time.
-        LoadAsync(PrinterService.Read, Show, longRunning: true);
+        LoadAsync(PrinterService.Read, Show, onFailed: ListFailed, longRunning: true);
+    }
+
+    /// <summary>
+    /// The list could not be read at all: release the controls (Refresh retries) and don't show the "no printers" note
+    /// as though the empty list were an answer.
+    /// </summary>
+    private void ListFailed()
+    {
+        _listFailed = true;
+        IsBusy = false;
+        OnPropertyChanged(nameof(ShowsEmptyNote));
     }
 
     private void Show(PrinterSnapshot snapshot)

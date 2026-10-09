@@ -120,7 +120,8 @@ internal sealed class RemovableMediaPanelViewModel : SystemPanelViewModel
     private void Reload()
     {
         IsBusy = true;
-        LoadAsync(AutoplayStore.Read, Show);
+        // onFailed: a failed read must release the controls, or the panel can't even retry.
+        LoadAsync(AutoplayStore.Read, Show, onFailed: () => IsBusy = false);
     }
 
     private void Show(AutoplayState state)

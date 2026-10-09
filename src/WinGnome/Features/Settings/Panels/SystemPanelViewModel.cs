@@ -128,9 +128,15 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
     /// <summary>
     /// Runs <paramref name="read"/> off the UI thread and passes its result to <paramref name="show"/> on the dispatcher,
     /// but only while the panel is still open from the same <see cref="Open"/> and no later <see cref="LoadAsync{T}"/> was started on the same <paramref name="channel"/>: a read that finishes after the panel was
-    /// closed (or closed and reopened) is dropped. A failure is logged and shown as <see cref="Problem"/>. Call it from
-    /// the UI thread (usually in <see cref="Open"/>).
+    /// closed (or closed and reopened) is dropped. A failure is logged, shown as <see cref="Problem"/> and passed to
+    /// <paramref name="onFailed"/>. Call it from the UI thread (usually in <see cref="Open"/>).
     /// </summary>
+    /// <param name="onFailed">
+    /// Runs on the dispatcher, under exactly the same conditions as <paramref name="show"/>, when
+    /// <paramref name="read"/> threw: a panel that set a busy flag before loading passes this to clear the flag, so a
+    /// failed read never leaves the controls disabled. A load that was superseded on its channel or outlived its open
+    /// does not run it — the busy state then belongs to the newer load or to the next open.
+    /// </param>
     /// <param name="longRunning">
     /// Runs the read on its own background thread (MTA, named after the panel) instead of the thread pool. Use it for
     /// reads that can block for long (an RPC to a print server, Windows Update, a walk over hundreds of registry keys),
@@ -140,7 +146,7 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
     /// Which loads replace each other: only the newest load on the same channel is shown. Existing callers use the
     /// default channel; a panel with independent lists gives each its own channel.
     /// </param>
-    protected void LoadAsync<T>(Func<T> read, Action<T> show, bool longRunning = false, string channel = "")
+    protected void LoadAsync<T>(Func<T> read, Action<T> show, Action? onFailed = null, bool longRunning = false, string channel = "")
     {
         ArgumentNullException.ThrowIfNull(read);
         ArgumentNullException.ThrowIfNull(show);
@@ -159,7 +165,11 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
             {
                 // Thread boundary: an exception escaping a worker would end the shell process.
                 Log.Warn($"Settings: could not read the \"{_panelId}\" panel's settings", ex);
-                ShowIfCurrent(generation, channel, sequence, () => Problem = "Couldn't read these settings from Windows. You can see them in Windows Settings instead.");
+                ShowIfCurrent(generation, channel, sequence, () =>
+                {
+                    Problem = "Couldn't read these settings from Windows. You can see them in Windows Settings instead.";
+                    onFailed?.Invoke();
+                });
                 return;
             }
 
