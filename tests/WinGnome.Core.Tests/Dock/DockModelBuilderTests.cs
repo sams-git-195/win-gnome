@@ -431,4 +431,22 @@ public class DockModelBuilderTests
         Assert.False(apps[0].IsRunning);
         Assert.Equal(new nint[] { 5 }, apps[1].Windows.ToArray());
     }
+
+    [Fact]
+    public void FileExplorerPin_TakesFolderWindows_NotOtherExplorerWindows()
+    {
+        // As the window tracker reports them: folder windows carry no AUMID, and the catalogue resolves the pin to
+        // nothing usable (its shortcut targets a shell CLSID).
+        const string explorerPath = @"C:\WINDOWS\explorer.exe";
+        var folder = Win(5, "Explorer", explorerPath, AppIdentity.ImpliedAppUserModelId(explorerPath, "CabinetWClass"));
+        var dialog = Win(6, "Explorer", explorerPath, AppIdentity.ImpliedAppUserModelId(explorerPath, "#32770"));
+
+        var apps = Build([Pin("File Explorer", "Microsoft.Windows.Explorer")], [folder, dialog], resolve: id => id);
+
+        Assert.Equal(2, apps.Count);
+        Assert.True(apps[0].IsPinned);
+        Assert.Equal(new nint[] { 5 }, apps[0].Windows.ToArray());
+        Assert.False(apps[1].IsPinned);
+        Assert.Equal(new nint[] { 6 }, apps[1].Windows.ToArray());
+    }
 }

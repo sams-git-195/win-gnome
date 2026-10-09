@@ -41,6 +41,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-041](#ki-041) | S4 | Window buttons | Clicks on custom title bars wait for one hit test, and clicks meanwhile are ignored | By design |
 | [KI-042](#ki-042) | S4 | Window buttons | WinGnome builds from before the window-buttons role still decorate alongside newer ones | Open |
 | [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
+| [KI-052](#ki-052) | S4 | Dock | Explorer windows other than folder windows don't join the File Explorer pin | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -281,6 +282,15 @@ role), so with current builds this happens only when the decorating instance is 
 instance whose header bar is shown, e.g. a QA profile's settings window while the everyday instance holds the
 role. A pre-role build (KI-042) still decorates regardless and overlays every other instance's header bars. One
 instance alone is unaffected. Capture header bars with `PrintWindow` to see only the window's own drawing.
+
+### KI-052
+**Explorer windows other than folder windows don't join the File Explorer pin** · S4 · Dock · Open
+
+Only `CabinetWClass` windows in `explorer.exe` are treated as File Explorer (`AppIdentity.ImpliedAppUserModelId`,
+spec 0006). Other un-owned `explorer.exe` windows that pass the alt-tab filter, such as a file-copy progress
+window, have no AUMID and still show as a separate unpinned "Explorer" icon, where the Windows taskbar groups them
+under File Explorer. *Fix direction:* list the classes seen live (for example `OperationStatusWindow`) and add
+them to the rule, keeping the desktop, taskbar and other shell windows out.
 
 ## Resolved
 
