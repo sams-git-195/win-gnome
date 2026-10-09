@@ -1,68 +1,66 @@
-using System.Windows;
-using System.Windows.Input;
-using System.Windows.Interop;
+using System.Diagnostics;
 using System.Windows.Threading;
-using Microsoft.Win32;
 using WinGnome.Core.Dock;
-using WinGnome.Core.Geometry;
+using WinGnome.Core.Monitors;
 using WinGnome.Core.Settings;
-using WinGnome.Core.Theming;
 using WinGnome.Core.Windows;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
+using WinGnome.Services;
 
 namespace WinGnome.Features.Dock;
 
 /// <summary>
-/// GNOME Dash-to-Dock / macOS style dock on the primary monitor: pinned and running apps, magnification,
-/// visibility modes, context menus, drag and drop, and Super+N activation.
+/// GNOME Dash-to-Dock / macOS style dock: pinned and running apps, magnification, visibility modes, context menus,
+/// drag and drop, and Super+N activation. On the primary monitor by default, or on every monitor
+/// (<see cref="DockSettings.Monitors"/>), optionally each showing only its own monitor's windows. This coordinator
+/// owns the pins, catalogue, theme, external foreground, Super+N and the shared edge poll, and one
+/// <see cref="DockInstance"/> per monitor key; display changes and detached strips run <see cref="SurfacePlan"/> steps.
+/// The crash path needs nothing here: every reservation is an <see cref="AppBar"/>, removed by <see cref="AppBar.UndockAll"/>.
 /// </summary>
 [FeatureOrder(30)]
-internal sealed class DockFeature : IFeature, IEmergencyRestore
+internal sealed class DockFeature : IFeature
 {
-    /// <summary>Padding at both ends of the dock (DIP).</summary>
-    private const double EndPadding = 8;
-
-    /// <summary>Largest icon bitmap requested from the shell.</summary>
-    private const int MaxIconPixels = 256;
+    /// <summary>Window moves are coalesced before isolated docks re-filter their windows.</summary>
+    private static readonly TimeSpan LocationSettleDelay = TimeSpan.FromMilliseconds(150);
 
     private readonly ShellContext _context;
+    private readonly List<DockInstance> _docks = [];
+    private readonly DispatcherTimer _locationTimer;
+    private readonly HashSet<nint> _trackedWindows = [];
     private AppSettings _settings;
     private bool _started;
     private bool _enabled;
     private bool _refreshQueued;
-    private bool _relayoutQueued;
-    private bool _menuOpen;
-    private bool _dragging;
-    private int _iconPixels;
-    private (int Cells, int Separators) _layoutCounts = (-1, -1);
-
+    private bool _explorerPassQueued;
     private ExternalForeground? _foreground;
-    private DockViewModel? _viewModel;
-    private BlurBackdrop? _backdrop;
-    private DockWindow? _window;
-    private DockActions? _actions;
-    private DockMenuPresenter? _menu;
-    private DockVisibilityController? _visibility;
-    private DockReservation? _reservation;
+    private DockEdgePoller? _poller;
 
     public DockFeature(ShellContext context)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _settings = context.Settings.Current;
+        _locationTimer = new DispatcherTimer(DispatcherPriority.Background, context.Dispatcher) { Interval = LocationSettleDelay };
+        _locationTimer.Tick += OnLocationTimer;
     }
 
     public string Name => "Dock";
+
+    private DockSettings Dock => _settings.Dock;
+
+    /// <summary>Docks on other monitors show only their own windows (only with a dock on every monitor).</summary>
+    private bool Isolating => Dock.Monitors == BarMonitors.All && Dock.IsolateMonitors;
 
     public void Start(AppSettings settings)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _started = true;
         _context.Windows.WindowsChanged += OnModelInputChanged;
+        _context.Windows.RawWindowEvent += OnRawWindowEvent;
         _context.Apps.Changed += OnModelInputChanged;
         _context.Theme.ThemeChanged += OnThemeChanged;
         _context.Commands.DockItemActivationRequested += OnDockItemActivationRequested;
-        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        _context.Displays.LayoutChanged += OnLayoutChanged;
         Apply();
     }
 
@@ -72,8 +70,6 @@ internal sealed class DockFeature : IFeature, IEmergencyRestore
         Apply();
     }
 
-    private DockSettings Dock => _settings.Dock;
-
     private void Apply()
     {
         if (!Dock.Enabled)
@@ -82,14 +78,30 @@ internal sealed class DockFeature : IFeature, IEmergencyRestore
             return;
         }
 
-        EnsureCreated();
+        if (_foreground is null)
+        {
+            _foreground = new ExternalForeground(_context.Windows);
+            _foreground.Changed += OnForegroundChanged;
+            _poller = new DockEdgePoller(_context.Dispatcher);
+        }
+
         _enabled = true;
-        ApplyStyle();
+        Reconcile("settings");
+        foreach (var dock in _docks)
+        {
+            dock.ApplySettings(Dock);
+            dock.ApplyStyle();
+        }
+
         RefreshNow();
-        Relayout();
-        _visibility!.SetEnabled(true);
+        foreach (var dock in _docks)
+        {
+            dock.DockOn(dock.Monitor);
+            dock.SetEnabled(true);
+        }
     }
 
+    /// <summary>Destroys every dock (their strips go back first); pins and settings stay.</summary>
     private void Disable()
     {
         if (!_enabled)
@@ -98,48 +110,171 @@ internal sealed class DockFeature : IFeature, IEmergencyRestore
         }
 
         _enabled = false;
-        _menu?.Close();
-        _visibility?.SetEnabled(false);
-        _reservation?.Release();
+        _locationTimer.Stop();
+        for (var i = _docks.Count - 1; i >= 0; i--)
+        {
+            Destroy(_docks[i]);
+        }
+
+        _docks.Clear();
     }
 
-    private void EnsureCreated()
+    // ---- Reconcile ---------------------------------------------------------------------------
+
+    private void OnLayoutChanged(object? sender, DisplayLayoutChangedEventArgs e)
     {
-        if (_window is not null)
+        if (_enabled)
+        {
+            Reconcile("display change");
+            QueueRefresh();
+        }
+    }
+
+    /// <summary>
+    /// Brings the docks in line with the layout and <see cref="DockSettings.Monitors"/>, in <see cref="SurfacePlan"/>
+    /// order. A primary swap with a dock on the primary only moves the one dock. Logs the pass with its count of
+    /// SHAppBarMessage calls.
+    /// </summary>
+    private void Reconcile(string reason)
+    {
+        var timer = Stopwatch.StartNew();
+        var callsBefore = AppBar.MessageCount;
+        var steps = SurfacePlan.Reconcile(_docks.Select(d => d.State), _context.Displays.Current, Dock.Monitors);
+        foreach (var step in steps)
+        {
+            try
+            {
+                Apply(step);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"Dock: reconcile step {step.Kind} {step.Key} failed", ex);
+            }
+        }
+
+        if (steps.Count > 0 || reason != "settings")
+        {
+            var summary = string.Join(", ", steps.Select(s => $"{s.Kind} {s.Key}{(s.Monitor is { } m && m.Key != s.Key ? "->" + m.Key : "")}"));
+            Log.Info($"Dock: reconcile ({reason}): [{summary}] in {timer.ElapsedMilliseconds} ms, {AppBar.MessageCount - callsBefore} SHAppBarMessage calls, {_docks.Count} docks, edge poll {(_poller?.IsRunning == true ? "running" : "idle")}");
+        }
+    }
+
+    private void Apply(SurfaceStep step)
+    {
+        var dock = Find(step.Key);
+        switch (step.Kind)
+        {
+            case SurfaceStepKind.Remove when dock is not null:
+                _docks.Remove(dock);
+                Destroy(dock);
+                break;
+            case SurfaceStepKind.Release:
+                dock?.Release();
+                break;
+            case SurfaceStepKind.Dock when dock is not null:
+                dock.DockOn(step.Monitor!);
+                break;
+            case SurfaceStepKind.Add:
+                var created = Create(step.Monitor!);
+                _docks.Add(created);
+                created.Refresh(RunningFor(created.Monitor.Key));
+                created.DockOn(step.Monitor!);
+                created.SetEnabled(true);
+                break;
+        }
+    }
+
+    private DockInstance? Find(string key) =>
+        _docks.FirstOrDefault(d => string.Equals(d.Monitor.Key, key, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Super+1..9 act on the primary monitor's dock.</summary>
+    private DockInstance? PrimaryDock =>
+        _docks.FirstOrDefault(d => d.Monitor.IsPrimary) ?? _docks.FirstOrDefault();
+
+    private DockInstance Create(MonitorInfo monitor)
+    {
+        var dock = new DockInstance(_context, _foreground!, _poller!, Dock, monitor);
+        dock.ApplyStyle();
+        dock.ExplorerRestarted += OnExplorerRestarted;
+        dock.Detached += OnDockDetached;
+        dock.RefreshRequested += OnRefreshRequested;
+        return dock;
+    }
+
+    private void Destroy(DockInstance dock)
+    {
+        dock.ExplorerRestarted -= OnExplorerRestarted;
+        dock.Detached -= OnDockDetached;
+        dock.RefreshRequested -= OnRefreshRequested;
+        dock.Dispose();
+    }
+
+    /// <summary>A dock's strip lost its monitor: re-read the layout; the pass re-docks or removes the dock.</summary>
+    private void OnDockDetached(object? sender, EventArgs e) => _context.Displays.Invalidate(force: true);
+
+    /// <summary>
+    /// Every dock window receives Explorer's TaskbarCreated broadcast (WinGnome's own tray broadcasts are filtered);
+    /// one pass re-registers every reserved strip: all undocked first, then all docked again.
+    /// </summary>
+    private void OnExplorerRestarted(object? sender, EventArgs e)
+    {
+        if (_explorerPassQueued)
         {
             return;
         }
 
-        _foreground = new ExternalForeground(_context.Windows);
-        _foreground.Changed += OnModelInputChanged;
-        _viewModel = new DockViewModel(_context.Icons, _context.Apps);
-        _backdrop = new BlurBackdrop("WinGnome Dock Backdrop");
-        _window = new DockWindow(_viewModel, _backdrop);
-        var window = _window;
-        _actions = new DockActions(_context, _foreground, window.PlayLaunchFeedback, () => new WindowInteropHelper(window).Handle);
-        _menu = new DockMenuPresenter(_context.Dispatcher);
-        _visibility = new DockVisibilityController(_context, _window, _foreground);
-        _reservation = new DockReservation();
+        _explorerPassQueued = true;
+        _context.Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            _explorerPassQueued = false;
+            foreach (var dock in _docks)
+            {
+                dock.UndockForExplorer();
+            }
 
-        _window.EntryInvoked += OnEntryInvoked;
-        _window.MenuRequested += OnMenuRequested;
-        _window.PinDragStarted += OnPinDragStarted;
-        _window.PinDragFinished += OnPinDragFinished;
-        _window.FilesDropped += OnFilesDropped;
-        _window.DpiChanged += OnWindowDpiChanged;
-        _menu.OpenChanged += OnMenuOpenChanged;
+            foreach (var dock in _docks)
+            {
+                dock.RedockForExplorer();
+            }
+
+            Log.Info($"Dock: Explorer restarted; re-registered {_docks.Count} docks");
+            _context.Displays.Invalidate(force: true);
+        });
     }
 
     // ---- Model ------------------------------------------------------------------------------
 
-    private void OnModelInputChanged(object? sender, EventArgs e)
+    private void OnForegroundChanged(object? sender, EventArgs e)
     {
         // Close a menu when the user switches to another app (in case the menu itself missed the click).
-        if (sender is ExternalForeground)
+        foreach (var dock in _docks)
         {
-            _menu?.Close();
+            dock.CloseMenu();
         }
 
+        QueueRefresh();
+    }
+
+    private void OnModelInputChanged(object? sender, EventArgs e) => QueueRefresh();
+
+    private void OnRefreshRequested(object? sender, EventArgs e) => QueueRefresh();
+
+    /// <summary>
+    /// Isolated docks show a window on its current monitor, and a move (Win+Shift+Arrow, a drag) raises only location
+    /// events: set a deadline here (WinEvent callback), re-filter when it expires.
+    /// </summary>
+    private void OnRawWindowEvent(uint eventType, nint hwnd)
+    {
+        if (_enabled && Isolating && eventType is (WinEventHook.EVENT_SYSTEM_MOVESIZEEND or WinEventHook.EVENT_OBJECT_LOCATIONCHANGE)
+            && _trackedWindows.Contains(hwnd) && !_locationTimer.IsEnabled)
+        {
+            _locationTimer.Start();
+        }
+    }
+
+    private void OnLocationTimer(object? sender, EventArgs e)
+    {
+        _locationTimer.Stop();
         QueueRefresh();
     }
 
@@ -156,28 +291,32 @@ internal sealed class DockFeature : IFeature, IEmergencyRestore
     private void RefreshNow()
     {
         _refreshQueued = false;
-
-        // A drag preview reorders entries locally; a refresh would undo it mid-drag.
-        if (!_enabled || _dragging || _viewModel is null)
+        if (!_enabled)
         {
             return;
         }
 
-        try
+        _trackedWindows.Clear();
+        foreach (var window in _context.Windows.Windows)
         {
-            var running = _context.Windows.Windows.Select(ToRunningWindow).ToList();
-            var apps = DockModelBuilder.Build(Dock.PinnedApps, running, _foreground!.Handle, Dock.ShowRunningApps, _context.Apps.ResolvePath);
-            _viewModel.Update(apps, Dock, _iconPixels);
-            if ((_viewModel.CellCount, _viewModel.SeparatorCount) != _layoutCounts)
-            {
-                Relayout();
-            }
+            _trackedWindows.Add(window.Handle);
         }
-        catch (Exception ex)
+
+        foreach (var dock in _docks)
         {
-            Log.Warn("Dock: refresh failed", ex);
+            dock.Refresh(RunningFor(dock.Monitor.Key));
         }
     }
+
+    /// <summary>The running windows a dock on monitor <paramref name="key"/> shows.</summary>
+    private IReadOnlyList<RunningWindow> RunningFor(string key)
+    {
+        var running = _context.Windows.Windows.Select(ToRunningWindow).ToList();
+        return DockWindowFilter.ForMonitor(running, KeyOf, key, Isolating);
+    }
+
+    private string KeyOf(nint hwnd) =>
+        _context.Displays.MonitorKeyOf(hwnd) ?? _context.Displays.Current.Primary?.Key ?? "";
 
     private RunningWindow ToRunningWindow(WindowInfo window) => new(
         window.Handle,
@@ -188,223 +327,45 @@ internal sealed class DockFeature : IFeature, IEmergencyRestore
         window.AppUserModelId,
         window.IsMinimized);
 
-    // ---- Geometry ---------------------------------------------------------------------------
-
-    private void OnDisplaySettingsChanged(object? sender, EventArgs e) => QueueRelayout();
-
-    private void OnWindowDpiChanged(object? sender, DpiChangedEventArgs e) => QueueRelayout();
-
-    /// <summary>SystemEvents may call on its own thread, and DPI changes arrive mid-resize; relayout afterwards on the UI thread.</summary>
-    private void QueueRelayout()
-    {
-        if (_relayoutQueued)
-        {
-            return;
-        }
-
-        _relayoutQueued = true;
-        _context.Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
-        {
-            _relayoutQueued = false;
-            Relayout();
-        });
-    }
-
-    /// <summary>Recomputes the dock geometry for the primary monitor and pushes it to the windows and the AppBar.</summary>
-    private void Relayout()
-    {
-        if (!_enabled || _window is null || _viewModel is null)
-        {
-            return;
-        }
-
-        try
-        {
-            var monitorHandle = NativeMethods.MonitorFromPoint(default, NativeMethods.MONITOR_DEFAULTTOPRIMARY);
-            var (monitor, _) = NativeMethods.GetMonitorRects(monitorHandle);
-            if (monitor.IsEmpty)
-            {
-                Log.Warn("Dock: could not read the primary monitor's bounds");
-                return;
-            }
-
-            var scale = NativeMethods.GetMonitorScale(monitorHandle);
-            var cells = _viewModel.CellCount;
-            var separators = _viewModel.SeparatorCount;
-            var separatorLength = separators * DockAppearance.SeparatorLength;
-            var monitorLength = (Dock.Position == DockPosition.Bottom ? monitor.Width : monitor.Height) / scale;
-
-            var iconSize = DockFrameLayout.FitIconSize(monitorLength, Math.Max(1, cells), separatorLength, Dock.IconSize, Dock.IconSpacing, EndPadding);
-            var cellSize = iconSize + (2 * Dock.IconSpacing);
-            var options = new DockLayoutOptions(Dock.IconSpacing, Dock.EdgeMargin, EndPadding, separatorLength);
-            var geometry = DockLayout.Compute(monitor, Dock.Position, cells, iconSize * scale, scale, Dock.ExtendToEdges, options);
-            var frame = DockFrameLayout.Compute(monitor, Dock.Position, geometry, cellSize * scale, iconSize * scale, Dock.Magnification, Dock.ExtendToEdges);
-
-            _layoutCounts = (cells, separators);
-            _viewModel.Appearance.Apply(Dock, iconSize, Dock.CornerRadius);
-            _window.ApplyLayout(new DockViewLayout(
-                frame.Window,
-                Dock.Position,
-                Dock.ExtendToEdges,
-                EdgeGap: Dock.ExtendToEdges ? 0 : Dock.EdgeMargin,
-                BodyThickness: cellSize + (2 * DockWindow.BodyPadding),
-                EndPadding,
-                Dock.CornerRadius,
-                Dock.Magnification,
-                iconSize));
-
-            if (Dock.Visibility == DockVisibility.AlwaysVisible)
-            {
-                _reservation!.Reserve(ToAppBarEdge(Dock.Position), frame.ReservedThickness, monitor);
-            }
-            else
-            {
-                _reservation!.Release();
-            }
-
-            _visibility!.Configure(Dock.Visibility, frame, monitor, monitorHandle);
-
-            // Load icons at the size they are shown when fully magnified, so they stay crisp.
-            var iconPixels = (int)Math.Min(MaxIconPixels, Math.Round(iconSize * scale * Math.Max(1, Dock.Magnification)));
-            if (iconPixels != _iconPixels)
-            {
-                _iconPixels = iconPixels;
-                QueueRefresh();
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Warn("Dock: layout failed", ex);
-        }
-    }
-
-    private static AppBarEdge ToAppBarEdge(DockPosition position) => position switch
-    {
-        DockPosition.Left => AppBarEdge.Left,
-        DockPosition.Right => AppBarEdge.Right,
-        _ => AppBarEdge.Bottom,
-    };
-
-    // ---- Appearance -------------------------------------------------------------------------
+    // ---- Appearance and input ----------------------------------------------------------------
 
     private void OnThemeChanged(object? sender, EventArgs e)
     {
-        if (_enabled)
+        foreach (var dock in _docks)
         {
-            ApplyStyle();
+            dock.ApplyStyle();
         }
     }
-
-    private void ApplyStyle()
-    {
-        try
-        {
-            _window!.ApplyStyle(new DockStyle(
-                ParseOptional(Dock.BackgroundColor),
-                Dock.Opacity,
-                Dock.Blur,
-                ParseOptional(Dock.IndicatorColor)));
-        }
-        catch (Exception ex)
-        {
-            Log.Warn("Dock: could not apply the appearance", ex);
-        }
-    }
-
-    private static HexColor? ParseOptional(string value) => HexColor.TryParse(value, out var color) ? color : null;
-
-    // ---- Input ------------------------------------------------------------------------------
-
-    private void OnEntryInvoked(object? sender, DockEntryEventArgs e) => Run(() => _actions!.Invoke(e.Entry, e.Button));
 
     private void OnDockItemActivationRequested(object? sender, int index)
     {
-        if (_enabled && _viewModel is not null && index >= 0 && index < _viewModel.AppEntries.Count)
+        if (_enabled)
         {
-            Run(() => _actions!.Click(_viewModel.AppEntries[index]));
+            PrimaryDock?.ActivateItem(index);
         }
     }
-
-    private void OnMenuRequested(object? sender, DockMenuRequestEventArgs e) => Run(() =>
-    {
-        if (DockMenuBuilder.Build(e.Entry, _actions!, _context.Windows) is { } menu)
-        {
-            _menu!.Show(menu, e.Target, Dock.Position, _foreground!.Handle);
-        }
-    });
-
-    private void OnMenuOpenChanged(object? sender, bool open)
-    {
-        _menuOpen = open;
-        _visibility?.SetInteracting(_menuOpen || _dragging);
-    }
-
-    private void OnPinDragStarted(object? sender, EventArgs e)
-    {
-        _dragging = true;
-        _visibility?.SetInteracting(true);
-    }
-
-    private void OnPinDragFinished(object? sender, bool committed)
-    {
-        _dragging = false;
-        _visibility?.SetInteracting(_menuOpen);
-        if (committed)
-        {
-            // The settings change triggers ApplySettings, which refreshes the dock in the new order.
-            Run(() => _actions!.ReorderPins(_viewModel!.PinnedLaunchIds));
-        }
-        else
-        {
-            // Cancelled: undo the drag preview.
-            QueueRefresh();
-        }
-    }
-
-    private void OnFilesDropped(object? sender, DockFilesDroppedEventArgs e) => Run(() => _actions!.PinFiles(e.Paths, e.PinIndex));
-
-    /// <summary>Input handlers call into Win32 and other apps; a failure must never take the dock down.</summary>
-    private static void Run(Action action)
-    {
-        try
-        {
-            action();
-        }
-        catch (Exception ex)
-        {
-            Log.Warn("Dock: action failed", ex);
-        }
-    }
-
-    /// <summary>Crash path: give the reserved strip back to the work area (ABM_REMOVE is a plain Win32 call).</summary>
-    public void EmergencyRestore() => _reservation?.Release();
 
     public void Dispose()
     {
         if (_started)
         {
             _context.Windows.WindowsChanged -= OnModelInputChanged;
+            _context.Windows.RawWindowEvent -= OnRawWindowEvent;
             _context.Apps.Changed -= OnModelInputChanged;
             _context.Theme.ThemeChanged -= OnThemeChanged;
             _context.Commands.DockItemActivationRequested -= OnDockItemActivationRequested;
-            SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+            _context.Displays.LayoutChanged -= OnLayoutChanged;
             _started = false;
         }
 
-        _enabled = false;
-        _menu?.Close();
-        _visibility?.Dispose();
-        _reservation?.Dispose();
+        Disable();
+        _locationTimer.Tick -= OnLocationTimer;
+        _poller?.Dispose();
         if (_foreground is not null)
         {
-            _foreground.Changed -= OnModelInputChanged;
+            _foreground.Changed -= OnForegroundChanged;
             _foreground.Dispose();
+            _foreground = null;
         }
-
-        // The dock is owned by the backdrop; close it first so WPF tears it down rather than Win32.
-        _window?.Close();
-        _backdrop?.Dispose();
-        _window = null;
-        _backdrop = null;
     }
 }

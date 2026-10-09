@@ -1,6 +1,7 @@
 using System.Windows.Threading;
 using WinGnome.Core.Dock;
 using WinGnome.Core.Geometry;
+using WinGnome.Core.Monitors;
 using WinGnome.Core.Settings;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
@@ -12,7 +13,8 @@ namespace WinGnome.Features.Dock;
 /// pointer for edge reveal. The decision itself is <see cref="DockVisibilityPolicy"/>; this class gathers its inputs.
 /// </summary>
 /// <remarks>
-/// Edge reveal uses a cheap GetCursorPos poll that only runs while the dock is hidden or held open by the pointer,
+/// Edge reveal uses a cheap GetCursorPos poll (shared by every dock, <see cref="DockEdgePoller"/>) that only runs
+/// while a dock is hidden or held open by the pointer,
 /// rather than a thin always-on-top trigger window. A trigger window would sit above every other window along the
 /// screen edge, swallowing clicks on the bottom row of pixels (scroll bars, maximised windows' edges), fighting
 /// other topmost windows and full-screen apps over z-order, and staying on top of games. The poll costs one
@@ -20,20 +22,19 @@ namespace WinGnome.Features.Dock;
 /// </remarks>
 internal sealed class DockVisibilityController : IDisposable
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(75);
     private static readonly TimeSpan LeaveGrace = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan EvaluationDelay = TimeSpan.FromMilliseconds(80);
 
     private readonly ShellContext _context;
     private readonly DockWindow _window;
     private readonly ExternalForeground _foreground;
-    private readonly DispatcherTimer _pollTimer;
+    private readonly DockEdgePoller _poller;
     private readonly DispatcherTimer _evaluationTimer;
 
     private DockVisibility _mode = DockVisibility.AlwaysVisible;
     private DockFrame? _frame;
-    private PixelRect _monitor;
-    private nint _monitorHandle;
+    private MonitorInfo? _monitor;
+    private bool _polling;
     private bool _enabled;
     private bool _shown;
     private bool _hasShownState;
@@ -42,13 +43,13 @@ internal sealed class DockVisibilityController : IDisposable
     private bool _fullScreen;
     private DateTime _lastInsideUtc;
 
-    public DockVisibilityController(ShellContext context, DockWindow window, ExternalForeground foreground)
+    public DockVisibilityController(ShellContext context, DockWindow window, ExternalForeground foreground, DockEdgePoller poller)
     {
+        _poller = poller ?? throw new ArgumentNullException(nameof(poller));
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _window = window ?? throw new ArgumentNullException(nameof(window));
         _foreground = foreground ?? throw new ArgumentNullException(nameof(foreground));
 
-        _pollTimer = new DispatcherTimer(PollInterval, DispatcherPriority.Input, OnPoll, context.Dispatcher) { IsEnabled = false };
         _evaluationTimer = new DispatcherTimer(EvaluationDelay, DispatcherPriority.Background, OnEvaluationTimer, context.Dispatcher) { IsEnabled = false };
 
         _context.Windows.RawWindowEvent += OnRawWindowEvent;
@@ -57,13 +58,12 @@ internal sealed class DockVisibilityController : IDisposable
         _window.PointerEntered += OnPointerEntered;
     }
 
-    /// <summary>Applies the mode and geometry and re-evaluates.</summary>
-    public void Configure(DockVisibility mode, DockFrame frame, PixelRect monitor, nint monitorHandle)
+    /// <summary>Applies the mode and geometry for the dock's monitor and re-evaluates.</summary>
+    public void Configure(DockVisibility mode, DockFrame frame, MonitorInfo monitor)
     {
         _mode = mode;
         _frame = frame ?? throw new ArgumentNullException(nameof(frame));
-        _monitor = monitor;
-        _monitorHandle = monitorHandle;
+        _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
         Evaluate(animate: _hasShownState);
     }
 
@@ -73,7 +73,7 @@ internal sealed class DockVisibilityController : IDisposable
         _enabled = enabled;
         if (!enabled)
         {
-            _pollTimer.Stop();
+            SetPolling(false);
             _evaluationTimer.Stop();
             _pointerEngaged = false;
             _shown = false;
@@ -130,11 +130,11 @@ internal sealed class DockVisibilityController : IDisposable
         Evaluate(animate: true);
     }
 
-    private void OnPoll(object? sender, EventArgs e)
+    private void OnPoll(POINT cursor)
     {
         try
         {
-            if (_frame is null || !NativeMethods.GetCursorPos(out var cursor))
+            if (_frame is null)
             {
                 return;
             }
@@ -184,19 +184,31 @@ internal sealed class DockVisibilityController : IDisposable
             Log.Warn("Dock: visibility evaluation failed", ex);
         }
 
-        var poll = DockVisibilityPolicy.NeedsPointerPolling(_mode, _shown, _pointerEngaged, _fullScreen);
-        if (poll != _pollTimer.IsEnabled)
+        SetPolling(DockVisibilityPolicy.NeedsPointerPolling(_mode, _shown, _pointerEngaged, _fullScreen));
+    }
+
+    private void SetPolling(bool polling)
+    {
+        if (polling != _polling)
         {
-            _pollTimer.IsEnabled = poll;
+            _polling = polling;
+            _poller.SetWanted(OnPoll, polling);
         }
+    }
+
+    /// <summary>True when <paramref name="hwnd"/> is on this dock's monitor (unknown monitors count as the primary).</summary>
+    private bool IsOnMonitor(nint hwnd)
+    {
+        var key = _context.Displays.MonitorKeyOf(hwnd) ?? _context.Displays.Current.Primary?.Key;
+        return string.Equals(key, _monitor?.Key, StringComparison.OrdinalIgnoreCase);
     }
 
     private bool IsFullScreenForeground()
     {
         var hwnd = _foreground.Handle;
         return IsCandidate(hwnd)
-            && NativeMethods.MonitorFromWindow(hwnd, NativeMethods.MONITOR_DEFAULTTONEAREST) == _monitorHandle
-            && DockVisibilityPolicy.IsFullScreen(NativeMethods.GetWindowBounds(hwnd), _monitor, NativeMethods.IsZoomed(hwnd));
+            && _monitor is not null && IsOnMonitor(hwnd)
+            && DockVisibilityPolicy.IsFullScreen(NativeMethods.GetWindowBounds(hwnd), _monitor.Bounds, NativeMethods.IsZoomed(hwnd));
     }
 
     private bool IsObstructed()
@@ -217,7 +229,7 @@ internal sealed class DockVisibilityController : IDisposable
             var hwnd = window.Handle;
             if (NativeMethods.IsZoomed(hwnd) && !NativeMethods.IsIconic(hwnd) && NativeMethods.IsWindowVisible(hwnd)
                 && !NativeMethods.IsCloaked(hwnd)
-                && NativeMethods.MonitorFromWindow(hwnd, NativeMethods.MONITOR_DEFAULTTONEAREST) == _monitorHandle)
+                && IsOnMonitor(hwnd))
             {
                 return true;
             }
@@ -234,7 +246,7 @@ internal sealed class DockVisibilityController : IDisposable
 
     public void Dispose()
     {
-        _pollTimer.Stop();
+        SetPolling(false);
         _evaluationTimer.Stop();
         _context.Windows.RawWindowEvent -= OnRawWindowEvent;
         _context.Windows.WindowsChanged -= OnWindowsChanged;

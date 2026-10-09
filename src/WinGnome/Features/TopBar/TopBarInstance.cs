@@ -6,6 +6,7 @@ using WinGnome.Core.TopBar;
 using WinGnome.Features.TopBar.ViewModels;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
+using WinGnome.Services;
 using WinGnome.Services.Tray;
 
 namespace WinGnome.Features.TopBar;
@@ -125,9 +126,11 @@ internal sealed class TopBarInstance : IDisposable
     {
         if (msg == NativeMethods.WM_DPICHANGED)
         {
-            // WPF rescales the window to Windows' suggested rectangle first. A scale change sends no WM_DISPLAYCHANGE,
-            // so the layout service re-reads the monitors and the coordinator re-docks the bar at the new scale.
+            // WPF rescales the window to Windows' suggested rectangle first; then restore our exact strip. A scale
+            // change sends no WM_DISPLAYCHANGE, so the layout service also re-reads the monitors (the coordinator
+            // re-docks the bar if the monitor changed).
             _context.Displays.Invalidate();
+            _context.Dispatcher.BeginInvoke(RestoreStrip, System.Windows.Threading.DispatcherPriority.Background);
         }
         else if (TaskbarCreatedMessage != 0 && msg == (int)TaskbarCreatedMessage && !TrayHost.IsOwnBroadcast(wParam))
         {
@@ -135,6 +138,20 @@ internal sealed class TopBarInstance : IDisposable
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// Re-docks on the same monitor, read fresh, but only while it still exists with the same bounds: Windows also
+    /// sends WM_DPICHANGED when it moves the window off a removed monitor, and docking on a stale rectangle could
+    /// reserve a second strip elsewhere (the coordinator's pass handles that case).
+    /// </summary>
+    private void RestoreStrip()
+    {
+        if (!_disposed && !IsDetached && _appBar.IsRegistered
+            && DisplayLayoutService.Read().Find(Monitor.Key) is { } monitor && monitor.Bounds == Monitor.Bounds)
+        {
+            DockOn(monitor);
+        }
     }
 
     /// <summary>The shell restacked the bar (another top AppBar came or went).</summary>
