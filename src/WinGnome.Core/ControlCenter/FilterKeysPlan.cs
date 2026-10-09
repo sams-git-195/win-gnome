@@ -79,4 +79,12 @@ public static class FilterKeysPlan
 
         return current with { Flags = flags & ~On };
     }
+
+    /// <summary>The slow keys switch: on turns bounce keys off; off leaves bounce keys as they are.</summary>
+    public static FilterKeysState ForSlowKeys(FilterKeysState current, bool on) =>
+        For(current, slow: on, bounce: !on && current.IsBounceKeysOn);
+
+    /// <summary>The bounce keys switch: on turns slow keys off; off leaves slow keys as they are.</summary>
+    public static FilterKeysState ForBounceKeys(FilterKeysState current, bool on) =>
+        For(current, slow: !on && current.IsSlowKeysOn, bounce: on);
 }

@@ -107,6 +107,54 @@ public class FilterKeysPlanTests
     }
 
     [Fact]
+    public void ForSlowKeys_On_TurnsBounceOff()
+    {
+        var bounce = new FilterKeysState(0x7F, 0, 0, 0, 700);
+
+        Assert.Equal(new FilterKeysState(0x7F, 1000, 0, 0, 0), FilterKeysPlan.ForSlowKeys(bounce, on: true));
+    }
+
+    [Fact]
+    public void ForSlowKeys_OffWhileBounceIsOn_LeavesBounceOn()
+    {
+        var bounce = new FilterKeysState(0x7F, 0, 0, 0, 700);
+
+        Assert.Equal(bounce, FilterKeysPlan.ForSlowKeys(bounce, on: false));
+    }
+
+    [Fact]
+    public void ForSlowKeys_Off_TurnsFilterKeysOff()
+    {
+        var slow = new FilterKeysState(0x7F, 1000, 1000, 500, 0);
+
+        Assert.Equal(Off, FilterKeysPlan.ForSlowKeys(slow, on: false));
+    }
+
+    [Fact]
+    public void ForBounceKeys_On_TurnsSlowOff()
+    {
+        var slow = new FilterKeysState(0x7F, 1000, 1000, 500, 0);
+
+        Assert.Equal(new FilterKeysState(0x7F, 0, 0, 0, 500), FilterKeysPlan.ForBounceKeys(slow, on: true));
+    }
+
+    [Fact]
+    public void ForBounceKeys_OffWhileSlowIsOn_LeavesSlowOn()
+    {
+        var slow = new FilterKeysState(0x7F, 1000, 1000, 500, 0);
+
+        Assert.Equal(slow, FilterKeysPlan.ForBounceKeys(slow, on: false));
+    }
+
+    [Fact]
+    public void ForBounceKeys_Off_TurnsFilterKeysOff()
+    {
+        var bounce = new FilterKeysState(0x7F, 0, 0, 0, 700);
+
+        Assert.Equal(new FilterKeysState(0x7E, 0, 0, 0, 700), FilterKeysPlan.ForBounceKeys(bounce, on: false));
+    }
+
+    [Fact]
     public void For_SlowAndBounce_Throws()
     {
         Assert.Throws<ArgumentException>(() => FilterKeysPlan.For(Off, slow: true, bounce: true));
