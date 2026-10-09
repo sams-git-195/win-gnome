@@ -49,6 +49,16 @@ internal static partial class NativeMethods
     /// <summary>DWMSBT_TRANSIENTWINDOW: the acrylic backdrop used by flyouts (Windows 11 22H2+).</summary>
     public const int DWMSBT_TRANSIENTWINDOW = 3;
 
+    // ---- Overview transitions ---------------------------------------------------------------
+    /// <summary>DWMWA_TRANSITIONS_FORCEDISABLED: no Windows show/hide animation for the window.</summary>
+    public const int DWMWA_TRANSITIONS_FORCEDISABLED = 3;
+
+    /// <summary>DWMWA_CLOAK: hides a shown window from the screen while it keeps rendering.</summary>
+    public const int DWMWA_CLOAK = 13;
+
+    /// <summary>SPI_GETCLIENTAREAANIMATION: Settings › Accessibility › Visual effects › Animation effects.</summary>
+    public const uint SPI_GETCLIENTAREAANIMATION = 0x1042;
+
     // ---- Monitors ---------------------------------------------------------------------------
     /// <summary>MonitorFromPoint flag: return 0 when the point is on no monitor.</summary>
     public const uint MONITOR_DEFAULTTONULL = 0;
@@ -85,6 +95,10 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool UnregisterHotKey(nint hwnd, int id);
+
+    /// <summary>True when Windows animations are on; also true when the setting cannot be read.</summary>
+    public static bool AreClientAreaAnimationsEnabled() =>
+        !SystemParametersInfoGet(SPI_GETCLIENTAREAANIMATION, 0, out var enabled, 0) || enabled != 0;
 
     /// <summary>
     /// Size of the window in its restored state (physical pixels), which is what a minimised window

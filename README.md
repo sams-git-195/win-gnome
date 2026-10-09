@@ -50,6 +50,7 @@ the way it was when it exits.
 
 ### Activities overview
 - Full-screen overview with **live window thumbnails** (DWM). Click a thumbnail to focus that window, or hover and click × to close it.
+  Thumbnails glide out of their windows when it opens and back when it closes (instant when Windows animations are off).
 - **Type to search** apps and windows. Press Enter to launch the top hit and Esc to close.
 - **Application grid** (from the dock's *Show Applications* button). Right-click an app to pin it to the dock.
 - **Hot corner**: top-left, with a configurable delay.

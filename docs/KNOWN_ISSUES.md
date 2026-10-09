@@ -38,6 +38,10 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-023](#ki-023) | S4 | Dock | Two pins with the same target group the app's windows into the first one | Open |
 | [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
 | [KI-051](#ki-051) | S3 | Accessibility | The round window buttons aren't exposed to screen readers or keyboard | Open |
+| [KI-030](#ki-030) | S4 | Overview | The first overview open after start takes about half a second | Open |
+| [KI-031](#ki-031) | S4 | Overview | Overview animation details not verified on every path | Open |
+| [KI-032](#ki-032) | S4 | Overview | The overview's close glide gets 8–13 frames | Open |
+| [KI-033](#ki-033) | S4 | Overview | A dock request for some windows doesn't narrow an open overview | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -205,6 +209,40 @@ Automation see no Close, Minimise or Maximise buttons in the settings header bar
 can't be focused. The settings window still closes with Alt+F4 and its system menu (Alt+Space) has Minimise,
 Maximise and Close. *Fix direction:* an `AutomationPeer` for the view with one child peer per circle
 (`IInvokeProvider`), named from `CaptionButtonKind`.
+
+### KI-030
+**The first overview open after start takes about half a second** · S4 · Overview · Open
+
+The first time the overview opens, WPF's first full-screen software-rendered frame takes ~430 ms (JIT, glyph and
+layout caches). Since spec 0008 the window stays cloaked until that frame is presented, so nothing appears for
+~470 ms instead of a bare backdrop flashing up; later opens appear 60–120 ms after the key. The 250 ms reveal
+timeout can't help while the UI thread is busy rendering. *Fix direction:* render the overview once, cloaked
+and inactive, shortly after start-up, then hide and shrink it again.
+
+### KI-031
+**Overview animation details not verified on every path** · S4 · Overview · Open
+
+Spec 0008 was checked live for opening, closing by hotkey, Esc and click, reversing mid-open and mid-close, and
+typing during the glide. Not yet exercised live: Windows animations turned off (`SPI_GETCLIENTAREAANIMATION`),
+a window closing during a glide, the hot corner, and DPI other than the dev machine's. Closing from search
+results or the app grid is instant by design (only the window grid glides back).
+
+### KI-032
+**The overview's close glide gets 8–13 frames** · S4 · Overview · Open
+
+Spec 0008 said to move the dim layer into its own small layered window if a glide got fewer than ~12 frames.
+Opening (250 ms) measured 12–15 frames; closing (200 ms) 8–13 at the same 40–60 fps, so the per-frame cost is
+the same and the dim stays in the overview's brush alpha (every frame re-renders the full-screen WPF surface in
+software). *Fix direction:* if closes look choppy on slower machines, move the dim to a layered window or
+lengthen the close.
+
+### KI-033
+**A dock request for some windows doesn't narrow an open overview** · S4 · Overview · Open
+
+Not from spec 0008. With the all-windows grid open, a request for a subset of windows (dock previews,
+`OverviewRequest.OnlyWindows`) only re-shows the existing grid (`ShowModeContent` returns early when thumbnails
+are shown), so every window stays visible until the next window-list change; the reverse switch has the same
+problem. *Fix direction:* rebuild the thumbnails in `ShowModeContent` when the requested window set differs.
 
 ## Resolved
 
