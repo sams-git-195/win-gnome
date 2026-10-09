@@ -166,7 +166,7 @@ internal sealed class SoundPanelViewModel : SystemPanelViewModel
         _inputVolume = Math.Round((input?.Level ?? 0) * 100);
 
         ClearApps();
-        foreach (var app in _audio.ListApps())
+        foreach (var app in _audio.ListApps(readOnly: !CanEdit))
         {
             Apps.Add(app);
         }

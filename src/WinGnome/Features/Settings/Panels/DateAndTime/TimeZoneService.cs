@@ -105,8 +105,11 @@ internal static class TimeZoneService
 
             var enable = new TOKEN_PRIVILEGES_ONE { PrivilegeCount = 1, Luid = luid, Attributes = NativeMethods.SE_PRIVILEGE_ENABLED };
 
+            var size = (uint)Marshal.SizeOf<TOKEN_PRIVILEGES_ONE>();
+
             // AdjustTokenPrivileges reports a privilege the token lacks through the last error, not its result.
-            if (!NativeMethods.AdjustTokenPrivileges(token, false, enable, 0, 0, 0) || Marshal.GetLastPInvokeError() != 0)
+            // previous holds the privilege's earlier state, or nothing when it was already enabled.
+            if (!NativeMethods.AdjustTokenPrivileges(token, false, enable, size, out var previous, out _) || Marshal.GetLastPInvokeError() != 0)
             {
                 Log.Warn($"Could not enable {NativeMethods.SE_TIME_ZONE_NAME} (error {Marshal.GetLastPInvokeError()})");
                 return false;
@@ -124,8 +127,11 @@ internal static class TimeZoneService
             }
             finally
             {
-                var disable = enable with { Attributes = 0 };
-                NativeMethods.AdjustTokenPrivileges(token, false, disable, 0, 0, 0);
+                // Put the privilege back as it was rather than disabling it outright.
+                if (previous.PrivilegeCount > 0)
+                {
+                    NativeMethods.AdjustTokenPrivileges(token, false, previous, size, out _, out _);
+                }
             }
         }
         finally

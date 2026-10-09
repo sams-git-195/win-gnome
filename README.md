@@ -130,7 +130,7 @@ top right), or run `WinGnome.exe` again: a second launch opens the running insta
 | Switch | Effect |
 |---|---|
 | `--settings` | Open the settings window on start |
-| `--settings-panel <id>` | Open the settings window at a panel, e.g. `displays`, `sound`, `power`, `appearance` or `wingnome-dock` (ids in `PanelIds`) |
+| `--settings-panel <id>` | Start WinGnome with the settings window open at a panel, e.g. `displays`, `sound`, `power`, `appearance` or `wingnome-dock` (ids in `PanelIds`). If WinGnome is already running, it just opens its settings window (the panel isn't passed on). |
 | `--settings-dir <path>` | Use a separate profile folder (settings, tweak backups, log) |
 | `--safe` | Safe mode: no taskbar hiding, no registry writes, no keyboard hooks (tray icons still show in the top bar; nothing to undo) |
 | `--selftest` | Start every feature in safe mode, run for 5 s, exit with code 0 on success (used by CI and QA) |
@@ -145,7 +145,7 @@ WinGnome changes as little as possible, and it undoes everything it changes:
 - **Quitting**: use *Quit WinGnome* in quick settings or Settings → About. `taskkill /im WinGnome.exe` (without `/f`) also quits cleanly.
 - **Registry tweaks** only touch `HKEY_CURRENT_USER`. The original values (including "value did not exist") are stored in `tweaks-backup.json`, and **Settings → Streamline → Revert all** restores them.
 - **Tray icons**: WinGnome passes every tray-icon and AppBar message on to Explorer as it arrives, so Explorer always keeps all icons, even if WinGnome is killed. If Explorer ever fails to answer while WinGnome passes a message on, WinGnome asks apps to register their icons with Explorer again when it exits.
-- **Display changes** from Settings → Displays are applied only after Windows accepts the new mode in a test, and the previous settings are saved to `display-revert.json` first. They revert after 15 seconds unless you choose *Keep Changes*, when you leave the panel or close the window during the countdown, and on the next start if WinGnome was killed during it.
+- **Display changes** from Settings → Displays are applied only after Windows accepts the new mode in a test, and the previous and new settings are saved to `display-revert.json` first. Until you choose *Keep Changes* the change is temporary (a reboot or sign-out drops it, as it is not written to the registry), and it reverts after 15 seconds, when you leave the panel or close the window during the countdown, and on the next start if WinGnome was killed during it.
 - Other **Settings panels** change Windows settings on purpose (like Windows Settings does), so those changes are yours and stay after WinGnome exits. Nothing is changed in `--safe` mode.
 - WinGnome never touches elevated (administrator) windows.
 - Log file: `%APPDATA%\WinGnome\wingnome.log`.

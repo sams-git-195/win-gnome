@@ -110,30 +110,59 @@ internal sealed partial class SettingsWindow : Window, IDialogService
         && VisualTreeHelper.GetChild(presenter, 0) is UserControl;
 
     /// <summary>
-    /// The list's selection drives the view model by hand (its binding is one-way): a two-way binding re-reads the
-    /// view model while the list is still selecting, and when a link is refused that leaves the link's row looking
-    /// selected. A link opens Windows Settings and the highlight then returns to the page that is showing.
+    /// The list's selection drives the view model by hand (its binding is one-way: a two-way binding re-reads the view
+    /// model while the list is still selecting, which leaves a refused row looking selected). Selecting a link, by
+    /// mouse or arrow keys, never opens it; a click, Enter or Space does (see below).
     /// </summary>
     private void OnSidebarSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (e.AddedItems is not [SidebarEntry entry])
+        if (e.AddedItems is [SidebarEntry { IsLink: false } entry])
         {
-            return;
+            _viewModel.SelectedEntry = entry;
         }
+    }
 
-        _viewModel.SelectedEntry = entry;
-        if (entry.IsLink)
+    /// <summary>A click on a link row opens it in Windows Settings.</summary>
+    private void OnSidebarMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Left
+            && ItemsControl.ContainerFromElement(SidebarList, (DependencyObject)e.OriginalSource) is ListBoxItem { DataContext: SidebarEntry { IsLink: true } link })
         {
-            Dispatcher.BeginInvoke(DispatcherPriority.Input,
-                () => SidebarList.SetCurrentValue(Selector.SelectedItemProperty, _viewModel.SelectedEntry));
+            OpenLink(link);
         }
+    }
+
+    /// <summary>Enter or Space on a highlighted link opens it.</summary>
+    private void OnSidebarKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Enter or Key.Space && SidebarList.SelectedItem is SidebarEntry { IsLink: true } link)
+        {
+            OpenLink(link);
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>Opens the link, then moves the highlight back to the page that is showing.</summary>
+    private void OpenLink(SidebarEntry link)
+    {
+        _viewModel.OpenLinkEntry(link);
+        Dispatcher.BeginInvoke(DispatcherPriority.Input,
+            () => SidebarList.SetCurrentValue(Selector.SelectedItemProperty, _viewModel.SelectedEntry));
     }
     /// <summary>Escape clears the search; Enter opens the best match; Down moves into the results.</summary>
     private void OnSearchKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter && SidebarList.Items.Count > 0 && SidebarList.Items[0] is SidebarEntry best)
         {
-            _viewModel.SelectedEntry = best;
+            if (best.IsLink)
+            {
+                OpenLink(best);
+            }
+            else
+            {
+                _viewModel.SelectedEntry = best;
+            }
+
             e.Handled = true;
         }
         else if (e.Key == Key.Escape && SearchBox.Text.Length > 0)

@@ -75,7 +75,7 @@ internal static partial class NativeMethods
     [LibraryImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool AdjustTokenPrivileges(nint token, [MarshalAs(UnmanagedType.Bool)] bool disableAll, in TOKEN_PRIVILEGES_ONE newState,
-        uint bufferLength, nint previousState, nint returnLength);
+        uint bufferLength, out TOKEN_PRIVILEGES_ONE previousState, out uint returnLength);
 
     [LibraryImport("kernel32.dll")]
     public static partial nint GetCurrentProcess();

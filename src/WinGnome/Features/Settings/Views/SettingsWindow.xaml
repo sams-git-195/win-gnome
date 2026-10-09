@@ -80,7 +80,7 @@
             <ListBox x:Name="SidebarList" Grid.Row="1" Margin="12,0,12,12" Style="{StaticResource PlainListBox}"
                      ItemContainerStyle="{StaticResource SidebarItem}"
                      ItemsSource="{Binding Sidebar}" SelectedItem="{Binding SelectedEntry, Mode=OneWay}" IsSynchronizedWithCurrentItem="False"
-                     SelectionChanged="OnSidebarSelectionChanged"
+                     SelectionChanged="OnSidebarSelectionChanged" PreviewMouseLeftButtonUp="OnSidebarMouseUp" PreviewKeyDown="OnSidebarKeyDown"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      VirtualizingPanel.IsVirtualizingWhenGrouping="False"
                      AutomationProperties.Name="Settings panels">

@@ -39,7 +39,7 @@ internal sealed class MultitaskingPanelViewModel : SystemPanelViewModel
     /// <summary>WinGnome: workspace dots in the top bar.</summary>
     public ToggleSetting WorkspaceIndicator { get; }
 
-    /// <summary>Windows' master snap switch (drag to an edge to snap; SPI_SETWINARRANGING).</summary>
+    /// <summary>Windows' master snap switch (drag to an edge to snap; SPI_SETWINARRANGING takes the BOOL in pvParam).</summary>
     public bool SnapWindows
     {
         get => _snapWindows;
@@ -48,7 +48,7 @@ internal sealed class MultitaskingPanelViewModel : SystemPanelViewModel
             if (SetProperty(ref _snapWindows, value))
             {
                 _writer.Run($"turn window snapping {(value ? "on" : "off")}",
-                    () => Spi.Set(NativeMethods.SPI_SETWINARRANGING, value ? 1u : 0u, 0, "window snapping"),
+                    () => Spi.Set(NativeMethods.SPI_SETWINARRANGING, 0, value ? 1 : 0, "window snapping"),
                     () => ReportWriteFailure("window snapping"));
             }
         }
@@ -141,9 +141,11 @@ internal sealed class MultitaskingPanelViewModel : SystemPanelViewModel
     private void WriteAdvanced(string name, bool on, string what) =>
         _writer.Run($"turn {what} {(on ? "on" : "off")}", () => SetAdvanced(name, on ? 1 : 0), () => ReportWriteFailure(what));
 
+    /// <summary>Writes an Explorer option and tells Explorer, as Windows Settings does. Runs on the writer thread.</summary>
     private bool SetAdvanced(string name, int value)
     {
         _registry.SetValue(AdvancedKey, name, RegistryValue.DWord(value));
+        SystemBroadcast.SettingChanged("TraySettings");
         return true;
     }
 }

@@ -52,7 +52,7 @@ elements the user wants replaced. WinGnome's own Settings window covers only Win
 
 ## Safety and recovery
 These panels change system settings on purpose, so they don't go through the tweak backup. Displays always uses the
-auto-revert timer; nothing else needs restoring. No HKLM writes, no elevation.
+auto-revert timer; nothing else needs restoring. WinGnome writes no HKLM keys itself and never elevates; the time zone and the power plan's timeouts and mode are machine-wide, changed through the documented (or, for the power mode, undocumented) APIs that standard users may call, exactly as Windows Settings does.
 
 ## Footprint
 Nothing while the window is closed. Services exist only for the open panel.
@@ -87,11 +87,16 @@ What is native and what is linked, as built:
 | Wi-Fi, Network, Bluetooth, Printers, Removable Media, Colour, Notifications, Apps, Default Apps, Online Accounts, Sharing, Privacy & Security, Region & Language, Users, Accessibility, Windows Update | — | Matching `ms-settings:` page (Colour opens `colorcpl.exe`) |
 
 Design decisions taken while building:
-- Display changes use the documented `ChangeDisplaySettingsEx` (test every display's mode with `CDS_TEST`, stage all
-  with `CDS_UPDATEREGISTRY | CDS_NORESET`, apply together) rather than `SetDisplayConfig`, because it carries the
+- Display changes use the documented `ChangeDisplaySettingsEx` rather than `SetDisplayConfig`, because it carries the
   refresh rate directly; `QueryDisplayConfig` is used only for monitor names. Changes are staged in the panel and
-  applied with *Apply*, as GNOME does. The countdown also reverts when the panel or window closes, and at the next
-  normal start after a crash.
+  applied with *Apply*, as GNOME does. At *Apply* the current settings are re-read, every display's new mode is tested
+  (`CDS_TEST`), the original and the target are written to `display-revert.json`, and the target is applied for the
+  session only (no `CDS_UPDATEREGISTRY`), so a reboot or sign-out always drops an unconfirmed change. *Keep Changes*
+  writes it to the registry. A failed apply (including `DISP_CHANGE_RESTART`) restores the original at once. Reverting
+  reapplies the registry's settings (which never saw the change), then display by display if needed, and the record is
+  deleted only when the displays show the original again. The countdown reverts on timeout, on *Revert*, when the
+  panel is left (in the background) or the window closes (at once, as WinGnome may be quitting), and at the next
+  normal start after a crash, off the UI thread and only if the displays still show the recorded target.
 - Every write runs on `SystemSettingWriter` (ordered, off the UI thread, logged, nothing in safe mode), except the
   sound volume sliders, which call Core Audio directly like the top bar does.
 - Rows whose value a Streamline tweak owns (dark mode, accent, snap layouts) are read-only while that tweak is on

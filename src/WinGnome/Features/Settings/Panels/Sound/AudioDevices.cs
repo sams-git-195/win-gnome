@@ -202,7 +202,7 @@ internal sealed class AudioDevices : IDisposable
     /// The apps playing (or able to play) on the default output, each with its own volume. The caller owns the
     /// returned sessions and disposes them.
     /// </summary>
-    public IReadOnlyList<AppVolume> ListApps()
+    public IReadOnlyList<AppVolume> ListApps(bool readOnly)
     {
         var apps = new List<AppVolume>();
         WithDefault(EDataFlow.Render, device =>
@@ -217,7 +217,7 @@ internal sealed class AudioDevices : IDisposable
                 for (var i = 0; i < count; i++)
                 {
                     var control = sessions.GetSession(i);
-                    if (AppVolume.TryCreate(control, ProcessDescription) is { } app)
+                    if (AppVolume.TryCreate(control, ProcessDescription, readOnly) is { } app)
                     {
                         apps.Add(app);
                     }
@@ -416,25 +416,27 @@ internal sealed class AppVolume : ObservableObject, IDisposable
     private IAudioSessionControl2? _control;
     private ISimpleAudioVolume? _volume;
     private double _level;
+    private readonly bool _readOnly;
     private Guid _eventContext = Guid.NewGuid();
 
-    private AppVolume(IAudioSessionControl2 control, ISimpleAudioVolume volume, string name, double level)
+    private AppVolume(IAudioSessionControl2 control, ISimpleAudioVolume volume, string name, double level, bool readOnly)
     {
         _control = control;
         _volume = volume;
         Name = name;
         _level = level;
+        _readOnly = readOnly;
     }
 
     public string Name { get; }
 
-    /// <summary>0..1. Setting it changes the app's volume at once (the caller checks read-only mode).</summary>
+    /// <summary>0..1. Setting it changes the app's volume at once, except in read-only (safe) mode.</summary>
     public double Level
     {
         get => _level;
         set
         {
-            if (_volume is null || !SetProperty(ref _level, VolumeLevel.Clamp(value)))
+            if (_readOnly || _volume is null || !SetProperty(ref _level, VolumeLevel.Clamp(value)))
             {
                 return;
             }
@@ -455,7 +457,7 @@ internal sealed class AppVolume : ObservableObject, IDisposable
     /// Wraps a session that is still alive, naming it from its display name or its process. Takes ownership of
     /// <paramref name="control"/> (released when the session is expired or can't be read).
     /// </summary>
-    public static AppVolume? TryCreate(IAudioSessionControl2 control, Func<uint, string?> describeProcess)
+    public static AppVolume? TryCreate(IAudioSessionControl2 control, Func<uint, string?> describeProcess, bool readOnly)
     {
         try
         {
@@ -469,7 +471,7 @@ internal sealed class AppVolume : ObservableObject, IDisposable
                 ? "System Sounds"
                 : SystemInfoText.AudioSessionName(control.GetDisplayName(), describeProcess(control.GetProcessId()));
             var volume = (ISimpleAudioVolume)control;
-            return new AppVolume(control, volume, name, VolumeLevel.Clamp(volume.GetMasterVolume()));
+            return new AppVolume(control, volume, name, VolumeLevel.Clamp(volume.GetMasterVolume()), readOnly);
         }
         catch (Exception ex) when (ex is COMException or InvalidCastException)
         {

@@ -19,6 +19,9 @@ internal static class PowerModeApi
     /// <summary>"Best performance".</summary>
     public static readonly Guid Performance = new("DED574B5-45A0-4F42-8737-46345C09C238");
 
+    /// <summary>Windows 10's default slider position ("Better performance"), which Windows 11 calls Balanced.</summary>
+    private static readonly Guid Windows10Balanced = new("3AF9B8D9-7C97-431D-AD78-34A8BFEA439F");
+
     /// <summary>The current power mode, or null when it is unavailable (logged).</summary>
     public static Guid? Read()
     {
@@ -28,7 +31,7 @@ internal static class PowerModeApi
                 Log.Warn("This Windows has no power mode functions in powrprof.dll; the power mode row is hidden");
                 return null;
             case 0:
-                return mode;
+                return mode == Windows10Balanced ? Balanced : mode;
             case var error:
                 // Windows 11 has no power mode while a plan other than Balanced is active, and reports an error then.
                 Log.Info($"PowerGetEffectiveOverlayScheme failed (error {error}); the power mode row is hidden");

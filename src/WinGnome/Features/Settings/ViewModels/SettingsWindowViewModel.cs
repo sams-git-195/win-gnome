@@ -69,7 +69,8 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
         Sidebar = new ListCollectionView(Entries.ToList()) { Filter = IsVisibleInSidebar };
         Sidebar.GroupDescriptions.Add(new PropertyGroupDescription(nameof(SidebarEntry.GroupTitle)));
 
-        _selectedEntry = Entries.First(e => e.Page is not null);
+        // WinGnome's General page is cheap to show; the system panels read Windows only when chosen.
+        _selectedEntry = Entries.First(e => e.Id == PanelIds.General);
         _selectedEntry.Page!.OnSelected();
     }
 
@@ -90,8 +91,8 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// The highlighted sidebar entry. Choosing a link opens it in Windows Settings and keeps the current page;
-    /// null (the list clears its selection while it filters) is ignored.
+    /// The sidebar entry whose page is showing. Links and null (the list clears its selection while it filters) are
+    /// ignored.
     /// </summary>
     public SidebarEntry SelectedEntry
     {
@@ -105,8 +106,7 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
 
             if (value.Page is null)
             {
-                // The view puts the list's highlight back on the current page.
-                OpenLink(value.Panel.LinkUri!);
+                // Links are never the current page; the view opens them with OpenLinkEntry on a click or Enter.
                 return;
             }
 
@@ -146,7 +146,23 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
             return;
         }
 
-        SelectedEntry = entry;
+        if (entry.IsLink)
+        {
+            OpenLinkEntry(entry);
+        }
+        else
+        {
+            SelectedEntry = entry;
+        }
+    }
+
+    /// <summary>Opens a link entry's Windows Settings page (or control panel); the current page stays.</summary>
+    public void OpenLinkEntry(SidebarEntry entry)
+    {
+        if (entry.IsLink)
+        {
+            OpenLink(entry.Panel.LinkUri!);
+        }
     }
 
     /// <summary>Commits edits still waiting on a debounce timer; call before the window closes.</summary>

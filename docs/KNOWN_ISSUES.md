@@ -344,8 +344,10 @@ Every panel was opened and read on Windows 11 25H2 (single display, laptop) and 
 in light and dark mode at 125 %, but in `--safe` mode: to avoid changing the developer's machine, no display mode,
 default device, power plan value, power mode, time zone, wallpaper, accent, style, mouse, keyboard or snap value was
 written during development. The write paths follow the documented APIs, run off the UI thread, log Win32 errors and
-show the problem banner; Displays tests every mode before applying, records the previous settings first and always
-counts down to a revert. Multi-display arrangement was exercised only through `DisplayArrangement` tests.
+show the problem banner; Displays tests every mode before applying, records the previous and new settings first,
+applies the change for the session only (no registry write until *Keep Changes*) and always counts down to a revert.
+Whether Windows accepts a session-only primary-display change (`CDS_SET_PRIMARY` without `CDS_UPDATEREGISTRY`) is
+unverified; if it refuses, the panel restores the original and reports it. Multi-display arrangement was exercised only through `DisplayArrangement` tests.
 *Next step:* a manual pass per panel on a test machine (acceptance criteria 2 of spec 0015): change, confirm it
 shows in Windows Settings, change back; for Displays, let the countdown revert, kill WinGnome during a countdown
 and restart it.
@@ -354,10 +356,11 @@ and restart it.
 **Snap and Alt+Tab options may need a new sign-in to take effect** · S4 · Settings · Open
 
 The Multitasking panel writes `SnapAssist`, `EnableSnapAssistFlyout` and `VirtualDesktopAltTabFilter` under
-`HKCU\…\Explorer\Advanced`, the values Windows Settings writes, without a broadcast; Explorer may read some of them
-only when it starts (the Streamline snap-flyout tweak restarts Explorer for that reason). *Snap Windows* uses
-`SPI_SETWINARRANGING` and applies at once. *Fix direction:* find the notification Windows Settings sends, or offer
-an Explorer restart as the Streamline page does.
+`HKCU\…\Explorer\Advanced`, the values Windows Settings writes, and broadcasts `WM_SETTINGCHANGE` ("TraySettings");
+Explorer may still read some of them only when it starts (the Streamline snap-flyout tweak restarts Explorer for
+that reason). *Snap Windows* uses
+`SPI_SETWINARRANGING` and applies at once. *Fix direction:* confirm live which values need a restart, and offer an
+Explorer restart for those as the Streamline page does.
 
 ### KI-065
 **Quick settings and Win+I don't open the matching native panel yet** · S4 · Settings · Open
