@@ -506,7 +506,7 @@ public class AppSettingsTests
 
         settings.Normalize();
 
-        Assert.Equal(11, enumSettings.Count);
+        Assert.Equal(13, enumSettings.Count);
         Assert.All(enumSettings, s => Assert.True(
             Enum.IsDefined(s.Property.PropertyType, s.Property.GetValue(s.Section)!),
             $"{s.Property.DeclaringType!.Name}.{s.Property.Name} is not normalised"));
