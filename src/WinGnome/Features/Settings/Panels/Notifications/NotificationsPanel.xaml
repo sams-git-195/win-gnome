@@ -1,0 +1,31 @@
+<UserControl x:Class="WinGnome.Features.Settings.Panels.Notifications.NotificationsPanel" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls"
+             xmlns:p="clr-namespace:WinGnome.Features.Settings.Panels">
+    <StackPanel>
+        <p:PanelNotices />
+
+        <StackPanel IsEnabled="{Binding CanEdit}">
+            <c:SettingsGroup>
+                <!-- Hidden until a Do Not Disturb service is supplied (spec 0017): DoNotDisturb is null until then. -->
+                <c:SettingsRow Title="Do Not Disturb" Subtitle="Hide banners and silence notification sounds."
+                               Visibility="{Binding DoNotDisturb, Converter={x:Static c:Converters.NotNullToVisibility}}">
+                    <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding DoNotDisturb.IsOn}"
+                              IsEnabled="{Binding DoNotDisturb.IsInteractive}" />
+                </c:SettingsRow>
+                <c:SettingsRow Title="Notifications" Subtitle="Let apps and Windows show notifications.">
+                    <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding Master.IsOn}" IsEnabled="{Binding Master.IsInteractive}" />
+                </c:SettingsRow>
+                <c:SettingsRow Title="Lock Screen Notifications" Subtitle="{Binding LockScreenSubtitle}">
+                    <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding LockScreen.IsOn}" IsEnabled="{Binding LockScreen.IsInteractive}" />
+                </c:SettingsRow>
+            </c:SettingsGroup>
+
+            <c:SettingsGroup Header="Applications" Description="{Binding AppsDescription}"
+                             ItemsSource="{Binding Apps}" AutomationProperties.Name="Applications" />
+        </StackPanel>
+
+        <p:PanelFooter />
+    </StackPanel>
+</UserControl>

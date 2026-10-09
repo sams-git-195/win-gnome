@@ -20,25 +20,25 @@ public static class SettingsPanelCatalog
         Native(PanelIds.Power, "Power", "", PanelGroup.Devices, "ms-settings:powersleep", "battery", "sleep", "suspend", "screen blank", "power mode", "energy"),
         Native(PanelIds.Mouse, "Mouse & Touchpad", "", PanelGroup.Devices, "ms-settings:mousetouchpad", "pointer", "speed", "acceleration", "scroll", "primary button", "trackpad"),
         Native(PanelIds.Keyboard, "Keyboard", "", PanelGroup.Devices, "ms-settings:typing", "repeat", "delay", "input sources", "layout", "language"),
-        Link(PanelIds.Printers, "Printers", "", PanelGroup.Devices, "ms-settings:printers", "print", "scanner"),
-        Link(PanelIds.RemovableMedia, "Removable Media", "", PanelGroup.Devices, "ms-settings:autoplay", "autoplay", "usb", "drive"),
+        Native(PanelIds.Printers, "Printers", "", PanelGroup.Devices, "ms-settings:printers", "print", "scanner", "default printer", "print queue", "printer properties", "add printer"),
+        Native(PanelIds.RemovableMedia, "Removable Media", "", PanelGroup.Devices, "ms-settings:autoplay", "autoplay", "usb", "drive", "cd", "dvd", "memory card", "camera", "media insertion"),
         Link(PanelIds.Colour, "Colour", "", PanelGroup.Devices, "colorcpl.exe", "color", "colour profile", "icc", "calibration"),
 
         Native(PanelIds.Appearance, "Appearance", "", PanelGroup.Personalisation, "ms-settings:colors", "dark mode", "light mode", "style", "theme", "accent colour", "accent color", "wallpaper", "background"),
         Native(PanelIds.Multitasking, "Multitasking", "", PanelGroup.Personalisation, "ms-settings:multitasking", "hot corner", "workspaces", "virtual desktops", "snap", "alt+tab", "app switching"),
-        Link(PanelIds.Notifications, "Notifications", "", PanelGroup.Personalisation, "ms-settings:notifications", "do not disturb", "focus", "alerts"),
+        Native(PanelIds.Accessibility, "Accessibility", "", PanelGroup.Personalisation, "ms-settings:easeofaccess", "a11y", "narrator", "magnifier", "contrast", "on-screen keyboard", "sticky keys", "slow keys", "bounce keys", "filter keys", "cursor size", "pointer size", "text cursor", "caret", "animations", "reduce motion", "high contrast", "contrast themes", "osk", "screen reader"),
 
-        Link(PanelIds.Apps, "Apps", "", PanelGroup.AppsAndPrivacy, "ms-settings:appsfeatures", "installed", "uninstall", "programs"),
+        Native(PanelIds.Apps, "Apps", "", PanelGroup.AppsAndPrivacy, "ms-settings:appsfeatures", "installed", "uninstall", "programs", "startup apps", "autostart", "run at sign-in", "store apps", "packages", "size", "version"),
+        Native(PanelIds.Notifications, "Notifications", "", PanelGroup.AppsAndPrivacy, "ms-settings:notifications", "do not disturb", "focus", "alerts", "banners", "toasts", "lock screen", "app notifications", "dnd"),
         Link(PanelIds.DefaultApps, "Default Apps", "", PanelGroup.AppsAndPrivacy, "ms-settings:defaultapps", "browser", "file types", "open with"),
         Link(PanelIds.OnlineAccounts, "Online Accounts", "", PanelGroup.AppsAndPrivacy, "ms-settings:emailandaccounts", "email", "microsoft account", "sign in"),
         Link(PanelIds.Sharing, "Sharing", "", PanelGroup.AppsAndPrivacy, "ms-settings:remotedesktop", "remote desktop", "screen sharing"),
-        Link(PanelIds.Privacy, "Privacy & Security", "", PanelGroup.AppsAndPrivacy, "ms-settings:privacy", "location", "camera", "permissions", "defender"),
+        Native(PanelIds.Privacy, "Privacy & Security", "", PanelGroup.AppsAndPrivacy, "ms-settings:privacy", "location", "camera", "permissions", "defender", "microphone", "webcam", "app permissions", "screen lock"),
 
-        Link(PanelIds.RegionLanguage, "Region & Language", "", PanelGroup.System, "ms-settings:regionlanguage", "locale", "formats", "translation", "language"),
+        Native(PanelIds.RegionLanguage, "Region & Language", "", PanelGroup.System, "ms-settings:regionlanguage", "locale", "formats", "translation", "language", "region", "country", "date format", "time format", "first day of week", "number format", "display language"),
         Native(PanelIds.DateTime, "Date & Time", "", PanelGroup.System, "ms-settings:dateandtime", "time zone", "timezone", "clock", "24-hour", "calendar"),
         Link(PanelIds.Users, "Users", "", PanelGroup.System, "ms-settings:otherusers", "accounts", "family", "password"),
-        Link(PanelIds.Accessibility, "Accessibility", "", PanelGroup.System, "ms-settings:easeofaccess", "a11y", "narrator", "magnifier", "contrast", "on-screen keyboard"),
-        Link(PanelIds.WindowsUpdate, "Windows Update", "", PanelGroup.System, "ms-settings:windowsupdate", "updates", "upgrade"),
+        Native(PanelIds.WindowsUpdate, "Windows Update", "", PanelGroup.System, "ms-settings:windowsupdate", "updates", "upgrade", "check for updates", "pending updates", "restart required", "update history"),
         Native(PanelIds.About, "About", "", PanelGroup.System, "ms-settings:about", "system", "version", "memory", "processor", "cpu", "graphics", "gpu", "disk", "device name"),
 
         WinGnome(PanelIds.General, "General", "", "startup", "taskbar", "theme", "center new windows", "focus follows mouse"),
@@ -58,7 +58,8 @@ public static class SettingsPanelCatalog
     /// <summary>
     /// What a shortcut to <paramref name="panelId"/> (a top-bar row) launches instead of opening the settings window: a
     /// link panel's Windows Settings page, so a Wi-Fi row doesn't also pop up the settings app. Null for native panels
-    /// and WinGnome pages, which the window shows, and for unknown ids, which the window logs.
+    /// and WinGnome pages, which the window shows (or, for a native panel whose page the app doesn't have, opens as
+    /// its link), and for unknown ids, which the window logs.
     /// </summary>
     public static string? DirectLinkFor(string panelId) =>
         Find(panelId) is { Kind: PanelKind.Link } panel ? panel.LinkUri : null;

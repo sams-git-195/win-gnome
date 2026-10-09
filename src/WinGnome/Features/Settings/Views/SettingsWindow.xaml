@@ -10,6 +10,7 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="SettingTemplates.xaml" />
+                <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/PanelResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <!-- Sidebar groups are separated by a hairline, as in GNOME Settings; the first group has none. -->

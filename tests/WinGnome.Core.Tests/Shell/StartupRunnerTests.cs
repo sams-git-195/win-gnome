@@ -355,4 +355,35 @@ public class StartupRunnerTests
     {
         Assert.Equal(StartupApproval.Enabled, new StartupApprovedSet().Get(StartupSource.RunUser, "nothing"));
     }
+
+    // Captured from Windows 11 25H2 (HKCU StartupApproved\Run, written by Task Manager).
+    private static readonly byte[] WindowsEnabled = [0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+    private static readonly byte[] WindowsDisabled = [0x03, 0x00, 0x00, 0x00, 0x2C, 0x55, 0xF4, 0x4E, 0xDD, 0xD8, 0xDC, 0x01];
+    private const long WindowsDisabledFileTime = 0x01DCD8DD4EF4552C;
+
+    [Fact]
+    public void Encode_Enabled_MatchesWindows()
+    {
+        Assert.Equal(WindowsEnabled, StartupApprovedSet.Encode(StartupApproval.Enabled, WindowsDisabledFileTime));
+    }
+
+    [Fact]
+    public void Encode_Disabled_MatchesWindows()
+    {
+        Assert.Equal(WindowsDisabled, StartupApprovedSet.Encode(StartupApproval.Disabled, WindowsDisabledFileTime));
+    }
+
+    [Fact]
+    public void Encode_DisabledAtTimeZero_IsThreeThenZeros()
+    {
+        Assert.Equal([0x03, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], StartupApprovedSet.Encode(StartupApproval.Disabled, 0));
+    }
+
+    [Theory]
+    [InlineData(StartupApproval.Enabled)]
+    [InlineData(StartupApproval.Disabled)]
+    public void Encode_RoundTripsThroughParse(StartupApproval approval)
+    {
+        Assert.Equal(approval, StartupApprovedSet.Parse(StartupApprovedSet.Encode(approval, WindowsDisabledFileTime)));
+    }
 }

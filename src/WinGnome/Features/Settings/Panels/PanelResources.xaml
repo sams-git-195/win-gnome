@@ -1,0 +1,20 @@
+<!--
+    Views of the system panels added by spec 0020, one merged dictionary per panel. Each panel keeps its DataTemplate
+    (view model type to view) in its own Panels/<Name>/<Name>PanelResources.xaml and adds exactly one line below, for
+    example:
+        <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/Printers/PrintersPanelResources.xaml" />
+    The earlier panels' templates stay in Views/SettingTemplates.xaml. SettingsWindow.xaml merges this file once.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/Apps/AppsPanelResources.xaml" />
+        <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/Notifications/NotificationsPanelResources.xaml" />
+        <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/Privacy/PrivacyPanelResources.xaml" />
+        <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/Printers/PrintersPanelResources.xaml" />
+        <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/RemovableMedia/RemovableMediaPanelResources.xaml" />
+        <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/Accessibility/AccessibilityPanelResources.xaml" />
+        <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/RegionLanguage/RegionLanguagePanelResources.xaml" />
+        <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/WindowsUpdate/WindowsUpdatePanelResources.xaml" />
+    </ResourceDictionary.MergedDictionaries>
+</ResourceDictionary>

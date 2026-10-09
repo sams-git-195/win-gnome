@@ -1,0 +1,29 @@
+<UserControl x:Class="WinGnome.Features.Settings.Panels.Privacy.PrivacyCapabilityView" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls"
+             Focusable="False" IsTabStop="False">
+    <!-- One capability (camera, microphone or location); the data context is a PrivacyCapabilityViewModel. -->
+    <StackPanel>
+        <c:SettingsGroup Header="{Binding Title}">
+            <c:SettingsRow Title="{Binding Noun, StringFormat=Let apps access your {0}}"
+                           Subtitle="Packaged apps from the Microsoft Store and similar. Each app has its own switch below.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding Apps.IsOn}" IsEnabled="{Binding Apps.IsInteractive}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="{Binding Noun, StringFormat=Let desktop apps access your {0}}"
+                           Subtitle="Classic programs. Windows doesn't offer a switch per desktop app.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding Desktop.IsOn}" IsEnabled="{Binding Desktop.IsInteractive}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="{Binding Noun, StringFormat=Access to your {0} on this device}" Subtitle="{Binding DeviceText}">
+                <Button Content="Open Windows Settings" Style="{DynamicResource SettingsButton}" Command="{Binding OpenDeviceCommand}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Apps" Subtitle="{Binding AppsSummary}">
+                <Button Content="{Binding ExpandLabel}" Style="{DynamicResource SettingsButton}" Command="{Binding ToggleExpandedCommand}"
+                        AutomationProperties.Name="{Binding Title, StringFormat=Show or hide the apps for {0}}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup ItemsSource="{Binding AppList}" Visibility="{Binding IsExpanded, Converter={x:Static c:Converters.BoolToVisibility}}"
+                         AutomationProperties.Name="{Binding Title, StringFormat=Apps that asked for {0}}" />
+    </StackPanel>
+</UserControl>
