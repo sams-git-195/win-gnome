@@ -359,6 +359,39 @@ So the janitor is the outcome A shape (one nudge at start and on `--restore-task
   the broadcast is caught by the forced passes 1.5 s and 10 s after start (`DisplayLayoutService.VerifyAfterStart`)
   or fixed by Explorer itself on the next AppBar traffic. Self-test cannot reproduce this (it never hides the
   taskbar); the manual check is the spike's `resetwork` step above, plus a non-safe start with the taskbar hidden.
+- **Explorer applies strips late after the taskbar is hidden** (third live run, 2026-10-09; supersedes the
+  "register again at once" part of the two notes above). Facts:
+  - `TaskbarController.Hide` sends `ABM_SETSTATE(ABS_AUTOHIDE)` to Explorer's `Shell_TrayWnd` and then immediately
+    `ShowWindow(SW_HIDE)`s every `Shell_TrayWnd`/`Shell_SecondaryTrayWnd` (unchanged by this spec).
+  - With the taskbar visible before start: the branch registered at +0.2 s, found both strips missing at +2.3 s and
+    +10.8 s and registered again each time; at +14 s neither strip was reserved. The old build (main before 0010)
+    docked at the same point and its strip appeared only ~35 s later, with no activity of its own at that moment.
+    Session 1 also started unreserved. So the delay predates this spec, and re-registering during it neither helped
+    nor is known to be harmless (it may restart Explorer's delay).
+  - In a steady state (taskbar already hidden for a while) Explorer applies a strip within ~0.3 s (spike 0, storm
+    check), and after `SPI_SETWORKAREA` reset the work area, registering again restored every strip at once.
+
+  Hypothesis (unverified): switching to auto-hide makes Explorer recompute work areas only when its hide transition
+  completes, and hiding the taskbar windows in the middle of that transition leaves it to a long fallback. The
+  experiment tool `scratchpad\tbexp` (not committed) measures it; it refuses to run while any WinGnome runs and puts
+  the taskbar back afterwards. Next user session, with every WinGnome quit, run each variant once and keep the log:
+  `TbExp.exe immediate log.txt` (today's order), `TbExp.exe settle log.txt` (hide the windows only after Explorer
+  has applied auto-hide), `TbExp.exe nohide log.txt` (auto-hide only), `TbExp.exe spi log.txt` (today's order plus
+  `SPI_SETWORKAREA` after 2 s). Each docks a 40 px top AppBar and logs work areas every 250 ms for 60 s.
+
+  Options, depending on the result:
+  1. *Fix the order* (if `settle` reserves promptly): `TaskbarController.Hide` waits (bounded, on the dispatcher, no
+     blocking) for Explorer to apply auto-hide before hiding the windows. Smallest change; no new system state.
+  2. *Outcome B / hybrid* (if only `spi` is prompt): bars rely on AppBars as now, and when the expected work area is
+     still not applied after a grace period, WinGnome sets it with documented `SystemParametersInfo(SPI_SETWORKAREA)`
+     per monitor (not persisted). Needs the original work areas recorded before the first change (a marker file like
+     `taskbar.state`), restoring them on exit, crash and next start, and care because Explorer recomputes work areas
+     on its own afterwards (it would then normally produce the same rectangle). Separate design note and advisor
+     review first, as this spec already requires for outcome B.
+  3. *Wait it out* (the old build's behaviour, now the interim): what ships in this commit. `StripRecovery` (Core,
+     tested) only waits while a strip is missing: 45 s grace (longer than the ~35 s seen), then at most three
+     re-registrations 60 s, 120 s and 240 s apart, then it gives up until the next display change. A one-shot timer
+     runs only while a strip is missing; notifications and display passes cannot make it act sooner.
 - Turning the dock off now destroys its instances (it used to hide the window and keep it).
 - `AppBar.RegisterAndRemove` serves the janitor, so `SHAppBarMessage` stays in one place and is counted.
 - Footprint measured on the QA machine (`--safe`, top bar only, 20 s idle): main display only 91.9 MB private,

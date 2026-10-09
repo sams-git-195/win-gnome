@@ -71,41 +71,108 @@ public class AppBarReservationTests
     private static readonly PixelRect Lower = new(0, 40, 2560, 80);
 
     [Fact]
-    public void Decide_SameSlotAndStripReserved_DoesNothing()
+    public void ShouldMove_SameSlot_IsFalse()
     {
-        Assert.Equal(AppBarRecheck.None, AppBarReservation.Decide(PrimaryBar, PrimaryBar, PrimaryBar, stripReserved: true, long.MaxValue));
+        Assert.False(AppBarReservation.ShouldMove(PrimaryBar, PrimaryBar, PrimaryBar));
     }
 
     [Fact]
-    public void Decide_SameSlotButStripLostFromTheWorkArea_Reclaims()
-    {
-        // The regression: Explorer recomputed work areas after the taskbar went auto-hide and left our strip out
-        // without moving any bar; comparing slots alone did nothing.
-        Assert.Equal(AppBarRecheck.Reclaim, AppBarReservation.Decide(PrimaryBar, PrimaryBar, PrimaryBar, stripReserved: false, long.MaxValue));
-    }
-
-    [Theory]
-    [InlineData(1999, AppBarRecheck.None)]
-    [InlineData(2000, AppBarRecheck.Reclaim)]
-    public void Decide_StripLostSoonAfterAReclaim_WaitsForTheCooldown(long msSinceLastReclaim, AppBarRecheck expected)
-    {
-        Assert.Equal(expected, AppBarReservation.Decide(PrimaryBar, PrimaryBar, PrimaryBar, stripReserved: false, msSinceLastReclaim));
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void Decide_ShellOffersAnotherSlot_Moves(bool stripReserved)
+    public void ShouldMove_ShellOffersAnotherSlot_IsTrue()
     {
         // Another top bar arrived above ours: the shell now offers the strip below it.
-        Assert.Equal(AppBarRecheck.Move, AppBarReservation.Decide(Lower, PrimaryBar, PrimaryBar, stripReserved, 0));
+        Assert.True(AppBarReservation.ShouldMove(Lower, PrimaryBar, PrimaryBar));
     }
 
     [Fact]
-    public void Decide_ShellAdjustedOurRequest_IsNotAMove()
+    public void ShouldMove_ShellAdjustedOurRequest_IsFalse()
     {
         // We asked for Lower, SETPOS granted PrimaryBar; QUERYPOS answering Lower again is our own request.
-        Assert.Equal(AppBarRecheck.None, AppBarReservation.Decide(Lower, PrimaryBar, Lower, stripReserved: true, long.MaxValue));
+        Assert.False(AppBarReservation.ShouldMove(Lower, PrimaryBar, Lower));
+    }
+
+    [Fact]
+    public void Recovery_ReservedStrip_DoesNothing()
+    {
+        var recovery = new StripRecovery();
+
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.None), recovery.Update(reserved: true, 1000));
+        Assert.False(recovery.IsMissing);
+    }
+
+    [Fact]
+    public void Recovery_MissingStrip_WaitsForExplorerFirst()
+    {
+        // The third live run: Explorer applied the strips ~35 s after the taskbar went auto-hide, on its own.
+        var recovery = new StripRecovery();
+
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 46_000), recovery.Update(reserved: false, 1000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 46_000), recovery.Update(reserved: false, 45_999));
+        Assert.True(recovery.IsMissing);
+    }
+
+    [Fact]
+    public void Recovery_ExplorerAppliesTheStripDuringTheGrace_NeverRegistersAgain()
+    {
+        var recovery = new StripRecovery();
+        recovery.Update(reserved: false, 1000);
+
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.None), recovery.Update(reserved: true, 36_000));
+        Assert.False(recovery.IsMissing);
+    }
+
+    [Fact]
+    public void Recovery_StillMissing_RegistersAgainWithADoublingBackoff_ThenGivesUp()
+    {
+        var recovery = new StripRecovery();
+        recovery.Update(reserved: false, 0);
+
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Reregister, 105_000), recovery.Update(reserved: false, 45_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 105_000), recovery.Update(reserved: false, 104_999));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Reregister, 225_000), recovery.Update(reserved: false, 105_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Reregister, 465_000), recovery.Update(reserved: false, 225_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp), recovery.Update(reserved: false, 465_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp), recovery.Update(reserved: false, 10_000_000));
+    }
+
+    [Fact]
+    public void Recovery_FrequentChecks_NeverRegisterMoreOftenThanTheBackoff()
+    {
+        // Notifications and display passes can arrive many times a second; only the schedule decides.
+        var recovery = new StripRecovery();
+        recovery.Update(reserved: false, 0);
+
+        Assert.Equal(StripRecoveryKind.Reregister, recovery.Update(reserved: false, 45_000).Kind);
+        Assert.Equal(StripRecoveryKind.Wait, recovery.Update(reserved: false, 45_001).Kind);
+        Assert.Equal(StripRecoveryKind.Wait, recovery.Update(reserved: false, 60_000).Kind);
+    }
+
+    [Fact]
+    public void Recovery_StripReservedAgain_StartsAfreshNextTime()
+    {
+        var recovery = new StripRecovery();
+        recovery.Update(reserved: false, 0);
+        recovery.Update(reserved: false, 45_000);
+        recovery.Update(reserved: true, 50_000);
+
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 145_000), recovery.Update(reserved: false, 100_000));
+    }
+
+    [Fact]
+    public void Recovery_Reset_ForgetsTheAttempts()
+    {
+        // Used up every attempt, then undocked (Reset) and docked again: the new strip gets every attempt again.
+        var recovery = new StripRecovery();
+        recovery.Update(reserved: false, 0);
+        recovery.Update(reserved: false, 45_000);
+        recovery.Update(reserved: false, 105_000);
+        recovery.Update(reserved: false, 225_000);
+        Assert.Equal(StripRecoveryKind.GiveUp, recovery.Update(reserved: false, 465_000).Kind);
+
+        recovery.Reset();
+
+        Assert.False(recovery.IsMissing);
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 545_000), recovery.Update(reserved: false, 500_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Reregister, 605_000), recovery.Update(reserved: false, 545_000));
     }
 
     [Fact]

@@ -2,36 +2,15 @@ using WinGnome.Core.Geometry;
 
 namespace WinGnome.Core.Shell;
 
-/// <summary>What a docked bar does when the shell notifies it (ABN_POSCHANGED or ABN_STATECHANGE).</summary>
-public enum AppBarRecheck
-{
-    /// <summary>Nothing changed for this bar: one QUERYPOS was all it cost.</summary>
-    None,
-    /// <summary>The shell offers another slot (a bar on the same edge came or went): SETPOS there and move.</summary>
-    Move,
-    /// <summary>
-    /// Same slot, but the work area no longer leaves the strip out: register again in that slot (a SETPOS of the
-    /// unchanged rectangle was seen not to bring the strip back).
-    /// </summary>
-    Reclaim,
-}
-
-/// <summary>Whether a monitor's work area still leaves a docked AppBar's strip out, and what to do when it doesn't.</summary>
+/// <summary>Whether a monitor's work area still leaves a docked AppBar's strip out.</summary>
 public static class AppBarReservation
 {
     /// <summary>
-    /// Shortest gap between two reclaims of one bar from notifications. If the shell ever ignored a reclaim, two bars
-    /// that reclaim on each other's notifications would otherwise notify each other forever; the debounced display
-    /// passes catch anything left after the cool-down.
-    /// </summary>
-    public const long ReclaimCooldownMs = 2000;
-
-    /// <summary>
     /// True when <paramref name="workArea"/> stops short of <paramref name="strip"/> on <paramref name="edge"/>, so
-    /// maximised windows stay clear of it. Explorer recomputes work areas on its own (after the taskbar's auto-hide
-    /// state changes, after a monitor is unplugged) and can leave a registered bar's strip out; this is how a bar
-    /// notices. A bar stacked behind another AppBar on the same edge still passes (the work area ends beyond both).
-    /// An empty strip reserves nothing and always passes.
+    /// maximised windows stay clear of it. Explorer applies AppBar strips to work areas on its own schedule (right
+    /// after the taskbar was switched to auto-hide it was seen to take ~35 s) and can recompute them without our strip
+    /// (a monitor unplugged); this is how a bar notices. A bar stacked behind another AppBar on the same edge still
+    /// passes (the work area ends beyond both). An empty strip reserves nothing and always passes.
     /// </summary>
     public static bool IsReserved(AppBarEdge edge, PixelRect strip, PixelRect workArea)
     {
@@ -50,22 +29,90 @@ public static class AppBarReservation
     }
 
     /// <summary>
-    /// The response to a shell notification. Idempotence is "the shell's slot is ours and the work area already
-    /// leaves the strip out", not "the slot is unchanged": Explorer can drop a strip from the work area without moving
-    /// any bar, and then only registering again brings it back.
+    /// Whether a shell notification (ABN_POSCHANGED, ABN_STATECHANGE) moves the bar: only when the shell offers a
+    /// different slot than the one the bar holds or last asked for. Answering every notification with a SETPOS lets N
+    /// bars on one edge notify each other forever. A missing strip is <see cref="StripRecovery"/>'s business.
     /// </summary>
     /// <param name="queried">The QUERYPOS answer with the bar's thickness applied.</param>
     /// <param name="bounds">The rectangle the bar holds now.</param>
     /// <param name="requested">The rectangle the bar last asked for (the shell may have adjusted it into <paramref name="bounds"/>).</param>
-    /// <param name="stripReserved"><see cref="IsReserved"/> for <paramref name="bounds"/> and a fresh work area.</param>
-    /// <param name="msSinceLastReclaim">Time since this bar last reclaimed from a notification (long.MaxValue: never).</param>
-    public static AppBarRecheck Decide(PixelRect queried, PixelRect bounds, PixelRect requested, bool stripReserved, long msSinceLastReclaim)
+    public static bool ShouldMove(PixelRect queried, PixelRect bounds, PixelRect requested) =>
+        queried != bounds && queried != requested;
+}
+
+public enum StripRecoveryKind
+{
+    /// <summary>The strip is reserved (again); nothing to do.</summary>
+    None,
+    /// <summary>The strip is missing; check again at <see cref="StripRecoveryStep.DueMs"/>.</summary>
+    Wait,
+    /// <summary>Register the AppBar again now, then check again at <see cref="StripRecoveryStep.DueMs"/>.</summary>
+    Reregister,
+    /// <summary>The attempts are used up; leave it (the next display change or Explorer restart starts afresh).</summary>
+    GiveUp,
+}
+
+public readonly record struct StripRecoveryStep(StripRecoveryKind Kind, long DueMs = 0);
+
+/// <summary>
+/// What one bar does while its strip is missing from the work area. Explorer applies strips late on its own (seen
+/// ~35 s after the taskbar went auto-hide), and registering again during that time did not help and may restart its
+/// delay, so a bar first waits <see cref="GraceMs"/>, then registers again at most <see cref="MaxAttempts"/> times with
+/// a doubling back-off. Pure and clock-free: callers pass a monotonic time in milliseconds.
+/// </summary>
+public sealed class StripRecovery
+{
+    /// <summary>How long a missing strip is left to Explorer before the bar registers again.</summary>
+    public const long GraceMs = 45_000;
+
+    /// <summary>Gap after the first re-registration; it doubles after each further one.</summary>
+    public const long FirstBackoffMs = 60_000;
+
+    public const int MaxAttempts = 3;
+
+    private long? _missingSinceMs;
+    private int _attempts;
+    private long _nextAttemptMs;
+
+    /// <summary>True between a missing strip being seen and the strip being reserved again.</summary>
+    public bool IsMissing => _missingSinceMs is not null;
+
+    /// <summary>Feeds a fresh check of the work area.</summary>
+    public StripRecoveryStep Update(bool reserved, long nowMs)
     {
-        if (queried != bounds && queried != requested)
+        if (reserved)
         {
-            return AppBarRecheck.Move;
+            Reset();
+            return new StripRecoveryStep(StripRecoveryKind.None);
         }
 
-        return !stripReserved && msSinceLastReclaim >= ReclaimCooldownMs ? AppBarRecheck.Reclaim : AppBarRecheck.None;
+        if (_missingSinceMs is null)
+        {
+            _missingSinceMs = nowMs;
+            _nextAttemptMs = nowMs + GraceMs;
+            return new StripRecoveryStep(StripRecoveryKind.Wait, _nextAttemptMs);
+        }
+
+        if (_attempts >= MaxAttempts)
+        {
+            return new StripRecoveryStep(StripRecoveryKind.GiveUp);
+        }
+
+        if (nowMs < _nextAttemptMs)
+        {
+            return new StripRecoveryStep(StripRecoveryKind.Wait, _nextAttemptMs);
+        }
+
+        _attempts++;
+        _nextAttemptMs = nowMs + (FirstBackoffMs << (_attempts - 1));
+        return new StripRecoveryStep(StripRecoveryKind.Reregister, _nextAttemptMs);
+    }
+
+    /// <summary>Forgets the missing strip (it is reserved again, or the bar was undocked).</summary>
+    public void Reset()
+    {
+        _missingSinceMs = null;
+        _attempts = 0;
+        _nextAttemptMs = 0;
     }
 }

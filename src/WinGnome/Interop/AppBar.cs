@@ -66,7 +66,9 @@ internal sealed partial class AppBar : IDisposable
     private bool _registered;
     private bool _inCall;
     private bool _recheckPending;
-    private long? _lastReclaimMs;
+    private readonly StripRecovery _recovery = new();
+    private DispatcherTimer? _recoveryTimer;
+    private bool _gaveUp;
 
     /// <param name="window">Window that must already have a handle.</param>
     public AppBar(Window window)
@@ -157,35 +159,70 @@ internal sealed partial class AppBar : IDisposable
     }
 
     /// <summary>
-    /// Brings the strip back when its monitor's work area no longer leaves it out (display passes call this; shell
-    /// notifications use the same check in <see cref="OnPositionChanged"/>). Explorer recomputes work areas on its own
-    /// (after the taskbar's auto-hide state changes, after a monitor is unplugged), sometimes without notifying the
-    /// bars. The bar then registers again (ABM_REMOVE, ABM_NEW, then the full docking sequence): a SETPOS of the
-    /// unchanged rectangle was tried first and did not bring the strip back (reproduced by resetting the work area
-    /// with SPI_SETWORKAREA; registering again did, for every AppBar on the monitor). Only acts when the strip is
-    /// really missing, so it cannot feed a notification storm; skipped when the cached monitor no longer exists with
-    /// the same bounds (the owner's reconcile pass handles that). Returns true when it had to act.
+    /// Checks that the monitor's work area still leaves the strip out (display passes call this; shell notifications
+    /// and the bar's own one-shot timer use the same check). Explorer applies strips late on its own (seen ~35 s
+    /// after the taskbar went auto-hide) and can recompute work areas without them (a monitor unplugged), so a missing
+    /// strip is handled by <see cref="StripRecovery"/>: wait 45 s, then register again (ABM_REMOVE, ABM_NEW and the
+    /// docking sequence; a SETPOS of the unchanged rectangle does not bring a strip back) at most three times with a
+    /// doubling back-off. A one-shot timer runs only while a strip is missing. Returns true when it registered again.
     /// </summary>
-    public bool EnsureReserved()
+    public bool EnsureReserved() => CheckStrip("a display pass");
+
+    private bool CheckStrip(string trigger)
     {
-        if (!_registered || Bounds.IsEmpty || IsStripReserved())
+        if (!_registered || Bounds.IsEmpty)
         {
             return false;
         }
 
-        Reregister("a display pass");
-        return true;
+        var wasMissing = _recovery.IsMissing;
+        var step = _recovery.Update(IsStripReserved(), Environment.TickCount64);
+        switch (step.Kind)
+        {
+            case StripRecoveryKind.None:
+                StopRecoveryTimer();
+                _gaveUp = false;
+                if (wasMissing)
+                {
+                    Log.Info($"AppBar 0x{_hwnd:X}: the strip {Format(Bounds)} is reserved again (seen after {trigger})");
+                }
+
+                return false;
+
+            case StripRecoveryKind.Wait:
+                if (!wasMissing)
+                {
+                    Log.Info($"AppBar 0x{_hwnd:X}: after {trigger} the work area of monitor {Format(_monitor)} doesn't leave out the strip {Format(Bounds)}; leaving it to Explorer for {StripRecovery.GraceMs / 1000} s");
+                }
+
+                StartRecoveryTimer(step.DueMs);
+                return false;
+
+            case StripRecoveryKind.Reregister:
+                Log.Info($"AppBar 0x{_hwnd:X}: the strip {Format(Bounds)} is still missing from monitor {Format(_monitor)}'s work area (seen after {trigger}); registering again");
+                Reregister();
+                StartRecoveryTimer(step.DueMs);
+                return true;
+
+            default:
+                if (!_gaveUp)
+                {
+                    _gaveUp = true;
+                    Log.Warn($"AppBar 0x{_hwnd:X}: Explorer still hasn't reserved the strip {Format(Bounds)} after {StripRecovery.MaxAttempts} registrations; giving up until the next display change");
+                }
+
+                StopRecoveryTimer();
+                return false;
+        }
     }
 
     /// <summary>Registers again and re-docks in the same slot; see <see cref="EnsureReserved"/>.</summary>
-    private void Reregister(string trigger)
+    private void Reregister()
     {
-        Log.Info($"AppBar 0x{_hwnd:X}: after {trigger} the work area of monitor {Format(_monitor)} no longer leaves out the strip {Format(Bounds)}; registering again");
-        _lastReclaimMs = Environment.TickCount64;
         var before = Bounds;
         Guarded(() =>
         {
-            Undock();
+            Unregister();
             Register();
             Apply(_registered ? QueryRect() : ProposedRect());
         });
@@ -196,10 +233,39 @@ internal sealed partial class AppBar : IDisposable
         }
     }
 
+    private void StartRecoveryTimer(long dueMs)
+    {
+        if (_recoveryTimer is null)
+        {
+            _recoveryTimer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher);
+            _recoveryTimer.Tick += OnRecoveryTimer;
+        }
+
+        _recoveryTimer.Stop();
+        _recoveryTimer.Interval = TimeSpan.FromMilliseconds(Math.Max(1, dueMs - Environment.TickCount64));
+        _recoveryTimer.Start();
+    }
+
+    private void StopRecoveryTimer() => _recoveryTimer?.Stop();
+
+    private void OnRecoveryTimer(object? sender, EventArgs e)
+    {
+        _recoveryTimer?.Stop();
+        CheckStrip("the recovery timer");
+    }
+
     private static string Format(PixelRect r) => $"{r.Left},{r.Top},{r.Right},{r.Bottom}";
 
     /// <summary>Unregisters the bar, giving the reserved space back to the work area.</summary>
     public void Undock()
+    {
+        _recovery.Reset();
+        _gaveUp = false;
+        StopRecoveryTimer();
+        Unregister();
+    }
+
+    private void Unregister()
     {
         if (!_registered)
         {
@@ -302,29 +368,25 @@ internal sealed partial class AppBar : IDisposable
             return;
         }
 
-        var action = AppBarRecheck.None;
+        var moved = false;
         Guarded(() =>
         {
             var rect = QueryRect();
-            var now = Environment.TickCount64;
-            action = AppBarReservation.Decide(rect, Bounds, _requested, IsStripReserved(),
-                _lastReclaimMs is { } last ? now - last : long.MaxValue);
-            if (action == AppBarRecheck.Move)
+            if (AppBarReservation.ShouldMove(rect, Bounds, _requested))
             {
                 Apply(rect);
+                moved = true;
             }
         });
 
-        if (action == AppBarRecheck.Move)
+        if (moved)
         {
             Moved?.Invoke(this, EventArgs.Empty);
         }
-        else if (action == AppBarRecheck.Reclaim)
-        {
-            // Same slot, but Explorer recomputed the work area without our strip (for example after the taskbar's
-            // auto-hide state changed). A SETPOS of the unchanged rectangle doesn't bring it back; registering does.
-            Reregister("a shell notification");
-        }
+
+        // The slot may be unchanged while Explorer recomputed the work area without our strip (for example after the
+        // taskbar's auto-hide state changed); StripRecovery decides when to act, so notifications can't loop.
+        CheckStrip("a shell notification");
     }
 
     /// <summary>True when a fresh read of the monitor's work area leaves the strip out (or the monitor can't be read).</summary>
@@ -418,6 +480,12 @@ internal sealed partial class AppBar : IDisposable
     public void Dispose()
     {
         Undock();
+        if (_recoveryTimer is not null)
+        {
+            _recoveryTimer.Tick -= OnRecoveryTimer;
+            _recoveryTimer = null;
+        }
+
         _source?.RemoveHook(WndProc);
     }
 }
