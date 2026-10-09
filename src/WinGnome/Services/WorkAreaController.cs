@@ -103,11 +103,16 @@ internal static class WorkAreaController
                 }
 
                 var record = new WorkAreaRecord(owner, key, bounds, workArea, shrunk);
-                Records.Add(record);
+
+                // One record per bar and monitor: a re-shrink replaces this pair's old record and moves to the end,
+                // which is where the newest change to a monitor belongs in the unwind order. The snapshot is the
+                // rollback state: removing the new record alone would lose an old one the ledger replaced.
+                var before = Records.ToList();
+                ReplaceRecords(WorkAreaLedger.Add(before, record));
                 Released.Remove(owner); // An HWND can be recycled: whoever shrinks now is live again.
                 if (!WriteMarker())
                 {
-                    Records.Remove(record);
+                    ReplaceRecords(before);
                     Log.Warn($"Not setting {key}'s work area directly because its record could not be written");
                     return false;
                 }
@@ -116,7 +121,7 @@ internal static class WorkAreaController
                 {
                     // Read before anything else runs: the marker write below would clobber the thread's last error.
                     var error = Marshal.GetLastWin32Error();
-                    Records.Remove(record);
+                    ReplaceRecords(before);
                     WriteMarker();
                     Log.Warn($"SPI_SETWORKAREA failed for {key} (error {error})");
                     return false;
@@ -329,6 +334,12 @@ internal static class WorkAreaController
         // triggers is the same value as the action, hence the cast of the existing constant.
         return NativeMethods.SystemParametersInfoRect((uint)NativeMethods.SPI_SETWORKAREA, 0, ref rect,
             broadcast ? NativeMethods.SPIF_SENDCHANGE : 0);
+    }
+
+    private static void ReplaceRecords(IReadOnlyList<WorkAreaRecord> records)
+    {
+        Records.Clear();
+        Records.AddRange(records);
     }
 
     private static WorkAreaBudget Budget(string key)

@@ -623,9 +623,10 @@ persisted to the user's profile. Limits, all deliberate:
   until the bar is docked afresh) and three applications per monitor per 60 s. A refusal is logged, so a third-party
   tool that also sets work areas cannot be fought in a loop.
 - Recorded before it is changed, in `workareas.state` in the settings directory (written aside and moved into place,
-  so a crash cannot truncate it): **no record, no shrink**. `WorkAreaRecovery` unwinds a monitor's records newest
-  first and only while each is still the live value, so a top bar's and a dock's strips both go back and a live bar's
-  is never written over. Recovered on exit, on the crash path (without the `WM_SETTINGCHANGE` broadcast, so a hung
+  so a crash cannot truncate it): **no record, no shrink**. At most one record per bar and monitor: a re-shrink
+  replaces the pair's record and moves to the end of the list (the unwind order), so something that keeps resetting
+  a work area cannot grow the marker. `WorkAreaRecovery` unwinds a monitor's records newest first and only while each
+  is still the live value, so a top bar's and a dock's strips both go back and a live bar's is never written over. Recovered on exit, on the crash path (without the `WM_SETTINGCHANGE` broadcast, so a hung
   window cannot block it), on the next start and by `--restore-taskbar`.
 - `--safe` and `--selftest` never shrink; they do recover, which is a repair of an earlier run's change.
 - A marker that cannot be parsed is not read as empty (that would strand the shrinks it described): where the taskbar

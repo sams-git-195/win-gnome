@@ -536,6 +536,13 @@ provided it changes as little as possible, records it before it changes it, and 
 - `WorkAreaRecord(int Owner, string Key, PixelRect Bounds, PixelRect Original, PixelRect Applied)`: one shrink.
   `Owner` is the shrinking bar's HWND (unique per bar, needs no plumbing); `Original` is the fresh work area before
   the shrink, `Applied` the one we set. Records are kept **in application order**, which is the restore order.
+- `WorkAreaLedger.Add(records, record)`: the list rule behind the marker — at most one record per (owner, monitor
+  key), keys compared case-insensitively. A re-shrink for a pair (something reset the work area and the bar acted
+  again) replaces the pair's old record and moves to the end: the list is the unwind order and the re-shrink is the
+  monitor's newest change, so replacing in place would leave the pair's record below a newer one for another bar and
+  it would no longer match the live value. Without the rule a work area something keeps reverting grows the marker by
+  one record per re-shrink (three a minute per monitor), each of which `Plan` walks on every release. The input list
+  is not modified, so the caller can keep it as the rollback state of a shrink that fails.
 - `WorkAreaFile(IReadOnlyList<WorkAreaRecord> Records, bool Unreadable)` with `WorkAreaState.Parse(string? json)` and
   `Serialize(records)`: an absent or empty file is "no records"; a corrupt one is `Unreadable` (never an exception),
   because silently reading it as empty would strand the shrinks it described.
@@ -563,7 +570,9 @@ provided it changes as little as possible, records it before it changes it, and 
   dispatcher, one lock spanning read-compute-write): `Initialize(settingsDirectory, enabled)`,
   `TryShrink(nint owner, PixelRect monitor, AppBarEdge edge, PixelRect strip) -> bool`, `Release(nint owner)`,
   `ReleaseAll(bool broadcast)` and `RecoverFromMarker(settingsDirectory)`. It holds the record list, a
-  `WorkAreaBudget` per monitor key and the marker path. **It derives the monitor key itself** (`MonitorFromRect` +
+  `WorkAreaBudget` per monitor key and the marker path. The record list only ever changes through
+  `WorkAreaLedger.Add`, so a re-shrink replaces its pair's record instead of accumulating duplicates, and a shrink
+  whose marker write or `SPI_SETWORKAREA` call fails rolls the list back to the exact snapshot from before it. **It derives the monitor key itself** (`MonitorFromRect` +
   `GetMonitorInfoEx`, the `MonitorKeyOf` fallback pattern) inside the lock, so `AppBar` needs no key field and no
   stale key can survive a display change; a monitor whose bounds no longer equal the cached rectangle is refused.
   Every application, restore, refusal and drop is logged: `Log.Info` with the key, the edge and both rectangles for
@@ -591,7 +600,8 @@ provided it changes as little as possible, records it before it changes it, and 
 
 In the settings directory, next to `taskbar.state`: written **before** the first shrink of a run and rewritten when
 a record is added, restored or dropped; deleted when the last record goes. Written to a temporary file and moved
-over the old one, so a crash mid-write cannot truncate it.
+over the old one, so a crash mid-write cannot truncate it. The list holds at most one record per (owner, monitor
+key): a re-shrink replaces its pair's record and moves to the end (`WorkAreaLedger`).
 
 ```json
 {"Records":[{"Owner":131479,"Key":"\\\\.\\DISPLAY1","Bounds":"0,0,2560,1600","Original":"0,0,2560,1540","Applied":"0,40,2560,1540"}]}
