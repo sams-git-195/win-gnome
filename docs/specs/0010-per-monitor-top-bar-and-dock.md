@@ -1,6 +1,7 @@
 # 0010 — Top bar and dock on every monitor
 
-Status: Agreed — user decisions 2026-10-09; advisor review (Fable) applied 2026-10-09. Ready for implementation, spike first.
+Status: Implemented 2026-10-09 (packages 0–6), awaiting Opus review and the manual QA that needs hot-plugging (see
+*Implementation notes*). User decisions 2026-10-09; advisor review (Fable) applied 2026-10-09.
 
 Plans KI-001. Owns KI-069 to KI-072. Safety-critical (AppBars, work areas, taskbar): implemented alone, before any
 other spec, and reviewed by Opus before merge.
@@ -295,6 +296,42 @@ A. **AppBar hardening** (`Interop/AppBar.cs` only: idempotent reposition, detach
   comparison retries up to 3 times over 500 ms (dispatcher timer, no sleep) before failing. If the monitor layout
   itself changed during the run, the check logs and skips instead of failing. Unlike a check against our own
   registry, this fails whenever a strip is really left behind.
+
+### Spike 0 results (2026-10-09): outcome A
+Throwaway WinForms tool, not committed. Windows 11 build 26200; primary 2560×1600 at 125 % (`\\.\DISPLAY1`),
+secondary 3440×1440 at 100 % placed above it at (−447, −1440) (`\\.\DISPLAY2`); Explorer's taskbar auto-hidden and
+hidden by the user's everyday WinGnome, whose top bar holds the primary's top 40 px. One process docked a 40 px
+left-edge AppBar on the primary, another on the secondary; both were killed with `taskkill /f`.
+- Work areas were back to their originals within ~300 ms of the kill, on both monitors, before any other AppBar
+  traffic (re-read after 2 s and 10 s: unchanged). Explorer evidently notices the AppBar window's destruction.
+- A 1×1 `ABM_NEW` + `ABM_REMOVE` from a third process afterwards changed nothing (nothing was left to reclaim).
+- The same held for the real app: a `--safe` instance with bars on both monitors and always-visible docks on both,
+  force-killed, left every work area as before, and the next start's janitor logged identical work areas.
+- Not tested: Explorer's taskbar visible (the everyday instance keeps it hidden).
+- Side observation: when two spike processes registered at the same moment, one `ABM_NEW` stalled for seconds while
+  the other process's thread was not pumping messages (it slept between calls). WinGnome only calls
+  `SHAppBarMessage` from the dispatcher thread, which pumps; risk 5 below covers the crash-path variant.
+
+So the janitor is the outcome A shape (one nudge at start and on `--restore-taskbar`, work areas logged), no
+`appbars.state` and no `WorkAreaAudit`. KI-070 records the reliance on undocumented Explorer behaviour.
+
+### Implementation notes (deviations from the design above)
+- `SurfacePlan` re-docks in two steps, `Release` then `Dock`, and every release comes before any dock: two
+  monitors trading coordinates (a primary swap) could otherwise dock one bar onto the other's old rectangle while
+  that one is still registered. With `Primary` mode, a surface whose key went away is moved to the new primary
+  (`Dock` step with another monitor's key) instead of destroyed and rebuilt.
+- `DockEdgePoller` sends each 75 ms sample to every dock that wants polling, not only to the one under the cursor,
+  so a dock held open on one monitor still sees the pointer leave for another. Still one timer and one
+  `GetCursorPos` per tick.
+- `HotCornerDetector.Reset()` (Core, tested) is used for samples on monitors without a true corner; feeding an empty
+  rectangle at the origin would have treated (0,0) as a corner.
+- Bars and docks also restore their exact strip after `WM_DPICHANGED` (as before), but only when a fresh read shows
+  their monitor with unchanged bounds; otherwise the coordinator's pass decides.
+- Turning the dock off now destroys its instances (it used to hide the window and keep it).
+- `AppBar.RegisterAndRemove` serves the janitor, so `SHAppBarMessage` stays in one place and is counted.
+- Footprint measured on the QA machine (`--safe`, top bar only, 20 s idle): main display only 91.9 MB private,
+  all displays (adds a 3440 px bar) 101.2 MB; idle CPU 0–125 ms per 20 s, 17 threads either way. Slightly above the
+  4–8 MB estimate because of the bar's width.
 
 ## Footprint
 - Idle: no new timers or polling. The display service's timer runs only after a display event or a detach (≤ 2

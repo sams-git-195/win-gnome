@@ -19,7 +19,6 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 
 | ID | Severity | Area | Summary | Status |
 |---|---|---|---|---|
-| [KI-001](#ki-001) | S3 | Dock, Top bar | Dock and top bar appear on the primary monitor only | Open |
 | [KI-003](#ki-003) | S4 | Workspaces | Desktop switching relies on simulated Ctrl+Win+arrow keys | By design |
 | [KI-004](#ki-004) | S4 | Overview | Super key opens Start when an elevated window has focus | By design |
 | [KI-005](#ki-005) | S4 | Tray | Some tray icons only appear in the Windows tray | By design |
@@ -52,14 +51,10 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-066](#ki-066) | S4 | Settings | Input sources are listed but not switched or reordered in the Keyboard panel | Open |
 | [KI-067](#ki-067) | S4 | Settings | Appearance style and accent are read-only while the matching Streamline tweak is on | By design |
 | [KI-068](#ki-068) | S4 | Settings | A few exit paths leave an unconfirmed display change until sign-out | Open |
-
-### KI-001
-**Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
-
-On multi-monitor setups the dock and top bar exist only on the primary monitor. Secondary monitors have
-no top bar or dock.
-*Workaround:* none; use the Windows taskbar mode if per-monitor taskbars are needed.
-*Fix direction:* planned in spec [0010](specs/0010-per-monitor-top-bar-and-dock.md) (draft, needs decisions).
+| [KI-069](#ki-069) | S4 | Tray | Some apps open tray flyouts on the primary monitor when clicked on another monitor's bar | By design |
+| [KI-070](#ki-070) | S4 | Top bar, Dock | Reclaiming a force-killed instance's strips relies on undocumented Explorer behaviour | Open |
+| [KI-071](#ki-071) | S4 | Dock | Edge reveal is unreliable for a dock on an inner edge between two monitors | Open |
+| [KI-072](#ki-072) | S4 | Overview | Activities and hot corners on other monitors open the overview on the primary | By design |
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -403,10 +398,48 @@ to revert; the record does it at the next start); the UI thread is hung, so neit
 WinGnome is force-killed and next started with a different `--settings-dir` (the record is per profile) or with
 `--safe` (which never changes system state, so it leaves the record for a normal start). *Workaround:* sign out, or
 start WinGnome normally with the same profile.
+
+### KI-069
+**Some apps open tray flyouts on the primary monitor when clicked on another monitor's bar** · S4 · Tray · By design
+
+Every bar shows the same tray icons, and a click passes that bar's anchor (version 4 apps) and, through
+`Shell_NotifyIconGetRect`, that icon's rectangle, so most menus open beside the icon that was clicked. Apps that
+place their flyout from the taskbar instead (`ABM_GETTASKBARPOS`, or the rectangle of `Shell_TrayWnd`) still get the
+primary's: Explorer answers `ABM_GETTASKBARPOS`, and WinGnome's hidden tray host window stays on the primary bar's
+strip. `Shell_NotifyIconGetRect` also has one answer per icon (the bar it was last used on), so a flyout the app
+opens on its own later appears there. *Fix direction:* none planned (spec 0010 non-goal).
+
+### KI-070
+**Reclaiming a force-killed instance's strips relies on undocumented Explorer behaviour** · S4 · Top bar, Dock · Open
+
+A force-killed WinGnome cannot send `ABM_REMOVE`. Spike 0 of spec 0010 (Windows 11 build 26200, taskbar auto-hidden
+by another WinGnome instance, a primary at 125 % and an upper secondary at 100 %): Explorer gave back a killed
+process's left-edge strips on both monitors within about 300 ms, before any further AppBar traffic, and a 1×1
+`ABM_NEW` + `ABM_REMOVE` from another process changed nothing more. `AppBarJanitor` makes that nudge at every start
+and on `--restore-taskbar` and logs every work area before and after; `--selftest` fails if a work area differs
+after shutdown. Neither the automatic reclaim nor the nudge is documented. Not yet verified with Explorer's taskbar
+visible (the user's everyday instance hides it). *Workaround:* `--restore-taskbar`, or sign out. *Fix direction:*
+if a strip is ever seen left behind, outcome B of spec 0010 (record original work areas, `SPI_SETWORKAREA`).
+
+### KI-071
+**Edge reveal is unreliable for a dock on an inner edge between two monitors** · S4 · Dock · Open
+
+With docks on every display, a dock whose edge borders another monitor (for example the bottom of a monitor placed
+above the primary) is revealed by pushing the pointer against that edge, but the pointer crosses to the other
+monitor instead of stopping. Always-visible docks are unaffected. The dock logs its monitor and edge on layout; no
+detection or Settings hint. *Workaround:* use Always visible, or move the dock to an outer edge.
+
+### KI-072
+**Activities and hot corners on other monitors open the overview on the primary** · S4 · Overview · By design
+
+Every bar has an Activities button and every monitor with a true top-left corner a hot corner, but the overview,
+its thumbnails and backdrop still cover only the primary monitor. *Fix direction:* a per-monitor overview spec.
+
 ## Resolved
 
 | ID | Severity | Area | Summary | Fixed in |
 |---|---|---|---|---|
+| KI-001 | S3 | Dock, Top bar | Dock and top bar appeared on the primary monitor only | 767388e, 32877c1 (spec 0010: a top bar on every monitor, docks on all monitors as an option) |
 | KI-002 | S4 | App | The executable had no app icon | 2f7c44b |
 | KI-009 | S4 | Repo | No CI workflow, although the README said `--selftest` is used by CI | 94b9013 |
 | KI-011 | S2 | Settings | Non-safe runs with `--settings-dir` rewrote or deleted the shared "Start with Windows" entry | 6aeef5f |
