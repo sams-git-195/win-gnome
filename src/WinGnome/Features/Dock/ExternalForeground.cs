@@ -44,7 +44,8 @@ internal sealed class ExternalForeground : IDisposable
         {
             SetHandle(0);
         }
-        else if (eventType == WinEventHook.EVENT_SYSTEM_MINIMIZEEND && hwnd == _tracker.Foreground && hwnd != 0)
+        else if (eventType == WinEventHook.EVENT_SYSTEM_MINIMIZEEND && hwnd == _tracker.Foreground && hwnd != 0
+                 && !NativeMethods.IsOwnWindow(hwnd))
         {
             // A window restored while it is still the foreground window gets no foreground event.
             SetHandle(hwnd);
