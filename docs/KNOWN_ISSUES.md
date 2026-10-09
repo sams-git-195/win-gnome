@@ -43,6 +43,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
 | [KI-052](#ki-052) | S4 | Dock | Explorer windows other than folder windows don't join the File Explorer pin | Open |
 | [KI-055](#ki-055) | S4 | Top bar | The Wi-Fi icon doesn't show signal strength | Open |
+| [KI-056](#ki-056) | S4 | Launching | Elevation details: an undocumented host value, and a late UAC answer can close a reopened overview | Open |
 | [KI-060](#ki-060) | S4 | Settings | Choosing the default sound device uses the undocumented `IPolicyConfig` | Open |
 | [KI-061](#ki-061) | S4 | Settings | The power mode uses undocumented powrprof functions | Open |
 | [KI-062](#ki-062) | S4 | Settings | Display scale, orientation and turning displays on or off are left to Windows Settings | By design |
@@ -309,6 +310,15 @@ them to the rule, keeping the desktop, taskbar and other shell windows out.
 event, so adding it means either polling (WLAN API or `ConnectionProfile.GetSignalBars`) or refreshing it only on
 network changes and when quick settings opens. Draw the 0–3 bar icons in `Theme/SymbolicIcons.xaml` (GNOME dims
 the unlit part of the wedge) when a source is added.
+
+### KI-056
+**Elevation details: an undocumented host value, and a late UAC answer can close a reopened overview** · S4 · Launching · Open
+
+Spec 0014 tells full-trust packaged apps (Windows Terminal, Notepad) from UWP apps by the AppsFolder property
+`System.AppUserModel.HostEnvironment`, whose value 2 isn't documented by Microsoft (checked on one machine against the
+apps' manifests). If a Windows build changes it, those apps stop offering *Run as administrator* rather than
+misbehave. Also, the overview stays open while an elevated launch waits for UAC; if the user dismisses and reopens
+it before answering, the late "started" callback closes the reopened overview.
 
 ### KI-060
 **Choosing the default sound device uses the undocumented `IPolicyConfig`** · S4 · Settings · Open
