@@ -388,10 +388,10 @@ So the janitor is the outcome A shape (one nudge at start and on `--restore-task
      `taskbar.state`), restoring them on exit, crash and next start, and care because Explorer recomputes work areas
      on its own afterwards (it would then normally produce the same rectangle). Separate design note and advisor
      review first, as this spec already requires for outcome B.
-  3. *Wait it out* (the old build's behaviour, now the interim): what ships in this commit. `StripRecovery` (Core,
-     tested) only waits while a strip is missing: 45 s grace (longer than the ~35 s seen), then at most three
-     re-registrations 60 s, 120 s and 240 s apart, then it gives up until the next display change. A one-shot timer
-     runs only while a strip is missing; notifications and display passes cannot make it act sooner.
+  3. *Wait it out* (the old build's behaviour): what 5c19982 shipped as an interim — `StripRecovery` waited 45 s for
+     Explorer, then re-registered at most three times 60 s, 120 s and 240 s apart. **Superseded by option 2**, which
+     kept the bounded one-shot timer and the "notifications cannot make it act sooner" property, but replaced waiting
+     and re-registering with the work-area fallback in the design note below.
 - Turning the dock off now destroys its instances (it used to hide the window and keep it).
 - `AppBar.RegisterAndRemove` serves the janitor, so `SHAppBarMessage` stays in one place and is counted.
 - Footprint measured on the QA machine (`--safe`, top bar only, 20 s idle): main display only 91.9 MB private,
@@ -450,8 +450,9 @@ placed left of and above the primary (negative coordinates).
    secondary bar. Also, `Shell_NotifyIconGetRect` has one answer per icon (the last bar the user used it on), so a
    flyout the app opens on its own later appears there. KI-069 (S4).
 2. **Force-kill cleanup relies on Explorer re-validating AppBars** on later AppBar traffic (undocumented). Spike 0
-   decides between outcome A and B before the janitor is written. KI-070 (S3 until the spike verifies outcome A, then
-   S4).
+   found Explorer reclaims a killed bar's strip within ~300 ms and that the janitor's nudge reclaims anything left, so
+   outcome A shipped; KI-070 (S4) records the reliance. Outcome B (the design note below) additionally recovers any
+   work area WinGnome set itself from its own record, which does not depend on that behaviour; KI-099 (S3).
 3. **Dock on an inner edge** (another monitor below or beside it): intellihide/autohide reveal at that edge is
    unreliable because the pointer crosses to the other monitor. Logged on relayout only; no Settings hint and no Core
    edge helper. KI-071 (S4).
@@ -467,7 +468,7 @@ placed left of and above the primary (negative coordinates).
 8. WPF popups across mixed DPI have had scaling glitches in older .NET builds; QA 9 covers it.
 9. A third-party AppBar on the same top edge (e.g. another bar app) now shares the storm protection; it still stacks
    below or above ours as Explorer decides (unchanged).
-10. **Recycled HMONITOR after a display change** (Opus review, low; no KI number free in 069–072, ID to be assigned):
+10. **Recycled HMONITOR after a display change** (Opus review, low; KI-098):
     `MonitorKeyOf` maps `MonitorFromWindow` handles through the table of the last read. If Windows reuses an old
     HMONITOR value for a different monitor, a window can be given the wrong monitor key until the next pass, at most
     250 ms (plus the 1.5 s follow-up). Effect: a bar's focused app, an isolated dock's window list or the dock's

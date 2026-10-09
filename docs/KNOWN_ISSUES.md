@@ -63,6 +63,8 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-090](#ki-090) | S4 | Settings | Startup apps: machine-wide items are read-only, packaged startup tasks aren't listed | Open |
 | [KI-091](#ki-091) | S4 | Settings | Printers and Removable Media: undocumented values, no change notifications, a limited event list, little tested on real devices | Open |
 | [KI-092](#ki-092) | S4 | Settings | Region & Language formats and Windows Update status are partly left to Windows Settings | By design |
+| [KI-098](#ki-098) | S4 | Top bar, Dock | `MonitorKeyOf` can map a recycled HMONITOR to the wrong monitor for up to 250 ms | Open |
+| [KI-099](#ki-099) | S3 | Top bar, Dock | WinGnome sets monitor work areas directly when Explorer doesn't apply a strip it granted | Open |
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -429,8 +431,9 @@ process's left-edge strips on both monitors within about 300 ms, before any furt
 `ABM_NEW` + `ABM_REMOVE` from another process changed nothing more. `AppBarJanitor` makes that nudge at every start
 and on `--restore-taskbar` and logs every work area before and after; `--selftest` fails if a work area differs
 after shutdown. Neither the automatic reclaim nor the nudge is documented. Not yet verified with Explorer's taskbar
-visible (the user's everyday instance hides it). *Workaround:* `--restore-taskbar`, or sign out. *Fix direction:*
-if a strip is ever seen left behind, outcome B of spec 0010 (record original work areas, `SPI_SETWORKAREA`).
+visible (the user's everyday instance hides it). *Workaround:* `--restore-taskbar`, or sign out. *Since outcome B of
+spec 0010 (KI-099)* a work area WinGnome set itself is recorded and recovered from `workareas.state`, so what still
+relies on this undocumented behaviour is only a strip Explorer applied on its own and then failed to reclaim.
 
 ### KI-071
 **Edge reveal is unreliable for a dock on an inner edge between two monitors** · S4 · Dock · Open
@@ -589,6 +592,53 @@ updates Windows hasn't found yet, or found since the last check, aren't listed u
 differ from Windows Settings', which also merges Microsoft Store and driver sources. The panel never scans or installs.
 A standard user may be refused by policy on managed machines; the panel then shows the error with the Windows Settings
 link.
+
+### KI-098
+**`MonitorKeyOf` can map a recycled HMONITOR to the wrong monitor for up to 250 ms** · S4 · Top bar, Dock · Open
+
+`DisplayLayoutService.MonitorKeyOf` maps a `MonitorFromWindow` handle through the handle→key table built by the last
+monitor read. HMONITORs are not stable across display changes and Windows can reuse a value for a different monitor,
+so a window can be given the wrong key until the next pass: at most 250 ms, plus the 1.5 s follow-up. Effect: a bar's
+focused app, an isolated dock's window list, or a dock's full-screen/intellihide check can be wrong for that moment.
+There is no AppBar or work-area effect — a bar whose cached monitor rectangle no longer matches a live monitor
+undocks itself (spec 0010's detach guard), and `WorkAreaController` re-derives the monitor from the rectangle it is
+given and refuses one whose bounds changed (spec 0010, risk 10).
+*Fix direction:* compare the handle's own `GetMonitorInfo` bounds with the table entry's before trusting the key.
+
+### KI-099
+**WinGnome sets monitor work areas directly when Explorer doesn't apply a strip it granted** · S3 · Top bar, Dock · Open
+
+Explorer grants WinGnome's AppBars their strips but applies them to monitor work areas only inside its own taskbar
+layout pass. That pass is deferred while its taskbar is auto-hidden and `SW_HIDE`n (measured ~35 s on build 26200,
+in the build before spec 0010 as well) and can be skipped entirely after a monitor is unplugged, so maximised windows
+cover the bar and the strip is left unreserved. Re-registering the AppBar did not help and may restart the deferral
+(three live sessions, spec 0010).
+
+Since outcome B of spec 0010, a bar whose granted strip is still missing 1.5 s after a check sets that monitor's work
+area itself with the documented `SystemParametersInfo(SPI_SETWORKAREA)`, never `SPIF_UPDATEINIFILE`, so nothing is
+persisted to the user's profile. Limits, all deliberate:
+- Only the bar's own edge moves, and always from a **fresh** `GetMonitorInfo` read taken inside the same lock as the
+  write, so the taskbar's strip and other AppBars' strips survive and two bars on one edge stack.
+- Bounded twice: at most three actions per bar per missing-strip episode (1.5 s, 5 s, 20 s apart, then it gives up
+  until the bar is docked afresh) and three applications per monitor per 60 s. A refusal is logged, so a third-party
+  tool that also sets work areas cannot be fought in a loop.
+- Recorded before it is changed, in `workareas.state` in the settings directory (written aside and moved into place,
+  so a crash cannot truncate it): **no record, no shrink**. `WorkAreaRecovery` unwinds a monitor's records newest
+  first and only while each is still the live value, so a top bar's and a dock's strips both go back and a live bar's
+  is never written over. Recovered on exit, on the crash path (without the `WM_SETTINGCHANGE` broadcast, so a hung
+  window cannot block it), on the next start and by `--restore-taskbar`.
+- `--safe` and `--selftest` never shrink; they do recover, which is a repair of an earlier run's change.
+- A marker that cannot be parsed is not read as empty (that would strand the shrinks it described): where the taskbar
+  marker says the taskbar is hidden, every monitor's work area is reset to its full bounds; where it does not,
+  nothing is written so a visible taskbar keeps its strip. The janitor nudges Explorer right after either way.
+
+*Risks:* WinGnome now writes a value Explorer also writes, so Explorer recomputing later can overwrite ours (it
+normally produces the same rectangle while our AppBar is registered; a different one is caught by the next check,
+within the budget). The marker is per profile, so a force-kill followed by a start with a different `--settings-dir`
+cannot recover, as for `display-revert.json` (KI-068).
+*Not verified live:* the whole path. Safe-mode runs cannot reach it (verified: `--selftest --safe` exits 0, no
+`workareas.state` written, both strips stacked correctly on the primary). Spec 0010's B6–B12 are the live checks.
+*Workaround:* none needed; without it the strip simply arrives late or not at all.
 
 ## Resolved
 
