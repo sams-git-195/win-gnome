@@ -21,19 +21,36 @@ public enum LaunchTargetKind
     /// <summary>A file-system path, or a known-folder path ("{GUID}\app.exe").</summary>
     File,
 
-    /// <summary>A packaged (Store/MSIX) app's AUMID, "Family_hash!App".</summary>
+    /// <summary>A packaged app's AUMID ("Family_hash!App") that is UWP, or whose host is unknown.</summary>
     PackagedApp,
+
+    /// <summary>A packaged app that runs as a full-trust desktop process (Windows Terminal, the new Notepad).</summary>
+    FullTrustPackagedApp,
 
     /// <summary>Any other shell:AppsFolder parsing name: a desktop app's explicit AUMID.</summary>
     DesktopApp,
+}
+
+/// <summary>
+/// What kind of process an AppsFolder item runs as, from its PKEY_AppUserModel_HostEnvironment. Observed on
+/// Windows 11: 0 for Win32 apps, 1 for UWP apps (Calculator, Store), 2 for full-trust packaged apps whose
+/// manifest entry point is Windows.FullTrustApplication (Windows Terminal, Notepad, Photos).
+/// </summary>
+public enum AppHost
+{
+    /// <summary>Not read, missing, or a value we don't know.</summary>
+    Unknown,
+    Desktop,
+    Immersive,
+    PackagedDesktop,
 }
 
 /// <summary>What to start, with which arguments, and whether to ask for elevation (UAC).</summary>
 public sealed record LaunchRequest(string LaunchId, string? Arguments, bool Elevate);
 
 /// <summary>
-/// Decides whether a launch is elevated. Only desktop apps can be: packaged apps have no "runas" path through
-/// activation, and URIs are handed to whatever handles the scheme.
+/// Decides whether a launch is elevated, matching Start: desktop apps, elevatable files and full-trust packaged
+/// apps can be; UWP apps (and packaged apps of unknown host) and URIs can't.
 /// </summary>
 public static class LaunchPlanner
 {
@@ -45,19 +62,20 @@ public static class LaunchPlanner
 
     /// <summary>
     /// Plans a click or Enter on <paramref name="launchId"/>. <paramref name="pin"/> is the matching dock pin, if any:
-    /// it supplies arguments and "Always run as administrator".
+    /// it supplies arguments and "Always run as administrator". <paramref name="host"/> comes from the app catalogue.
     /// </summary>
-    public static LaunchRequest Plan(string launchId, LaunchModifiers modifiers, PinnedApp? pin)
+    public static LaunchRequest Plan(string launchId, LaunchModifiers modifiers, PinnedApp? pin, AppHost host = AppHost.Unknown)
     {
         var wantsElevation = (modifiers & ElevateModifiers) == ElevateModifiers || pin is { RunAsAdministrator: true };
-        return Request(launchId, pin, wantsElevation);
+        return Request(launchId, pin, host, wantsElevation);
     }
 
     /// <summary>Plans an explicit "Run as administrator"; not elevated when the target cannot be.</summary>
-    public static LaunchRequest PlanElevated(string launchId, PinnedApp? pin) => Request(launchId, pin, wantsElevation: true);
+    public static LaunchRequest PlanElevated(string launchId, PinnedApp? pin, AppHost host = AppHost.Unknown) =>
+        Request(launchId, pin, host, wantsElevation: true);
 
     /// <summary>True when "Run as administrator" makes sense for <paramref name="launchId"/>.</summary>
-    public static bool CanElevate(string launchId)
+    public static bool CanElevate(string launchId, AppHost host = AppHost.Unknown)
     {
         if (string.IsNullOrWhiteSpace(launchId))
         {
@@ -65,16 +83,19 @@ public static class LaunchPlanner
         }
 
         var id = launchId.Trim();
-        return Classify(id) switch
+        return Classify(id, host) switch
         {
-            LaunchTargetKind.DesktopApp => true,
+            LaunchTargetKind.DesktopApp or LaunchTargetKind.FullTrustPackagedApp => true,
             LaunchTargetKind.File => ElevatableFileExtensions.Any(ext => id.EndsWith(ext, StringComparison.OrdinalIgnoreCase)),
             _ => false,
         };
     }
 
-    /// <summary>Classifies a launch id by its shape alone (nothing is looked up on disk).</summary>
-    public static LaunchTargetKind Classify(string launchId)
+    /// <summary>
+    /// Classifies a launch id by its shape (nothing is looked up on disk). <paramref name="host"/> only matters for
+    /// packaged AUMIDs, telling full-trust apps from UWP ones.
+    /// </summary>
+    public static LaunchTargetKind Classify(string launchId, AppHost host = AppHost.Unknown)
     {
         ArgumentNullException.ThrowIfNull(launchId);
         var id = launchId.Trim();
@@ -88,8 +109,24 @@ public static class LaunchPlanner
             return LaunchTargetKind.File;
         }
 
-        return id.Contains('!', StringComparison.Ordinal) ? LaunchTargetKind.PackagedApp : LaunchTargetKind.DesktopApp;
+        if (!id.Contains('!', StringComparison.Ordinal))
+        {
+            return LaunchTargetKind.DesktopApp;
+        }
+
+        return host is AppHost.PackagedDesktop or AppHost.Desktop
+            ? LaunchTargetKind.FullTrustPackagedApp
+            : LaunchTargetKind.PackagedApp;
     }
+
+    /// <summary>Maps a PKEY_AppUserModel_HostEnvironment value (null when the item has none).</summary>
+    public static AppHost HostFromProperty(uint? hostEnvironment) => hostEnvironment switch
+    {
+        0 => AppHost.Desktop,
+        1 => AppHost.Immersive,
+        2 => AppHost.PackagedDesktop,
+        _ => AppHost.Unknown,
+    };
 
     /// <summary>
     /// True for "scheme:rest" strings such as "ms-settings:", "shell:RecycleBinFolder" or "https://...".
@@ -115,10 +152,10 @@ public static class LaunchPlanner
         return true;
     }
 
-    private static LaunchRequest Request(string launchId, PinnedApp? pin, bool wantsElevation)
+    private static LaunchRequest Request(string launchId, PinnedApp? pin, AppHost host, bool wantsElevation)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(launchId);
         var id = launchId.Trim();
-        return new LaunchRequest(id, pin?.Arguments, wantsElevation && CanElevate(id));
+        return new LaunchRequest(id, pin?.Arguments, wantsElevation && CanElevate(id, host));
     }
 }

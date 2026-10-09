@@ -702,9 +702,12 @@ internal sealed partial class OverviewWindow : Window
 
     private void ActivateWindow(nint hwnd) => DismissAndFocus(hwnd);
 
-    /// <summary>Launches a tile; Ctrl+Shift (or the pin's "Always run as administrator") elevates desktop apps.</summary>
+    /// <summary>
+    /// Launches a tile; Ctrl+Shift (or the pin's "Always run as administrator") elevates desktop and full-trust
+    /// packaged apps.
+    /// </summary>
     private void Launch(AppTile tile, LaunchModifiers modifiers) =>
-        Launch(LaunchPlanner.Plan(tile.LaunchId, modifiers, PinOf(tile)));
+        Launch(LaunchPlanner.Plan(tile.LaunchId, modifiers, PinOf(tile), HostOf(tile)));
 
     private void Launch(LaunchRequest request)
     {
@@ -715,6 +718,9 @@ internal sealed partial class OverviewWindow : Window
     }
 
     private PinnedApp? PinOf(AppTile tile) => DockPins.Find(_context.Settings.Current.Dock.PinnedApps, tile.LaunchId);
+
+    /// <summary>Whether a packaged app is full trust (elevatable) or UWP, from the app catalogue.</summary>
+    private AppHost HostOf(AppTile tile) => _context.Apps.FindByLaunchId(tile.LaunchId)?.Host ?? AppHost.Unknown;
 
     private bool IsPinned(AppTile tile) => PinOf(tile) is not null;
 
@@ -760,11 +766,11 @@ internal sealed partial class OverviewWindow : Window
         open.Click += (_, _) => Launch(tile, LaunchModifiers.None);
         menu.Items.Add(open);
 
-        // Packaged apps cannot be elevated, so they don't offer it.
-        if (LaunchPlanner.CanElevate(tile.LaunchId))
+        // UWP apps cannot be elevated, so they don't offer it (full-trust packaged apps such as Terminal do).
+        if (LaunchPlanner.CanElevate(tile.LaunchId, HostOf(tile)))
         {
             var elevated = new MenuItem { Header = "Run as administrator" };
-            elevated.Click += (_, _) => Launch(LaunchPlanner.PlanElevated(tile.LaunchId, PinOf(tile)));
+            elevated.Click += (_, _) => Launch(LaunchPlanner.PlanElevated(tile.LaunchId, PinOf(tile), HostOf(tile)));
             menu.Items.Add(elevated);
         }
 

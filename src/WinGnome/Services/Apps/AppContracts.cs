@@ -12,7 +12,8 @@ namespace WinGnome.Services.Apps;
 /// </param>
 /// <param name="AppUserModelId">PKEY_AppUserModel_ID of the item, used to match running windows.</param>
 /// <param name="TargetPath">Resolved executable path for desktop apps (PKEY_Link_TargetParsingPath), if any.</param>
-internal sealed record AppEntry(string Name, string ParsingName, string? AppUserModelId, string? TargetPath)
+/// <param name="Host">PKEY_AppUserModel_HostEnvironment: tells full-trust packaged apps (elevatable) from UWP ones.</param>
+internal sealed record AppEntry(string Name, string ParsingName, string? AppUserModelId, string? TargetPath, AppHost Host)
 {
     /// <summary>Value stored in <c>PinnedApp.LaunchId</c> when this app is pinned.</summary>
     public string LaunchId => ParsingName;
@@ -64,7 +65,9 @@ internal interface IAppLauncher
 
     /// <summary>
     /// Launches as planned by <see cref="LaunchPlanner"/>; <see cref="LaunchRequest.Elevate"/> asks for UAC ("runas").
-    /// An elevated launch returns true once the prompt is requested; "No" on the prompt is logged, not reported.
+    /// <paramref name="started"/> runs on the calling (UI) thread once the app has been started: straight away for a
+    /// normal launch, and only after the UAC prompt is accepted for an elevated one. "No" on the prompt is logged,
+    /// and <paramref name="started"/> is not called. Returns false when the launch failed immediately.
     /// </summary>
-    bool Launch(LaunchRequest request);
+    bool Launch(LaunchRequest request, Action? started = null);
 }

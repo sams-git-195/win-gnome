@@ -5,9 +5,12 @@ namespace WinGnome.Core.Tests.Shell;
 
 public class LaunchPlannerTests
 {
-    // A desktop app's explicit AUMID (Git Bash). Windows Terminal is packaged, so it is not one (KI-054).
+    // A desktop app's explicit AUMID (Git Bash).
     private const string Desktop = "GitForWindows.Bash";
+
+    // A UWP app (HostEnvironment 1) and a full-trust packaged app (HostEnvironment 2), as read on Windows 11.
     private const string Packaged = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
+    private const string Terminal = "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App";
 
     public enum PinState { None, Normal, AlwaysElevated }
 
@@ -46,11 +49,80 @@ public class LaunchPlannerTests
     [InlineData(LaunchModifiers.Control | LaunchModifiers.Shift, PinState.None)]
     [InlineData(LaunchModifiers.Control | LaunchModifiers.Shift, PinState.Normal)]
     [InlineData(LaunchModifiers.Control | LaunchModifiers.Shift, PinState.AlwaysElevated)]
-    public void Plan_PackagedApp_NeverElevates(LaunchModifiers modifiers, PinState pin)
+    public void Plan_UwpApp_NeverElevates(LaunchModifiers modifiers, PinState pin)
     {
-        var request = LaunchPlanner.Plan(Packaged, modifiers, Pin(Packaged, pin));
+        var request = LaunchPlanner.Plan(Packaged, modifiers, Pin(Packaged, pin), AppHost.Immersive);
 
         Assert.Equal(new LaunchRequest(Packaged, null, false), request);
+    }
+
+    [Theory]
+    [InlineData(LaunchModifiers.None, PinState.None, false)]
+    [InlineData(LaunchModifiers.None, PinState.Normal, false)]
+    [InlineData(LaunchModifiers.None, PinState.AlwaysElevated, true)]
+    [InlineData(LaunchModifiers.Control, PinState.None, false)]
+    [InlineData(LaunchModifiers.Shift, PinState.None, false)]
+    [InlineData(LaunchModifiers.Control | LaunchModifiers.Shift, PinState.None, true)]
+    [InlineData(LaunchModifiers.Control | LaunchModifiers.Shift, PinState.Normal, true)]
+    [InlineData(LaunchModifiers.Control | LaunchModifiers.Shift, PinState.AlwaysElevated, true)]
+    public void Plan_FullTrustPackagedApp_ElevatesOnCtrlShiftOrAlwaysPin(LaunchModifiers modifiers, PinState pin, bool elevate)
+    {
+        var request = LaunchPlanner.Plan(Terminal, modifiers, Pin(Terminal, pin), AppHost.PackagedDesktop);
+
+        Assert.Equal(new LaunchRequest(Terminal, null, elevate), request);
+    }
+
+    [Fact]
+    public void Plan_PackagedAppWithUnknownHost_DoesNotElevate()
+    {
+        // Without the catalogue's HostEnvironment, a packaged app is assumed to be UWP.
+        var request = LaunchPlanner.Plan(Terminal, LaunchPlanner.ElevateModifiers, null);
+
+        Assert.Equal(new LaunchRequest(Terminal, null, false), request);
+    }
+
+    [Fact]
+    public void PlanElevated_FullTrustPackagedApp_Elevates()
+    {
+        Assert.Equal(new LaunchRequest(Terminal, null, true), LaunchPlanner.PlanElevated(Terminal, null, AppHost.PackagedDesktop));
+    }
+
+    [Theory]
+    [InlineData(null, AppHost.Unknown)]
+    [InlineData(0u, AppHost.Desktop)]
+    [InlineData(1u, AppHost.Immersive)]
+    [InlineData(2u, AppHost.PackagedDesktop)]
+    [InlineData(3u, AppHost.Unknown)]
+    public void HostFromProperty_MapsHostEnvironmentValues(uint? value, AppHost expected)
+    {
+        Assert.Equal(expected, LaunchPlanner.HostFromProperty(value));
+    }
+
+    [Theory]
+    [InlineData(AppHost.Unknown, LaunchTargetKind.PackagedApp)]
+    [InlineData(AppHost.Immersive, LaunchTargetKind.PackagedApp)]
+    [InlineData(AppHost.PackagedDesktop, LaunchTargetKind.FullTrustPackagedApp)]
+    [InlineData(AppHost.Desktop, LaunchTargetKind.FullTrustPackagedApp)]
+    public void Classify_PackagedApp_DependsOnItsHost(AppHost host, LaunchTargetKind expected)
+    {
+        Assert.Equal(expected, LaunchPlanner.Classify(Terminal, host));
+    }
+
+    [Theory]
+    [InlineData("ms-settings:", AppHost.PackagedDesktop, LaunchTargetKind.Uri)]
+    [InlineData(Desktop, AppHost.Immersive, LaunchTargetKind.DesktopApp)]
+    public void Classify_NonPackagedIds_IgnoreTheHost(string launchId, AppHost host, LaunchTargetKind expected)
+    {
+        Assert.Equal(expected, LaunchPlanner.Classify(launchId, host));
+    }
+
+    [Theory]
+    [InlineData(AppHost.Unknown, false)]
+    [InlineData(AppHost.Immersive, false)]
+    [InlineData(AppHost.PackagedDesktop, true)]
+    public void CanElevate_PackagedApp_OnlyWhenFullTrust(AppHost host, bool expected)
+    {
+        Assert.Equal(expected, LaunchPlanner.CanElevate(Terminal, host));
     }
 
     [Theory]

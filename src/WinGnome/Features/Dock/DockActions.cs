@@ -78,16 +78,17 @@ internal sealed class DockActions
     /// the pin says "Always run as administrator".
     /// </summary>
     public void LaunchNew(DockAppEntry entry) =>
-        Launch(entry, target => LaunchPlanner.Plan(target, LaunchModifiers.None, PinOf(entry.App)));
+        Launch(entry, target => LaunchPlanner.Plan(target, LaunchModifiers.None, PinOf(entry.App), HostOf(target)));
 
     /// <summary>"Run as administrator": starts a new instance elevated (UAC prompt).</summary>
     public void RunAsAdministrator(DockAppEntry entry) =>
-        Launch(entry, target => LaunchPlanner.PlanElevated(target, PinOf(entry.App)));
+        Launch(entry, target => LaunchPlanner.PlanElevated(target, PinOf(entry.App), HostOf(target)));
 
     public bool CanLaunch(DockApp app) => LaunchTarget(app) is not null;
 
-    /// <summary>True when the app can be started elevated (desktop apps; never packaged apps or URIs).</summary>
-    public bool CanRunAsAdministrator(DockApp app) => LaunchTarget(app) is { } target && LaunchPlanner.CanElevate(target);
+    /// <summary>True when the app can be started elevated (desktop and full-trust packaged apps; never UWP apps or URIs).</summary>
+    public bool CanRunAsAdministrator(DockApp app) =>
+        LaunchTarget(app) is { } target && LaunchPlanner.CanElevate(target, HostOf(target));
 
     /// <summary>The pin's "Always run as administrator" flag (false for unpinned apps).</summary>
     public bool IsAlwaysRunAsAdministrator(DockApp app) => PinOf(app) is { RunAsAdministrator: true };
@@ -180,11 +181,12 @@ internal sealed class DockActions
             return;
         }
 
-        if (_context.Launcher.Launch(plan(target)))
-        {
-            _launchFeedback(entry);
-        }
+        // The feedback runs once the app has started: for an elevated launch, only after UAC is accepted.
+        _context.Launcher.Launch(plan(target), () => _launchFeedback(entry));
     }
+
+    /// <summary>Whether a packaged app is full trust (elevatable) or UWP, from the app catalogue.</summary>
+    private AppHost HostOf(string launchId) => _context.Apps.FindByLaunchId(launchId)?.Host ?? AppHost.Unknown;
 
     /// <summary>The app's pin (arguments, "Always run as administrator"), or null when it is not pinned.</summary>
     private PinnedApp? PinOf(DockApp app) =>

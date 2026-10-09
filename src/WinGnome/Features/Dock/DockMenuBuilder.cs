@@ -43,7 +43,7 @@ internal static class DockMenuBuilder
         launch.IsEnabled = actions.CanLaunch(app);
         menu.Items.Add(launch);
 
-        // Packaged apps and URIs cannot be elevated, so they get neither item.
+        // UWP apps and URIs cannot be elevated, so they get neither item (full-trust packaged apps such as Terminal do).
         if (actions.CanRunAsAdministrator(app))
         {
             menu.Items.Add(Item("Run as administrator", () => actions.RunAsAdministrator(entry)));

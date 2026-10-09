@@ -29,9 +29,9 @@ internal sealed class AppLauncher : IAppLauncher
     }
 
     public bool Launch(string launchId, string? arguments = null) =>
-        Launch(new LaunchRequest(launchId ?? "", arguments, Elevate: false));
+        Launch(new LaunchRequest(launchId ?? "", arguments, Elevate: false), started: null);
 
-    public bool Launch(LaunchRequest request)
+    public bool Launch(LaunchRequest request, Action? started = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (string.IsNullOrWhiteSpace(request.LaunchId))
@@ -41,43 +41,26 @@ internal sealed class AppLauncher : IAppLauncher
         }
 
         var id = request.LaunchId.Trim();
-        var elevate = request.Elevate && LaunchPlanner.CanElevate(id);
 
         // We are (usually) the foreground process right after a click; let the new app take focus.
         NativeMethods.AllowSetForegroundWindow(NativeMethods.ASFW_ANY);
         try
         {
-            if (LaunchPlanner.IsUri(id))
+            // LaunchPlanner decides elevation (full-trust packaged apps need the catalogue's host, which this class
+            // doesn't have); URIs are handed to their scheme's handler and are never elevated.
+            if (request.Elevate && !LaunchPlanner.IsUri(id))
             {
-                return ShellExecute(id, arguments: null, workingDirectory: null);
-            }
-
-            if (Path.IsPathRooted(id) && File.Exists(id))
-            {
-                return StartFile(id, request.Arguments, elevate);
-            }
-
-            if (KnownFolderPath.TryParse(id, out _, out _) && _resolvePath(id) is { } resolved
-                && Path.IsPathRooted(resolved) && File.Exists(resolved)
-                && resolved.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-            {
-                return StartFile(resolved, request.Arguments, elevate);
-            }
-
-            if (id.Contains('!'))
-            {
-                // Packaged apps have no "runas"; LaunchPlanner.CanElevate is false for them, so elevate is too.
-                ActivatePackagedApp(id, request.Arguments);
+                LaunchElevated(id, request.Arguments, started);
                 return true;
             }
 
-            if (elevate)
+            if (!LaunchNormally(id, request.Arguments))
             {
-                RunOnShellThread(id, () => OpenAppsFolderItem(id, RunAsVerb));
-                return true;
+                return false;
             }
 
-            return OpenAppsFolderItem(id, verb: null);
+            started?.Invoke();
+            return true;
         }
         catch (Exception ex) when (ex is Win32Exception or FileNotFoundException or COMException or InvalidOperationException)
         {
@@ -86,21 +69,73 @@ internal sealed class AppLauncher : IAppLauncher
         }
     }
 
-    /// <summary>
-    /// Opens an existing file. Executables start in their own folder; shortcuts keep their "Start in".
-    /// An elevated launch returns as soon as the UAC prompt is requested; its outcome is logged.
-    /// </summary>
-    private static bool StartFile(string path, string? arguments, bool elevate)
+    private bool LaunchNormally(string id, string? arguments)
     {
-        var workingDirectory = path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? Path.GetDirectoryName(path) : null;
-        if (elevate)
+        if (LaunchPlanner.IsUri(id))
         {
-            RunOnShellThread(path, () => ShellExecuteElevated(path, arguments, workingDirectory));
+            return ShellExecute(id, arguments: null, workingDirectory: null);
+        }
+
+        if (ExistingFile(id) is { } path)
+        {
+            return ShellExecute(path, arguments, WorkingDirectoryFor(path));
+        }
+
+        if (id.Contains('!'))
+        {
+            ActivatePackagedApp(id, arguments);
             return true;
         }
 
-        return ShellExecute(path, arguments, workingDirectory);
+        return OpenAppsFolderItem(id, verb: null);
     }
+
+    /// <summary>
+    /// Starts <paramref name="id"/> with the "runas" verb on its own STA thread, because ShellExecuteEx waits there
+    /// until the UAC prompt is answered. <paramref name="started"/> is posted back to the calling thread only when
+    /// the user accepted; packaged apps are elevated through their AppsFolder item, as Start does.
+    /// </summary>
+    private void LaunchElevated(string id, string? arguments, Action? started)
+    {
+        var path = ExistingFile(id);
+        var context = SynchronizationContext.Current;
+        RunOnShellThread(id, () =>
+        {
+            var ok = path is not null
+                ? ShellExecuteElevated(path, arguments, WorkingDirectoryFor(path))
+                : OpenAppsFolderItem(id, RunAsVerb);
+            if (ok && started is not null)
+            {
+                if (context is null)
+                {
+                    started();
+                }
+                else
+                {
+                    context.Post(_ => started(), null);
+                }
+            }
+        });
+    }
+
+    /// <summary>The file a launch id names: an existing path, or a known-folder "{GUID}\app.exe" that resolves to one.</summary>
+    private string? ExistingFile(string id)
+    {
+        if (Path.IsPathRooted(id) && File.Exists(id))
+        {
+            return id;
+        }
+
+        return KnownFolderPath.TryParse(id, out _, out _) && _resolvePath(id) is { } resolved
+            && Path.IsPathRooted(resolved) && File.Exists(resolved)
+            && resolved.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                ? resolved
+                : null;
+    }
+
+    /// <summary>Executables start in their own folder; shortcuts keep their "Start in".</summary>
+    private static string? WorkingDirectoryFor(string path) =>
+        path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? Path.GetDirectoryName(path) : null;
 
     private static bool ShellExecute(string target, string? arguments, string? workingDirectory)
     {

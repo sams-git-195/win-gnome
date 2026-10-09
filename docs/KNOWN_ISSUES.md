@@ -42,8 +42,6 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-042](#ki-042) | S4 | Window buttons | WinGnome builds from before the window-buttons role still decorate alongside newer ones | Open |
 | [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
 | [KI-052](#ki-052) | S4 | Dock | Explorer windows other than folder windows don't join the File Explorer pin | Open |
-| [KI-053](#ki-053) | S4 | Dock | An elevated launch plays the launch animation even when the UAC prompt is cancelled | Open |
-| [KI-054](#ki-054) | S3 | Dock | Full-trust packaged apps such as Windows Terminal can't be run as administrator | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -294,28 +292,6 @@ window, have no AUMID and still show as a separate unpinned "Explorer" icon, whe
 under File Explorer. *Fix direction:* list the classes seen live (for example `OperationStatusWindow`) and add
 them to the rule, keeping the desktop, taskbar and other shell windows out.
 
-### KI-053
-**An elevated launch plays the launch animation even when the UAC prompt is cancelled** · S4 · Dock · Open
-
-An elevated `ShellExecuteEx` blocks until the UAC prompt is answered, so `AppLauncher` runs it on its own STA
-thread and reports success as soon as the prompt is requested (spec 0014). The dock therefore plays its launch
-bounce before the user answers, and still plays it when they choose No (which is logged at Info, as intended).
-*Fix direction:* give `IAppLauncher` an asynchronous result for elevated launches and play the feedback only when
-it succeeds.
-
-### KI-054
-**Full-trust packaged apps such as Windows Terminal can't be run as administrator** · S3 · Dock · Open
-
-Spec 0014 treats every packaged AUMID (`Family_hash!App`) as non-elevatable, so `LaunchPlanner.CanElevate` is false
-and neither the dock nor the overview offers *Run as administrator* for them. That is right for UWP apps, but
-full-trust packaged desktop apps (Windows Terminal `Microsoft.WindowsTerminal_8wekyb3d8bbwe!App`, PowerShell 7 from
-the Store, WinGet-installed MSIX tools) do offer it in Start, through `runas` on their AppsFolder item. Spec 0014's
-manual check names Windows Terminal, so that check can't pass as written. Desktop apps (Win32 AUMIDs, `.exe`,
-`.lnk`, `.bat`, `.cmd`, `.msc`) elevate as specified. *Fix direction:* read whether the AppsFolder item is a desktop
-app (for example `PKEY_AppUserModel_HostEnvironment`, or whether its context menu has `runas`) in `AppCatalog`,
-pass that into `LaunchPlanner.CanElevate`, and launch elevated packaged apps with `runas` on their ID list instead
-of `IApplicationActivationManager`.
-
 ## Resolved
 
 | ID | Severity | Area | Summary | Fixed in |
@@ -330,3 +306,5 @@ of `IApplicationActivationManager`.
 | KI-020 | S3 | App | A graceful `taskkill` that reached the tray host window was ignored, so WinGnome didn't quit | 085fa14 |
 | KI-030 | S4 | Overview | The first overview open after start took about half a second (WPF's first full-screen frame) | 1e4522f (cloaked warm-up 3 s after start) |
 | KI-051 | S3 | Accessibility | The round window buttons weren't exposed to screen readers or the keyboard | fea478b |
+| KI-053 | S4 | Dock | An elevated launch played the launch animation even when the UAC prompt was cancelled | COMMIT (feedback posted back only after `ShellExecuteEx` succeeds) |
+| KI-054 | S3 | Dock | Full-trust packaged apps such as Windows Terminal couldn't be run as administrator | COMMIT (`PKEY_AppUserModel_HostEnvironment` in `AppCatalog`) |
