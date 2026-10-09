@@ -181,11 +181,18 @@ public static class CaptionHitTestProbe
     /// and end before the column does.
     /// </summary>
     /// <returns>(top, bottom) offsets from the frame top, bottom exclusive, or null.</returns>
-    public static (int Top, int Bottom)? FindCloseExtent(IReadOnlyList<int> codes, int maxTopGap)
+    public static (int Top, int Bottom)? FindCloseExtent(IReadOnlyList<int> codes, int maxTopGap) =>
+        FindZoneExtent(codes, HtClose, maxTopGap);
+
+    /// <summary>
+    /// <see cref="FindCloseExtent"/> for a column through any button zone answering <paramref name="zoneCode"/>
+    /// (HTMAXBUTTON for <see cref="CaptionMaxAnchorProbe"/>).
+    /// </summary>
+    public static (int Top, int Bottom)? FindZoneExtent(IReadOnlyList<int> codes, int zoneCode, int maxTopGap)
     {
         ArgumentNullException.ThrowIfNull(codes);
         var top = 0;
-        while (top < codes.Count && codes[top] != HtClose)
+        while (top < codes.Count && codes[top] != zoneCode)
         {
             top++;
         }
@@ -196,7 +203,7 @@ public static class CaptionHitTestProbe
         }
 
         var bottom = top;
-        while (bottom < codes.Count && codes[bottom] == HtClose)
+        while (bottom < codes.Count && codes[bottom] == zoneCode)
         {
             bottom++;
         }

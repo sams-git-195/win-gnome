@@ -15,6 +15,9 @@ internal enum ProbeSource
 
     /// <summary>HTCLIENT holes matching a built-in profile of an app with HTML buttons (GitHub Desktop).</summary>
     Profile,
+
+    /// <summary>An HTMAXBUTTON zone between HTCLIENT zones in a Windows App SDK window (Dia).</summary>
+    MaximiseAnchored,
 }
 
 /// <summary>
@@ -24,8 +27,16 @@ internal enum ProbeSource
 /// <param name="Relative">The buttons, relative to the frame's top-left corner, in physical pixels.</param>
 internal readonly record struct ProbedCaption(PixelRect Relative, int FrameWidth, int FrameHeight, uint Dpi, ProbeSource Source)
 {
-    /// <summary>True when the buttons are HTCLIENT holes, so a click guard expects HTCLIENT over them.</summary>
-    public bool IsClientHoles => Source == ProbeSource.Profile;
+    /// <summary>What the click guard expects over each button.</summary>
+    public ProbeLayout Layout => Source switch
+    {
+        ProbeSource.Profile => ProbeLayout.ClientHoles,
+        ProbeSource.MaximiseAnchored => ProbeLayout.MaximiseAnchored,
+        _ => ProbeLayout.ButtonCodes,
+    };
+
+    /// <summary>True when the buttons were found by a rule that the web-buttons setting enables.</summary>
+    public bool NeedsWebButtonsSetting => Layout != ProbeLayout.ButtonCodes;
 
     /// <summary>True when <paramref name="frame"/> and <paramref name="dpi"/> still match the probe.</summary>
     public bool Matches(PixelRect frame, uint dpi) => frame.Width == FrameWidth && frame.Height == FrameHeight && dpi == Dpi;
@@ -63,8 +74,13 @@ internal static class CustomCaptionProbe
     /// For an app with a built-in profile (and the setting on), the width in DIPs of its HTML buttons: HTCLIENT
     /// holes of that width are then accepted when the window reports no button codes. Otherwise null.
     /// </param>
+    /// <param name="allowMaximiseAnchor">
+    /// True for a Windows App SDK window (with the setting on) that may report only its maximise button: an
+    /// HTMAXBUTTON zone between HTCLIENT zones is then accepted (<see cref="CaptionMaxAnchorProbe"/>).
+    /// </param>
     /// <returns>The buttons, or null when the window does not report exactly the minimise/maximise/close trio.</returns>
-    public static ProbedCaption? Probe(nint hwnd, PixelRect frame, uint dpi, double? webButtonWidth, out string? error)
+    public static ProbedCaption? Probe(
+        nint hwnd, PixelRect frame, uint dpi, double? webButtonWidth, bool allowMaximiseAnchor, out string? error)
     {
         error = null;
         try
@@ -85,6 +101,14 @@ internal static class CustomCaptionProbe
                 return TryHitTestColumn(hwnd, frame, columnX, scale, clock, out var columnCodes)
                     && CaptionHitTestProbe.FindCloseExtent(columnCodes, maxTopGap) is { } extent
                     ? Result(frame, groupLeft, extent, dpi, fromChild ? ProbeSource.ChildHitTest : ProbeSource.HitTest)
+                    : null;
+            }
+
+            if (allowMaximiseAnchor && CaptionMaxAnchorProbe.FindGroup(xs, rowCodes, scale) is { } anchored)
+            {
+                return TryHitTestColumn(hwnd, frame, anchored.MaximiseMiddle, scale, clock, out var maxColumn)
+                    && CaptionHitTestProbe.FindZoneExtent(maxColumn, CaptionHitTestProbe.HtMaxButton, maxTopGap) is { } maxExtent
+                    ? Result(frame, anchored.GroupLeft, maxExtent, dpi, ProbeSource.MaximiseAnchored)
                     : null;
             }
 

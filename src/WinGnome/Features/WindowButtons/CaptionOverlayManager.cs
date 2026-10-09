@@ -297,7 +297,30 @@ internal sealed class CaptionOverlayManager : IDisposable
         }
 
         throttle.RecordStart(now);
-        StartProbe(hwnd, frame, dpi, WebButtonWidth(hwnd));
+        StartProbe(hwnd, frame, dpi, WebButtonWidth(hwnd), AllowsMaximiseAnchor(hwnd));
+    }
+
+    /// <summary>
+    /// True for a window with Windows App SDK caption controls (Dia), when web buttons are enabled: such windows
+    /// may report only their maximise button (spec 0009). Plain HTCLIENT beside one zone is never accepted
+    /// elsewhere.
+    /// </summary>
+    private bool AllowsMaximiseAnchor(nint hwnd)
+    {
+        if (!_style.Settings.DecorateWebTitleBarButtons)
+        {
+            return false;
+        }
+
+        // A local walk of the window tree (no messages to the app), done once per probe.
+        var found = false;
+        NativeMethods.EnumChildWindows(hwnd, (child, _) =>
+        {
+            found = NativeMethods.GetClassName(child) == CaptionDecorationRules.WindowsAppSdkCaptionControlsClass
+                && NativeMethods.IsWindowVisible(child);
+            return !found;
+        }, 0);
+        return found;
     }
 
     private bool CanProbe(nint hwnd) =>
@@ -328,7 +351,7 @@ internal sealed class CaptionOverlayManager : IDisposable
         _probeTimer.Remove(hwnd);
     }
 
-    private void StartProbe(nint hwnd, PixelRect frame, uint dpi, double? webButtonWidth)
+    private void StartProbe(nint hwnd, PixelRect frame, uint dpi, double? webButtonWidth, bool allowMaximiseAnchor)
     {
         // The token ties the answer to this window: a window destroyed meanwhile drops its entry, so an answer for
         // a recycled handle is ignored.
@@ -338,7 +361,7 @@ internal sealed class CaptionOverlayManager : IDisposable
         // WM_NCHITTEST goes to another process: never from the dispatcher (see CustomCaptionProbe).
         Task.Run(() =>
         {
-            var result = CustomCaptionProbe.Probe(hwnd, frame, dpi, webButtonWidth, out var error);
+            var result = CustomCaptionProbe.Probe(hwnd, frame, dpi, webButtonWidth, allowMaximiseAnchor, out var error);
             _dispatcher.BeginInvoke(() => OnProbed(hwnd, token, frame, dpi, result, error));
         });
     }
@@ -372,7 +395,7 @@ internal sealed class CaptionOverlayManager : IDisposable
             return;
         }
 
-        if (result is { IsClientHoles: true } && !_style.Settings.DecorateWebTitleBarButtons)
+        if (result is { NeedsWebButtonsSetting: true } && !_style.Settings.DecorateWebTitleBarButtons)
         {
             // Web buttons were switched off while probing.
             window?.AllowReprobe();
@@ -415,6 +438,7 @@ internal sealed class CaptionOverlayManager : IDisposable
     {
         ProbeSource.ChildHitTest => "hit-testing a child window",
         ProbeSource.Profile => "its built-in web button profile",
+        ProbeSource.MaximiseAnchored => "its maximise zone beside client area (Windows App SDK caption controls)",
         _ => "hit-testing",
     };
 
@@ -425,7 +449,7 @@ internal sealed class CaptionOverlayManager : IDisposable
     /// </summary>
     private bool IsProbeAllowed(DecoratedWindow window) =>
         !window.IsProbed
-        || (_style.Settings.DecorateCustomTitleBars && (!window.IsClientHoles || _style.Settings.DecorateWebTitleBarButtons));
+        || (_style.Settings.DecorateCustomTitleBars && (!window.NeedsWebButtonsSetting || _style.Settings.DecorateWebTitleBarButtons));
 
     private void OnResampleDue(nint hwnd)
     {

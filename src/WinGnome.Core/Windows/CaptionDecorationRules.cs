@@ -25,6 +25,12 @@ public static class CaptionDecorationRules
     /// </summary>
     private const string ChromiumClassPrefix = "Chrome_WidgetWin_";
 
+    /// <summary>
+    /// The class of the child window that Windows App SDK creates for an app's caption controls (Dia). Only
+    /// windows that have one may be decorated from their maximise zone alone (<see cref="CaptionMaxAnchorProbe"/>).
+    /// </summary>
+    public const string WindowsAppSdkCaptionControlsClass = "ReunionWindowingCaptionControls";
+
     /// <summary>Apps that draw their caption buttons in HTML, with the width of one button in DIPs.</summary>
     private static readonly WebButtonProfile[] WebButtonProfiles =
     [

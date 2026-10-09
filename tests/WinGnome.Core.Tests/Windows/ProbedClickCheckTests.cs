@@ -24,15 +24,30 @@ public sealed class ProbedClickCheckTests
     }
 
     [Theory]
-    [InlineData(CaptionButtonKind.Close, false, 20)]
-    [InlineData(CaptionButtonKind.Maximize, false, 9)]
-    [InlineData(CaptionButtonKind.Minimize, false, 8)]
-    [InlineData(CaptionButtonKind.Close, true, 1)]
-    [InlineData(CaptionButtonKind.Maximize, true, 1)]
-    [InlineData(CaptionButtonKind.Minimize, true, 1)]
-    public void ExpectedCode_ButtonCodeOrClientHole(CaptionButtonKind kind, bool clientHoles, int expected)
+    [InlineData(CaptionButtonKind.Close, ProbeLayout.ButtonCodes, 20)]
+    [InlineData(CaptionButtonKind.Maximize, ProbeLayout.ButtonCodes, 9)]
+    [InlineData(CaptionButtonKind.Minimize, ProbeLayout.ButtonCodes, 8)]
+    [InlineData(CaptionButtonKind.Close, ProbeLayout.ClientHoles, 1)]
+    [InlineData(CaptionButtonKind.Maximize, ProbeLayout.ClientHoles, 1)]
+    [InlineData(CaptionButtonKind.Minimize, ProbeLayout.ClientHoles, 1)]
+    [InlineData(CaptionButtonKind.Close, ProbeLayout.MaximiseAnchored, 1)]
+    [InlineData(CaptionButtonKind.Maximize, ProbeLayout.MaximiseAnchored, 9)]
+    [InlineData(CaptionButtonKind.Minimize, ProbeLayout.MaximiseAnchored, 1)]
+    public void ExpectedCode_WhatTheProbeSawOverThatButton(CaptionButtonKind kind, ProbeLayout layout, int expected)
     {
-        Assert.Equal(expected, ProbedClickCheck.ExpectedCode(kind, clientHoles));
+        Assert.Equal(expected, ProbedClickCheck.ExpectedCode(kind, layout));
+    }
+
+    [Theory]
+    [InlineData(CaptionButtonKind.Close, ProbeLayout.MaximiseAnchored, true)]
+    [InlineData(CaptionButtonKind.Minimize, ProbeLayout.MaximiseAnchored, true)]
+    [InlineData(CaptionButtonKind.Maximize, ProbeLayout.MaximiseAnchored, false)]  // already checked itself
+    [InlineData(CaptionButtonKind.Close, ProbeLayout.ButtonCodes, false)]
+    [InlineData(CaptionButtonKind.Close, ProbeLayout.ClientHoles, false)]
+    public void ChecksMaximiseToo_ForClientZonesBesideAMaximiseAnchor(CaptionButtonKind kind, ProbeLayout layout, bool expected)
+    {
+        // HTCLIENT alone over close or minimise proves little; the maximise zone must still be where it was.
+        Assert.Equal(expected, ProbedClickCheck.ChecksMaximiseToo(kind, layout));
     }
 
     [Theory]
