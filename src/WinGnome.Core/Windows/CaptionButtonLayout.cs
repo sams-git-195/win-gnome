@@ -24,6 +24,9 @@ public static class CaptionButtonLayout
     /// <summary>Smallest circle diameter in DIPs the layout will shrink to.</summary>
     public const double MinDiameter = 8;
 
+    /// <summary>Width in DIPs of the native minimise, maximise and close buttons of a standard Windows 11 caption.</summary>
+    private const int HeaderBarNativeButtonsWidth = 138;
+
     /// <summary>
     /// Computes the overlay layout, or null when the native caption buttons rectangle is empty or the DPI scale is invalid.
     /// </summary>
@@ -92,6 +95,34 @@ public static class CaptionButtonLayout
         }
 
         return new CaptionOverlayLayout(bounds, diameter, slots);
+    }
+
+    /// <summary>
+    /// Lays out the circles in a header bar that WinGnome draws itself (the settings window, the app picker), as if
+    /// the bar were a <paramref name="widthDip"/> × <paramref name="heightDip"/> window at 100 % whose native buttons
+    /// fill the standard 138 DIP block on the right. The result uses the same rules as the overlay, so the header bar
+    /// and the settings preview match what other windows get.
+    /// </summary>
+    /// <returns>
+    /// The layout in DIPs: <see cref="CaptionOverlayLayout.Bounds"/> is the button group's area inside the bar and the
+    /// slot centres are relative to it. Null when the bar has no area.
+    /// </returns>
+    public static CaptionOverlayLayout? ComputeForHeaderBar(double widthDip, double heightDip, WindowButtonSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        if (!double.IsFinite(widthDip) || !double.IsFinite(heightDip))
+        {
+            return null;
+        }
+
+        var bar = PixelRect.FromSize(0, 0, RoundToInt(widthDip), RoundToInt(heightDip));
+        if (bar.IsEmpty)
+        {
+            return null;
+        }
+
+        var native = new PixelRect(Math.Max(0, bar.Right - HeaderBarNativeButtonsWidth), 0, bar.Right, bar.Bottom);
+        return Compute(native, bar, 1.0, settings);
     }
 
     private static int RoundToInt(double value) => (int)Math.Round(value, MidpointRounding.AwayFromZero);

@@ -30,4 +30,35 @@ public static class CaptionButtonHitTest
 
         return null;
     }
+
+    /// <summary>
+    /// Finds the button under a pointer in a header bar laid out by <see cref="CaptionButtonLayout.ComputeForHeaderBar"/>.
+    /// Used to answer WM_NCHITTEST, which reports physical pixels while the layout is in DIPs.
+    /// </summary>
+    /// <param name="layout">The header bar layout, in DIPs from the bar's top-left corner.</param>
+    /// <param name="clientX">Pointer x in physical pixels from the window's client-area left edge.</param>
+    /// <param name="clientY">Pointer y in physical pixels from the window's client-area top edge.</param>
+    /// <param name="dpiScale">Physical pixels per DIP of the window.</param>
+    /// <param name="barLeftDip">The bar's left edge in DIPs from the client-area left edge (the maximised margin).</param>
+    /// <param name="barTopDip">The bar's top edge in DIPs from the client-area top edge.</param>
+    /// <returns>The button, or null when the pointer is outside the button group or the scale is invalid.</returns>
+    public static CaptionButtonKind? FindInHeaderBar(
+        CaptionOverlayLayout layout, int clientX, int clientY, double dpiScale, double barLeftDip, double barTopDip)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        if (!double.IsFinite(dpiScale) || dpiScale <= 0)
+        {
+            return null;
+        }
+
+        var x = (clientX / dpiScale) - barLeftDip;
+        var y = (clientY / dpiScale) - barTopDip;
+        var bounds = layout.Bounds;
+        if (x < bounds.Left || x >= bounds.Right || y < bounds.Top || y >= bounds.Bottom)
+        {
+            return null;
+        }
+
+        return Find(layout, x - bounds.Left);
+    }
 }
