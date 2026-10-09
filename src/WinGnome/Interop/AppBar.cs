@@ -161,9 +161,11 @@ internal sealed partial class AppBar : IDisposable
             return;
         }
 
+        // Cleared before the call: the shell can dispatch an ABN_POSCHANGED to this window while ABM_REMOVE is in
+        // progress, and a bar that still looks registered would answer it with QUERYPOS/SETPOS or detach twice.
+        _registered = false;
         var data = NewData();
         Send(ABM_REMOVE, ref data);
-        _registered = false;
         ImmutableInterlocked.Update(ref s_registered, (list, hwnd) => list.Remove(hwnd), _hwnd);
     }
 
