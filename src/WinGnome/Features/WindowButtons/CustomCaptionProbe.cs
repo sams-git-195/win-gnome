@@ -68,7 +68,8 @@ internal static class CustomCaptionProbe
 
     /// <summary>
     /// Probes <paramref name="hwnd"/> whose visible frame is <paramref name="frame"/>. Thread-pool thread: never
-    /// throws and never logs (the loggers are UI-thread only); a failure comes back in <paramref name="error"/>.
+    /// throws and never logs (failures go through ThrottledLog, which is UI-thread only); a failure comes back in
+    /// <paramref name="error"/>.
     /// </summary>
     /// <param name="webButtonWidth">
     /// For an app with a built-in profile (and the setting on), the width in DIPs of its HTML buttons: HTCLIENT

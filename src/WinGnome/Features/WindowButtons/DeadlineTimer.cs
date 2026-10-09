@@ -29,6 +29,9 @@ internal sealed class DeadlineTimer : IDisposable
 
     public bool Contains(nint hwnd) => _schedule.Contains(hwnd);
 
+    /// <summary>The deadline of <paramref name="hwnd"/> (see <see cref="Now"/>), when it is scheduled.</summary>
+    public bool TryGetDue(nint hwnd, out long dueMs) => _schedule.TryGetDue(hwnd, out dueMs);
+
     /// <summary>Schedules <paramref name="hwnd"/> <paramref name="delayMs"/> from now, replacing any earlier deadline.</summary>
     public void Set(nint hwnd, long delayMs) => SetAt(hwnd, Now + delayMs);
 

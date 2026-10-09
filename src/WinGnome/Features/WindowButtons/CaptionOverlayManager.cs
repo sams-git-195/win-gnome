@@ -483,9 +483,12 @@ internal sealed class CaptionOverlayManager : IDisposable
             return;
         }
 
-        if (eventType == WinEventHook.EVENT_OBJECT_LOCATIONCHANGE && _probeTimer.Contains(hwnd))
+        // Still moving: probe once the size holds still. Only a window waiting for its size to settle is pushed
+        // back; one waiting for its probe budget (a later deadline) keeps it, so a drag doesn't wake the timer
+        // just to defer the probe again.
+        if (eventType == WinEventHook.EVENT_OBJECT_LOCATIONCHANGE && _probeTimer.TryGetDue(hwnd, out var due)
+            && due <= DeadlineTimer.Now + ProbeSettleMs)
         {
-            // Still moving: probe once the size holds still.
             _probeTimer.Set(hwnd, ProbeSettleMs);
         }
 

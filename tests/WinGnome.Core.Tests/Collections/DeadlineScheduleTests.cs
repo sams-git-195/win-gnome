@@ -75,6 +75,18 @@ public sealed class DeadlineScheduleTests
     }
 
     [Fact]
+    public void TryGetDue_ReturnsTheKeysDeadline()
+    {
+        var schedule = new DeadlineSchedule<string>();
+        schedule.Set("a", 100);
+        schedule.Set("b", 50);
+
+        Assert.True(schedule.TryGetDue("a", out var due));
+        Assert.Equal(100, due);
+        Assert.False(schedule.TryGetDue("c", out _));
+    }
+
+    [Fact]
     public void Clear_EmptiesTheQueue()
     {
         var schedule = new DeadlineSchedule<string>();
