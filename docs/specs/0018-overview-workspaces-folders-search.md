@@ -24,7 +24,7 @@ Four GNOME habits are missing from WinGnome's overview and dock (README roadmap 
 - Hover shows the desktop's name (Explorer's `Desktops\{GUID}\Name`, else "Desktop N") as a tooltip.
 - **Click a thumbnail** → the overview closes and Windows switches to that desktop through the existing
   `VirtualDesktopMonitor.SwitchTo` path (Ctrl+Win+arrows, KI-003). Clicking the current one closes the overview.
-  (Open user question, see Risks.)
+  (Decided by the user 2026-10-09: clicking a workspace closes the overview.)
 - The strip is hidden when there is one desktop, except during a window drag (below), when it appears with the
   *new workspace* slot. Windows shown on all desktops (defined in Design, *Other desktops' windows*) are drawn on every
   thumbnail.
@@ -58,7 +58,7 @@ Four GNOME habits are missing from WinGnome's overview and dock (README roadmap 
   app into the main grid at the pointer position.
 - A folder is **deleted when its last app leaves** (GNOME's rule: `FolderView.removeApp` deletes at zero apps; a
   one-app folder stays until that app is dragged out). Decided to follow GNOME; the user may still prefer deleting at
-  fewer than two (open question, see Risks).
+  fewer than two (decided by the user 2026-10-09: deleted when empty).
 - A default **Utilities** folder is created once per profile, filled by a built-in rule that matches Windows' system
   tools (rule in Design). Like GNOME's category folders, newly installed matching tools join it; an app dragged out is
   excluded from the rule so it doesn't come back. Renaming or emptying it is allowed; it is never re-created except by
@@ -87,7 +87,7 @@ Four GNOME habits are missing from WinGnome's overview and dock (README roadmap 
 
 ### File search (decision 5)
 - When the query has at least 2 characters, a **Files** section lists up to **5** files from the Windows Search index,
-  directly under **Applications** (so the order is Applications, Files, Windows; open user question, see Risks). Each
+  after **Windows** (order decided by the user 2026-10-09: Applications, Windows, Files). Each
   row: shell icon, file name, folder shown relative to the profile (`~\Documents\Reports`).
 - Matches file names (not contents), every typed word as a prefix, ranked by the indexer's rank. Scope: the user's
   Desktop, Documents, Downloads, Pictures, Music and Videos (their real paths, including OneDrive or other redirection),
@@ -409,11 +409,8 @@ Run on this machine (26200) and every build/UBR to be listed, recorded in the PR
   revisit if seen in logs.
 - **Code correction**: the previous draft said the build came from `RtlGetVersion` "already used by About"; About
   (`SystemInfoReader`) actually reads `CurrentBuildNumber` and `UBR` from the registry, which this spec now uses.
-- **Open user questions (not decided here):**
-  - Clicking a workspace closes the overview (current spec; switching activates a window on the new desktop, which
-    deactivates and closes the overview, and keeping it open needs re-activation and flicker) vs. GNOME keeping it open.
-  - Search results order Applications, Files, Windows (current spec) vs. Applications, Windows, Files.
-  - A folder is deleted at 0 apps (GNOME, current spec) vs. when fewer than 2 remain.
+- **User decisions 2026-10-09:** clicking a workspace closes the overview; results order Applications, Windows, Files;
+  a folder is deleted when empty; window moving is enabled only on verified (build, UBR) ranges, refused elsewhere.
 - Dragging a pin off the dock removes it without undo (GNOME behaviour); intellihide keeps the dock shown during drags.
 - ADO is late-bound; a stripped-down Windows image without ADO just loses the Files section (logged).
 - Shell mode (spec 0013) has no Explorer, so no virtual desktops: the strip is off and the mover is the null one.

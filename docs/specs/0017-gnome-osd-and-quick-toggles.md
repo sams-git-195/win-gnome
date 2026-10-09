@@ -31,10 +31,9 @@ User decisions (2026-10-09), in substance:
   bar. Light and dark follow `General.Theme`.
 - Position: centred horizontally in the chosen monitor's work area, bottom edge 64 DIPs above the work-area
   bottom (clears a reserved dock; an intellihide/autohide dock may be overlapped while the OSD is up).
-- Monitor (decided): **brightness** → the monitor of the internal panel (the display whose brightness changed);
-  **volume, mute, Caps Lock** → the monitor of the foreground window, or the pointer's monitor when there is no
-  foreground window or it is the desktop/WinGnome's own bar. Rationale: the user's attention is on the focused
-  window; the pointer is often parked. (GNOME shows the OSD on every monitor; open question in Risks.)
+- Monitor (decided by the user 2026-10-09): **every monitor**, as in GNOME. One pill per monitor, each centred in
+  that monitor's work area at its own DPI; all show, update and fade together. Pill windows are created lazily per
+  monitor and dropped when a monitor goes away (`OsdMonitorChoice` returns the list of monitors).
 - Timing: appears at once (no fade-in), each further change updates it in place and restarts the timer; after
   1500 ms without a change it fades out over 200 ms. Never takes focus or clicks (no-activate, click-through,
   topmost tool window, not in Alt+Tab).
@@ -369,9 +368,8 @@ Interop partials are shared: packages 3–6 add declarations in separate commits
   focused — whichever the spike finds).
 
 ## Risks and open questions
-- **Open (user): one monitor or every monitor.** GNOME shows the OSD on every monitor; this spec shows it on one
-  (brightness → internal panel, volume → foreground window's monitor), as the user asked us to decide. Confirm
-  before package 3; switching is confined to `OsdMonitorChoice` and the presenter.
+- **Decided (user, 2026-10-09): every monitor.** Cost is one small layered window per extra monitor, created on the
+  first OSD and hidden (not destroyed) between shows.
 - Advisor review (Fable) replaced the earlier two-mechanism design (volume-key hook plus minimise). Every advisor
   point was accepted; none was contradicted by the code. Notes from checking the code:
   `AudioVolumeController.Changed` is a plain `EventHandler` today and `AudioDevices` keeps its own two

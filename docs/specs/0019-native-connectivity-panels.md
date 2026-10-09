@@ -433,11 +433,10 @@ All parts:
   while the taskbar is hidden (expected not; `ms-settings:network-wifi` is primary regardless); (10) NLM
   `WEBHIJACK` on a real captive portal; (11) `SecurePassword` → `char[]` path leaves no managed string (memory
   inspection in a debug build).
-- **Open user question — dock's Settings pin**: redirecting it means its running dots never light for WinGnome
-  Settings, and users who pinned Windows Settings on purpose lose one-click access (mitigated by the setting and
-  panel links). Not decided here.
-- **Open user question — default-on redirect**: default `true` installs the shared keyboard hook on upgrade for users
-  who had both Super options (and every 0016 shortcut) off. Not decided here.
+- **Decided (user, 2026-10-09) — dock's Settings pin redirects** to WinGnome Settings. Its running dots don't light
+  for WinGnome Settings; Windows Settings stays reachable from each panel's link and by turning the redirect off.
+- **Default-on redirect** follows the user's decision to redirect Win+I (2026-10-09); it installs the shared keyboard
+  hook on upgrade for users who had every other shortcut off. Turning the setting off removes it.
 - *Show password* necessarily puts the key in a WPF `TextBox` (a managed string) while shown; it is cleared on hide
   and on close. Accepted residual risk.
 - Per-user fallback profiles are invisible to other accounts on the PC (unlike Windows Settings' all-user profiles);
