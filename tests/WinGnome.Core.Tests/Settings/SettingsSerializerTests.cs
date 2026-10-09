@@ -135,11 +135,67 @@ public class SettingsSerializerTests
     }
 
     [Fact]
-    public void Deserialize_UnknownTopBarFontFamily_UsesAdwaitaSans()
+    public void Deserialize_UnknownTopBarFontFamilyNumber_UsesAdwaitaSans()
     {
         var settings = SettingsSerializer.Deserialize("""{ "TopBar": { "FontFamily": 42 } }""");
 
         Assert.Equal(TopBarFont.AdwaitaSans, settings.TopBar.FontFamily);
+    }
+
+    [Fact]
+    public void Deserialize_UnknownTopBarFontFamilyName_UsesAdwaitaSans_AndKeepsTheRest()
+    {
+        // A newer build may add fonts; an older build reading its file falls back for this setting alone.
+        var settings = SettingsSerializer.Deserialize(
+            """{ "TopBar": { "FontFamily": "Inter", "FontSize": 15 }, "Dock": { "Position": "Left" } }""");
+
+        Assert.Equal(TopBarFont.AdwaitaSans, settings.TopBar.FontFamily);
+        Assert.Equal(15, settings.TopBar.FontSize);
+        Assert.Equal(DockPosition.Left, settings.Dock.Position);
+    }
+
+    [Fact]
+    public void Deserialize_UnknownWindowButtonNames_UseTheirDefaults_AndKeepTheRest()
+    {
+        var settings = SettingsSerializer.Deserialize(
+            """{ "WindowButtons": { "Preset": "Neon", "Side": "Top", "Order": "CloseMinimizeMaximize", "ExcludedProcesses": ["code"] } }""");
+
+        Assert.Equal(TrafficLightPreset.MacOS, settings.WindowButtons.Preset);
+        Assert.Equal(ButtonSide.Right, settings.WindowButtons.Side);
+        Assert.Equal(ButtonOrder.CloseMinimizeMaximize, settings.WindowButtons.Order);
+        Assert.Equal(["code"], settings.WindowButtons.ExcludedProcesses);
+    }
+
+    [Fact]
+    public void Deserialize_UnknownBlurName_UsesEachPropertysOwnDefault()
+    {
+        // The same enum has different defaults on different settings.
+        var settings = SettingsSerializer.Deserialize("""{ "TopBar": { "Blur": "Frosted" }, "Dock": { "Blur": "Frosted" } }""");
+
+        Assert.Equal(BlurEffect.None, settings.TopBar.Blur);
+        Assert.Equal(BlurEffect.Acrylic, settings.Dock.Blur);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("true")]
+    [InlineData("""{ "Name": "Left" }""")]
+    [InlineData("""["Left"]""")]
+    [InlineData("\"\"")]
+    public void Deserialize_EnumOfTheWrongJsonType_UsesTheDefault_AndKeepsTheRest(string value)
+    {
+        var settings = SettingsSerializer.Deserialize($$"""{ "Dock": { "Position": {{value}}, "IconSize": 64 } }""");
+
+        Assert.Equal(DockPosition.Bottom, settings.Dock.Position);
+        Assert.Equal(64, settings.Dock.IconSize);
+    }
+
+    [Fact]
+    public void Deserialize_KnownEnumNumber_StillReadsIt()
+    {
+        var settings = SettingsSerializer.Deserialize("""{ "Dock": { "Position": 2 } }""");
+
+        Assert.Equal(DockPosition.Right, settings.Dock.Position);
     }
 
     [Fact]
@@ -254,7 +310,6 @@ public class SettingsSerializerTests
     [InlineData("{ not json")]
     [InlineData("")]
     [InlineData("[1,2,3]")]
-    [InlineData("""{ "Dock": { "Position": "Sideways" } }""")]
     [InlineData("""{ "Dock": { "IconSize": "wide" } }""")]
     public void Deserialize_Invalid_ThrowsJsonException(string json)
     {

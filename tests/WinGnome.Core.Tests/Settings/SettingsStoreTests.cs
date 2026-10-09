@@ -128,16 +128,18 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public void Load_UnknownEnumValue_CountsAsCorrupt()
+    public void Load_UnknownEnumName_ResetsOnlyThatSetting_AndKeepsTheFile()
     {
+        // E.g. a value written by a newer WinGnome: it must not cost the user every other setting.
         Directory.CreateDirectory(_directory);
         var store = new SettingsStore(_directory);
-        File.WriteAllText(store.FilePath, """{ "Dock": { "Position": "Top" } }""");
+        File.WriteAllText(store.FilePath, """{ "Dock": { "Position": "Top", "IconSize": 64 } }""");
 
         var settings = store.Load();
 
         Assert.Equal(DockPosition.Bottom, settings.Dock.Position);
-        Assert.True(File.Exists(store.FilePath + ".corrupt"));
+        Assert.Equal(64, settings.Dock.IconSize);
+        Assert.False(File.Exists(store.FilePath + ".corrupt"));
     }
 
     [Fact]
