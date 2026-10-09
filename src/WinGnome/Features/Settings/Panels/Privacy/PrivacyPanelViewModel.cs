@@ -32,11 +32,14 @@ internal sealed class PrivacyAppViewModel : ObservableObject
 
     public VerifiedSwitch Switch { get; }
 
-    public void Show(ConsentAppRow row, ConsentRowState state)
+    /// <param name="row">The app as read.</param>
+    /// <param name="state">What its switch shows and whether Windows lets it change.</param>
+    /// <param name="canEdit">False in safe mode, where no switch can change.</param>
+    public void Show(ConsentAppRow row, ConsentRowState state, bool canEdit)
     {
         UseText = row.UseText;
         OnPropertyChanged(nameof(UseText));
-        Switch.CanChange = state.CanChange && !IsDesktop;
+        Switch.CanChange = canEdit && state.CanChange && !IsDesktop;
         Switch.Confirm(state.IsOn);
     }
 }
@@ -116,15 +119,18 @@ internal sealed class PrivacyCapabilityViewModel : ObservableObject
             ? "No apps have asked for this yet."
             : string.Create(CultureInfo.CurrentCulture, $"{AppList.Count} {(AppList.Count == 1 ? "app" : "apps")}");
 
-    public void Show(ConsentSnapshot snapshot, IReadOnlyList<ConsentAppRow> rows)
+    /// <param name="snapshot">The capability as read.</param>
+    /// <param name="rows">Its app list.</param>
+    /// <param name="canEdit">False in safe mode: every switch is shown but disabled.</param>
+    public void Show(ConsentSnapshot snapshot, IReadOnlyList<ConsentAppRow> rows, bool canEdit)
     {
         DeviceText = ConsentValue.IsAllowed(snapshot.Device) ? "On" : "Off. Turn it on in Windows Settings; this needs an administrator.";
 
         var apps = ConsentEffective.ForMaster(snapshot.Device, snapshot.User);
-        Apps.CanChange = apps.CanChange;
+        Apps.CanChange = canEdit && apps.CanChange;
         Apps.Confirm(apps.IsOn);
         var desktop = ConsentEffective.ForMaster(snapshot.Device, snapshot.Desktop);
-        Desktop.CanChange = desktop.CanChange;
+        Desktop.CanChange = canEdit && desktop.CanChange;
         Desktop.Confirm(desktop.IsOn);
 
         var shown = new List<PrivacyAppViewModel>(rows.Count);
@@ -137,7 +143,7 @@ internal sealed class PrivacyCapabilityViewModel : ObservableObject
             }
 
             // A desktop app's own value isn't something Windows applies per app, so its row only shows its use.
-            app.Show(row, ConsentEffective.For(snapshot.Device, snapshot.User, row.Value));
+            app.Show(row, ConsentEffective.For(snapshot.Device, snapshot.User, row.Value), canEdit);
             shown.Add(app);
         }
 
@@ -203,8 +209,8 @@ internal sealed class PrivacyPanelViewModel : SystemPanelViewModel
         Show(Location, all.Location, names, clock);
     }
 
-    private static void Show(PrivacyCapabilityViewModel target, ConsentSnapshot snapshot, Dictionary<string, string> names, ConsentClock clock) =>
-        target.Show(snapshot, ConsentAppList.Build(snapshot.Apps, family => names.GetValueOrDefault(family), clock));
+    private void Show(PrivacyCapabilityViewModel target, ConsentSnapshot snapshot, Dictionary<string, string> names, ConsentClock clock) =>
+        target.Show(snapshot, ConsentAppList.Build(snapshot.Apps, family => names.GetValueOrDefault(family), clock), CanEdit);
 
     /// <summary>Package family name to app name, from the catalogue the shell already loaded (the first app of a package names it).</summary>
     private Dictionary<string, string> PackageNames()
