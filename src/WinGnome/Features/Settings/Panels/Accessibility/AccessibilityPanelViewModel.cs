@@ -8,10 +8,10 @@ using WinGnome.Infrastructure;
 namespace WinGnome.Features.Settings.Panels.Accessibility;
 
 /// <summary>
-/// Accessibility: sticky, slow and bounce keys, pointer size, text cursor thickness, reduce animation, high contrast,
-/// and launchers for the on-screen keyboard, Magnifier and Narrator. Every change is verified-set: written on the
+/// Accessibility: sticky, slow and bounce keys, pointer size, text cursor thickness, reduce animation, the current
+/// contrast theme (changed in Windows Settings), and launchers for the on-screen keyboard, Magnifier and Narrator. Every change is verified-set: written on the
 /// settings writer thread, read back from Windows, and the page shows what Windows reports. While a write is in flight
-/// the switches are disabled. Pointer colour, text size and the text cursor indicator open Windows Settings.
+/// the switches are disabled. Pointer colour, contrast themes, text size and the text cursor indicator open Windows Settings.
 /// </summary>
 internal sealed class AccessibilityPanelViewModel : SystemPanelViewModel
 {
@@ -39,6 +39,7 @@ internal sealed class AccessibilityPanelViewModel : SystemPanelViewModel
         PointerSettingsCommand = new RelayCommand(() => context.OpenLink("ms-settings:easeofaccess-mousepointer"));
         TextCursorSettingsCommand = new RelayCommand(() => context.OpenLink("ms-settings:easeofaccess-cursor"));
         TextSizeSettingsCommand = new RelayCommand(() => context.OpenLink("ms-settings:easeofaccess-display"));
+        ContrastSettingsCommand = new RelayCommand(() => context.OpenLink("ms-settings:easeofaccess-highcontrast"));
     }
 
     /// <summary>True once Windows has been read, while nothing is being written, and not in safe mode.</summary>
@@ -116,31 +117,11 @@ internal sealed class AccessibilityPanelViewModel : SystemPanelViewModel
         set => Change(value, ReduceAnimation, $"turn animation effects {OnOff(!value)}", "animation effects", _ => AccessibilityService.SetReduceAnimation(value));
     }
 
-    public IReadOnlyList<string> ContrastChoices => Contrast().Choices;
-
-    /// <summary>None or a contrast theme. Windows shows its own "Please wait" while it switches.</summary>
-    public string HighContrast
-    {
-        get => Contrast().Selected;
-        set
-        {
-            if (value is null || value == HighContrast)
-            {
-                return;
-            }
-
-            var theme = ContrastThemes.FromDisplayName(value);
-            if (!CanChange || (theme is null && value != ContrastThemes.None))
-            {
-                // Not now, or a custom scheme listed only so the row shows what Windows has: put the row back.
-                OnPropertyChanged();
-                return;
-            }
-
-            Write(theme is null ? "turn high contrast off" : $"turn high contrast on with {theme.DisplayName}",
-                "high contrast", _ => AccessibilityService.SetHighContrast(theme));
-        }
-    }
+    /// <summary>
+    /// The contrast theme Windows reports, read-only: themes are changed in Windows Settings until the spec 0020 WP4
+    /// spike proves a clean SPI_SETHIGHCONTRAST write (KI-087).
+    /// </summary>
+    public string HighContrast => _state is { } state ? ContrastThemes.Describe(state.HighContrastOn, state.HighContrastScheme) : "";
 
     public string TextSizeText => (_state?.TextScalePercent ?? 100).ToString(CultureInfo.CurrentCulture) + "%";
 
@@ -155,6 +136,8 @@ internal sealed class AccessibilityPanelViewModel : SystemPanelViewModel
     public ICommand TextCursorSettingsCommand { get; }
 
     public ICommand TextSizeSettingsCommand { get; }
+
+    public ICommand ContrastSettingsCommand { get; }
 
     protected override void Open()
     {
@@ -175,9 +158,6 @@ internal sealed class AccessibilityPanelViewModel : SystemPanelViewModel
         _openCount++;
         _service = null;
     }
-
-    private (IReadOnlyList<string> Choices, string Selected) Contrast() =>
-        ContrastThemes.ChoicesFor(_state?.HighContrastOn ?? false, _state?.HighContrastScheme);
 
     private static string OnOff(bool on) => on ? "on" : "off";
 

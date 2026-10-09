@@ -4,15 +4,18 @@ namespace WinGnome.Core.ControlCenter;
 /// <param name="DisplayName">The name Windows 11 Settings shows.</param>
 /// <param name="FileName">Its theme file in <c>%WINDIR%\Resources\Ease of Access Themes</c>.</param>
 /// <param name="Scheme">
-/// The high-contrast scheme name WinGnome writes in <c>HIGHCONTRAST.lpszDefaultScheme</c>: the English name of the
-/// legacy scheme the theme file applies (Windows 11 renamed the themes but kept the files and schemes).
+/// The English name of the legacy high-contrast scheme the theme file applies (Windows 11 renamed the themes but kept
+/// the files and schemes); <c>HIGHCONTRAST.lpszDefaultScheme</c> may report it.
 /// </param>
 public sealed record ContrastTheme(string DisplayName, string FileName, string Scheme);
 
-/// <summary>The choices of the High contrast row (None or one of the four themes) and how a Windows read maps to them.</summary>
+/// <summary>
+/// Windows 11's contrast themes and how a Windows read maps to them, for the High contrast row (read-only until the
+/// spec 0020 WP4 spike proves which scheme value applies each theme cleanly; KI-087).
+/// </summary>
 public static class ContrastThemes
 {
-    /// <summary>The row's choice for high contrast off.</summary>
+    /// <summary>The row's text for high contrast off.</summary>
     public const string None = "None";
 
     // The pairs follow the files' colours: Aquatic's #202020 background with cyan links is hcblack.theme, Desert's
@@ -44,29 +47,22 @@ public static class ContrastThemes
             || string.Equals(theme.FileName, fileName, StringComparison.OrdinalIgnoreCase));
     }
 
-    public static ContrastTheme? FromDisplayName(string? displayName) =>
-        All.FirstOrDefault(theme => string.Equals(theme.DisplayName, displayName, StringComparison.Ordinal));
-
     /// <summary>
-    /// The row's choices and selection for what Windows reports. Off is <see cref="None"/>; on with a known theme is
-    /// its name; on with any other scheme is that scheme's own name, added as an extra choice so the row shows what
-    /// Windows really has.
+    /// What the row shows for what Windows reports: <see cref="None"/> when off, a known theme's Windows 11 name, or
+    /// any other scheme's own name ("Custom" when it has none).
     /// </summary>
-    public static (IReadOnlyList<string> Choices, string Selected) ChoicesFor(bool on, string? scheme)
+    public static string Describe(bool on, string? scheme)
     {
-        var known = All.Select(theme => theme.DisplayName).Prepend(None).ToList();
         if (!on)
         {
-            return (known, None);
+            return None;
         }
 
         if (FromScheme(scheme) is { } theme)
         {
-            return (known, theme.DisplayName);
+            return theme.DisplayName;
         }
 
-        var other = string.IsNullOrWhiteSpace(scheme) ? "Custom" : scheme.Trim();
-        known.Add(other);
-        return (known, other);
+        return string.IsNullOrWhiteSpace(scheme) ? "Custom" : scheme.Trim();
     }
 }

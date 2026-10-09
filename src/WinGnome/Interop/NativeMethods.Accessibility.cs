@@ -23,8 +23,8 @@ internal struct FILTERKEYS
 }
 
 /// <summary>
-/// HIGHCONTRASTW: SPI_GETHIGHCONTRAST / SPI_SETHIGHCONTRAST. On a read lpszDefaultScheme points at a string Windows
-/// owns; on a write it points at the caller's own buffer for the duration of the call.
+/// HIGHCONTRASTW: SPI_GETHIGHCONTRAST. lpszDefaultScheme points at a string Windows owns. Read only until the spec 0020
+/// WP4 high-contrast spike passes (KI-087).
 /// </summary>
 [StructLayout(LayoutKind.Sequential)]
 internal struct HIGHCONTRASTW
@@ -42,7 +42,6 @@ internal static partial class NativeMethods
     public const uint SPI_GETSTICKYKEYS = 0x003A;
     public const uint SPI_SETSTICKYKEYS = 0x003B;
     public const uint SPI_GETHIGHCONTRAST = 0x0042;
-    public const uint SPI_SETHIGHCONTRAST = 0x0043;
 
     /// <summary>Reloads the system cursors from the registry (Control Panel\Cursors, including CursorBaseSize).</summary>
     public const uint SPI_SETCURSORS = 0x0057;

@@ -16,7 +16,7 @@ namespace WinGnome.Features.Settings.Panels.Accessibility;
 /// <param name="CaretWidth">The text cursor thickness in pixels.</param>
 /// <param name="ClientAreaAnimation">Windows' "Animation effects".</param>
 /// <param name="HighContrastOn">High contrast is on.</param>
-/// <param name="HighContrastScheme">The scheme Windows reports (also kept while high contrast is off).</param>
+/// <param name="HighContrastScheme">The scheme Windows reports.</param>
 /// <param name="TextScalePercent">Windows' text size, 100..225.</param>
 internal sealed record AccessibilityState(
     uint StickyKeysFlags,
@@ -58,8 +58,8 @@ internal sealed class AccessibilityService
             ToState(filter),
             cursorSize,
             canChangeCursor,
-            Spi.Get(NativeMethods.SPI_GETCARETWIDTH, 1, "the text cursor thickness"),
-            Spi.Get(NativeMethods.SPI_GETCLIENTAREAANIMATION, 1, "animation effects") != 0,
+            ReadInt(NativeMethods.SPI_GETCARETWIDTH, "the text cursor thickness"),
+            ReadInt(NativeMethods.SPI_GETCLIENTAREAANIMATION, "animation effects") != 0,
             (contrast.Flags & NativeMethods.HCF_HIGHCONTRASTON) != 0,
             contrast.Scheme,
             ReadDWord(AccessibilityKey, "TextScaleFactor") ?? 100);
@@ -88,31 +88,6 @@ internal sealed class AccessibilityService
         Spi.Set(NativeMethods.SPI_SETCLIENTAREAANIMATION, 0, reduce ? 0 : 1, "animation effects");
 
     public bool SetCursorSize(int size) => _cursors.Write(size);
-
-    /// <summary>
-    /// Turns high contrast on with <paramref name="theme"/>, or off for null (Windows then restores the previous theme).
-    /// Windows shows its own "Please wait" and the call returns once the switch is done, several seconds later.
-    /// </summary>
-    public static bool SetHighContrast(ContrastTheme? theme)
-    {
-        if (ReadHighContrast() is not { } current)
-        {
-            return false;
-        }
-
-        var flags = theme is null ? current.Flags & ~NativeMethods.HCF_HIGHCONTRASTON : current.Flags | NativeMethods.HCF_HIGHCONTRASTON;
-        var scheme = Marshal.StringToHGlobalUni(theme?.Scheme ?? current.Scheme);
-        try
-        {
-            var value = new HIGHCONTRASTW { cbSize = (uint)Marshal.SizeOf<HIGHCONTRASTW>(), dwFlags = flags, lpszDefaultScheme = scheme };
-            return Check(NativeMethods.SystemParametersInfo(NativeMethods.SPI_SETHIGHCONTRAST, value.cbSize, ref value, PersistAndNotify),
-                NativeMethods.SPI_SETHIGHCONTRAST, "high contrast");
-        }
-        finally
-        {
-            Marshal.FreeHGlobal(scheme);
-        }
-    }
 
     private static bool WriteFilterKeys(Func<FilterKeysState, FilterKeysState> plan)
     {
@@ -144,6 +119,12 @@ internal sealed class AccessibilityService
         return Check(NativeMethods.SystemParametersInfo(NativeMethods.SPI_GETFILTERKEYS, value.cbSize, ref value, 0),
             NativeMethods.SPI_GETFILTERKEYS, "filter keys") ? value : null;
     }
+
+    /// <summary>An SPI_GET* value; throws rather than showing a value Windows didn't confirm.</summary>
+    private static int ReadInt(uint action, string what) =>
+        Check(NativeMethods.SystemParametersInfoGet(action, 0, out var value, 0), action, what)
+            ? value
+            : throw new Win32Exception($"Could not read {what}.");
 
     /// <summary>The high contrast flags and scheme name, copied out of the string Windows owns.</summary>
     private static (uint Flags, string Scheme)? ReadHighContrast()

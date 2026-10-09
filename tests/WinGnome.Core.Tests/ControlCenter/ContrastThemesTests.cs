@@ -43,37 +43,16 @@ public class ContrastThemesTests
         Assert.Null(ContrastThemes.FromScheme(scheme));
     }
 
-    [Fact]
-    public void FromDisplayName_IsExact()
-    {
-        Assert.Equal("hc2.theme", ContrastThemes.FromDisplayName("Night sky")?.FileName);
-        Assert.Null(ContrastThemes.FromDisplayName("night sky"));
-        Assert.Null(ContrastThemes.FromDisplayName(ContrastThemes.None));
-        Assert.Null(ContrastThemes.FromDisplayName(null));
-    }
-
     [Theory]
     [InlineData(false, "", "None")]
     [InlineData(false, "High Contrast Black", "None")]
     [InlineData(true, "High Contrast Black", "Aquatic")]
     [InlineData(true, @"C:\WINDOWS\resources\Ease of Access Themes\hcwhite.theme", "Desert")]
-    public void ChoicesFor_KnownStates_SelectFromTheFixedList(bool on, string scheme, string expected)
+    [InlineData(true, "  My scheme ", "My scheme")]
+    [InlineData(true, "", "Custom")]
+    [InlineData(true, null, "Custom")]
+    public void Describe_ShowsWhatWindowsHas(bool on, string? scheme, string expected)
     {
-        var (choices, selected) = ContrastThemes.ChoicesFor(on, scheme);
-
-        Assert.Equal(["None", "Aquatic", "Desert", "Dusk", "Night sky"], choices);
-        Assert.Equal(expected, selected);
-    }
-
-    [Theory]
-    [InlineData("My scheme", "My scheme")]
-    [InlineData("", "Custom")]
-    [InlineData(null, "Custom")]
-    public void ChoicesFor_OnWithAnotherScheme_AddsItSoTheRowShowsWhatWindowsHas(string? scheme, string expected)
-    {
-        var (choices, selected) = ContrastThemes.ChoicesFor(true, scheme);
-
-        Assert.Equal(["None", "Aquatic", "Desert", "Dusk", "Night sky", expected], choices);
-        Assert.Equal(expected, selected);
+        Assert.Equal(expected, ContrastThemes.Describe(on, scheme));
     }
 }

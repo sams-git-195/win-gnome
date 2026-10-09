@@ -9,9 +9,8 @@
                    Visibility="{Binding IsBusy, Converter={x:Static c:Converters.BoolToVisibility}}" />
 
         <c:SettingsGroup Header="Seeing">
-            <c:SettingsRow Title="High Contrast" Subtitle="A contrast theme. Windows shows &quot;Please wait&quot; while it switches.">
-                <ComboBox ItemsSource="{Binding ContrastChoices}" SelectedItem="{Binding HighContrast}" MinWidth="160"
-                          IsEnabled="{Binding CanChange}" />
+            <c:SettingsRow Title="High Contrast" Subtitle="{Binding HighContrast, StringFormat='Contrast theme: {0}. Changed in Windows Settings.'}">
+                <Button Content="Contrast Themes" Style="{DynamicResource SettingsButton}" Command="{Binding ContrastSettingsCommand}" />
             </c:SettingsRow>
             <c:SettingsRow Title="Reduce Animation" Subtitle="Turn off Windows' animation effects; the overview opens without animating.">
                 <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding ReduceAnimation}" IsEnabled="{Binding CanChange}" />
