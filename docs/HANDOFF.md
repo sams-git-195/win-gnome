@@ -50,144 +50,71 @@ disabled (no printers). Pointer uses a custom colour (cursor-size row is disable
 
 ---
 
-## 2. State of `main` (build clean, 2929 tests green; `publish\WinGnome.exe` is built from it)
+## 2. State of `main` (build clean, 3157 tests green; `publish\WinGnome.exe` is built from it and running)
 
-Merged this session:
-- **Accent colour fix** (bdd4aa5): WinGnome's palette follows Windows' accent (DWM `AccentColor`), `AccentPalette`
-  in Core.
-- **Specs 0010, 0016–0020** written, advisor-reviewed and agreed with the user (406b081, fb1d5cc).
-- **Spec 0020 native settings panels, all eight**: WP0 groundwork (1f0c26b), Printers + Removable Media (bc37621),
-  Accessibility (826ee86; high contrast is read-only with a link until its spike passes), Notifications + Privacy
-  (070753f), Region & Language + Windows Update (85fc5ba), Apps + Startup apps (56dc6ed).
+`main` is at **e85e68e**. Merged today (2026-10-09):
 
-## 3. Work in flight (branches, not merged)
+- **Spec 0010 multi-monitor** (e85e68e): a full top bar on every monitor, docks on the primary by default or on all
+  as an option, per-monitor focused app, guarded hot corners, `DisplayLayoutService` — and the **`SPI_SETWORKAREA`
+  work-area fallback** (outcome B): a bar whose granted strip is still missing 1.5 s after a check sets that
+  monitor's work area itself, records it in `workareas.state` and recovers on exit, crash, force-kill and next start
+  (KI-098, KI-099 — both carry the measured verification record).
+- **Panel load-failure fix** (e3fe726): `LoadAsync`'s `onFailed` callback plus Core's `PanelLoadGate`, so a read
+  that throws clears the panel's busy state (KI-091 — note its *corrected* Printers symptom claim: with the spooler
+  merely disabled, `PrinterService.Read` never throws and the panel was never stuck).
+- **Launcher-stub dock grouping fix** (c42d6dc, KI-100): `AppPathMatch.IsSameInstall` matches the launcher-stub
+  layout, so a pinned Docker Desktop groups its dashboard window instead of showing a second, unpinned icon.
 
-Each lives in a git worktree under `.claude/worktrees/agent-<id>`, branch `worktree-agent-<id>`.
+QA at the merge: `dotnet build -c Release -warnaserror` clean; **3157 tests green**; `--selftest --safe` exits 0
+(re-run on merged main). The everyday `publish\WinGnome.exe`, built from e85e68e, is **running on the user's
+machine** (started 20:35 through `explorer.exe`, being watched for idle stability); the previous exe (built from
+3d65d76) is backed up at `C:\Users\samhe\AppData\Local\Temp\opencode\publish-backup-20261009\`. Its first start
+verified spec 0010's B6 live: both strips reserved ~4.3 s after start through the fallback, one direct set per
+monitor, marker correct (details in KI-099).
 
-### 3a. Spec 0010 multi-monitor — branch `worktree-agent-ae7ed8eca306d9c7d` (HEAD 5c19982) — NOT merge-ready
+## 3. Work in flight
 
-Implemented and reviewed (all packages, hot corner per the user's decision: primary's corner always on, with an
-8×8 px dwell box where another monitor borders it). Passing: bars and docks on both monitors at their own DPI,
-tray click/hover on both bars, one popup at a time, crash / `taskkill /f` / `--restore-taskbar` restore work areas.
-
-**Blocking bug found in live sessions with the user:** AppBar strips are not reliably reserved.
-- After start with the taskbar hidden (non-safe, the user's real settings), neither bar's strip appears in the work
-  area. Re-registering (REMOVE/NEW/QUERYPOS/SETPOS) at +2 s and +10 s did **not** fix it.
-- The **old build on main has the same delay**: Explorer applied the strip ~35 s after docking, with no WinGnome
-  activity at that moment. Re-registering may be restarting that delay.
-- Unplugging the secondary made Explorer reset the primary's work area to full while our bar stayed registered.
-- Session logs: `C:\Users\samhe\AppData\Local\Temp\claude\C--Users-samhe-Documents-GitHub-WinGnome\79f95df3-9ca6-4c97-a5d3-e2b7b006d26c\scratchpad\mm-session\profile\wingnome*.log`
-  (session1/session2/current) and `everyday.log` (old build timing). The test profile used is `...\mm-session\profile`.
-
-When this session ended, the branch author was investigating (how `TaskbarController` hides the taskbar, whether
-the tray host's `Shell_TrayWnd`-class window intercepts `SHAppBarMessage`, Explorer's own recompute delay) and an
-advisor was evaluating **spec 0010 "outcome B"**: WinGnome sets the work area itself with documented
-`SystemParametersInfo(SPI_SETWORKAREA)` per monitor, recording originals first and restoring on exit, crash and
-next start, either alone or as a fallback when the AppBar strip isn't applied within a few seconds. Check the
-branch for commits after 97a2538 and the spec's Risks/implementation notes before continuing.
-
-**Latest from the branch author (5c19982):** `TaskbarController.Hide` sends `ABM_SETSTATE(ABS_AUTOHIDE)` and then
-immediately `SW_HIDE`s every taskbar window. Hypothesis: Explorer recomputes work areas when its auto-hide slide
-finishes, and hiding the windows mid-transition pushes it onto a ~35 s fallback. In steady state (taskbar hidden for
-a while) Explorer applies a new strip in ~0.3 s. 5c19982 replaces the immediate re-registering with a capped policy:
-wait 45 s for Explorer, then re-register at most 3 times (60/120/240 s apart). Log lines: "leaving it to Explorer
-for 45 s", then "reserved again". Spec 0010 now records three outcomes; the experiment below decides between them.
-
-**Experiment (do this first, with the user, every WinGnome quit; nothing else running):** build
-`tools/TbExp` (`dotnet build tools/TbExp -c Release -o <scratch>	bexp`). Each run docks a 40 px top AppBar, logs
-all work areas every 250 ms for 60 s, then removes it and restores the taskbar and its auto-hide state. It refuses
-to run while any WinGnome process exists. Run each into the same log and compare when the strip appears:
-1. `TbExp.exe immediate tbexp.log` (today's order)  2. `TbExp.exe settle tbexp.log` (auto-hide, wait ≤5 s for
-Explorer to apply it, then hide the windows)  3. `TbExp.exe nohide tbexp.log`  4. `TbExp.exe spi tbexp.log`
-(today's order plus `SPI_SETWORKAREA` if still missing after 2 s, not persisted).
-- `settle` prompt → **recommended fix:** hide the taskbar windows only after Explorer has applied auto-hide
-  (bounded, non-blocking wait). Smallest change, no new system state.
-- only `spi` prompt → implement the advisor's SPI fallback below (marker discipline, design note and review first).
-- neither → keep 5c19982 (behaves like the old build: strip after ~35 s).
-
-**Advisor (Fable) diagnosis and recommended design** (read-only review of the code, after the live sessions):
-- Interception by our tray host is ruled out: `TrayHost.OnCopyData` forwards AppBar `WM_COPYDATA` to Explorer's
-  real tray and Explorer answers the caller directly; the log shows granted rects. Explorer knows the bars; what
-  is missing is Explorer's **work-area recompute**, which it seems to run only inside its own taskbar layout pass,
-  deferred while its taskbar is auto-hide + `SW_HIDE` (`TaskbarController.Hide`). The ~35 s apply is probably an
-  Explorer-side event (auto-hide tick or Explorer re-showing its taskbar, which `TaskbarFeature` re-hides).
-- Also rule out "rude app" state: add a log line in `TopBarInstance.OnFullScreenChanged` (`ABN_FULLSCREENAPP`).
-- **Design:** keep the AppBar registration, and add a fallback that sets the work area directly:
-  - Core (tested): `WorkAreaFallback.Shrunk(workArea, edge, strip) -> PixelRect?` (null when already reserved),
-    plus an apply budget per monitor (e.g. 3 applications per 60 s, injected clock, `Log.Warn` when hit).
-  - App: one P/Invoke, `SystemParametersInfo(SPI_SETWORKAREA, rect, SPIF_SENDCHANGE)` (never
-    `SPIF_UPDATEINIFILE`), physical pixels, starting from a **fresh** `GetMonitorInfo` work area and moving only
-    the bar's edge (`Top = max(wa.Top, strip.Bottom)`), so other AppBars and the taskbar stay reserved.
-  - Flow in `AppBar.CheckStrip`: missing → re-register once → still missing at the 1.5 s pass → SPI shrink.
-    Re-verify on the triggers that already exist (display pass, debounced `WM_SETTINGCHANGE`, `ABN_*`); no polling.
-  - Restore: on `Undock`/`UndockAll`, after `ABM_REMOVE`, if the edge still equals the strip and this bar set it,
-    expand it back, then `AppBarJanitor.Nudge()`. After a force-kill, the next start (taskbar marker present) sets
-    each monitor's work area to full bounds, then nudges. `--safe` never calls SPI.
-- **Experiments for the next user session, in order:** (1) check whether the +35 s apply coincides with a
-  taskbar re-hide or full-screen notice in the log; (2) start with `NativeTaskbarAutoHide` (taskbar visible but
-  auto-hide) and with the taskbar untouched: if strips apply at once, the `SW_HIDE` state is the gate; (3) with
-  strips missing, from another process `ShowWindow(Shell_TrayWnd, SW_SHOWNA)` and separately a 1×1
-  `ABM_NEW`+`ABM_REMOVE`, and see which makes strips appear; (4) apply the SPI shrink by hand and watch 60 s for
-  Explorer reverting it; (5) unplug/replug with the fallback in: one "work area set directly" line per lost strip,
-  full work areas after quit.
-
-To finish: fix the reservation (with a cap and back-off, never a re-register loop), then repeat the **live session
-with the user** (they must quit the everyday instance first; nothing else may run):
-1. Start the branch build non-safe with a copy of the user's settings (`...\mm-session\start-test.cmd`).
-2. Within ~10 s, `tools/Get-WorkAreas.ps1` must show DISPLAY1 work top = 40 and DISPLAY2 work top = −1408.
-3. User unplugs the upper monitor → DISPLAY1 keeps top = 40. Replug (Win+P → Extend if Windows loses it) → both
-   strips back, no doubled strips (top must be exactly 40 / −1408).
-4. Then scale change, primary swap, sleep/resume. Explorer restart only with the user's OK.
-5. Quit the test build, confirm work areas are back to the baseline (taskbar visible: DISPLAY1 bottom 1540,
-   DISPLAY2 bottom −48), restart the everyday instance, confirm DISPLAY1 top = 40 (may take ~35 s, see above).
-Then an independent review of the new commits, merge to main with `--no-ff`, assign KI-098 to "MonitorKeyOf can
-map a recycled HMONITOR for ≤250 ms" (spec 0010 Risk 10).
-
-### 3b. Spec 0020 docs — merged
-
-WP9 docs integration is merged (KI-085..092, PLAN.md, README, spec status).
-
-Other `worktree-agent-*` branches are from earlier sessions and already merged; ignore them.
-
----
+Nothing. All worktrees and merged branches were removed; only `main` remains locally.
 
 ## 4. Queue, in order
 
-Specs are agreed; each lists its work packages, safety-critical parts and acceptance criteria. Do one spec (or
-phase) per branch, review, merge, then the next. Specs 0017/0018/0020-dependent work must be based on `main`
-**after** 0010 is merged (they touch the same services).
+Done since the last hand-off: former item 1 (spec 0010, section 2 above), former item 4 (panel load failures,
+KI-091) and — reported by the user in between — the Docker Desktop grouping bug (KI-100). The remaining spec work
+(0016–0019) can now be based on current `main`: they touch `DockInstance` and `TrayModel`, which 0010 refactored,
+so anything started before the merge would have to be rebased.
 
-1. **Finish 0010** (section 3a).
-2. **Dock dark ring (bug, user-reported):** a darker rim around the whole dock body on both monitors. Cause: the
+1. **Dock dark ring (bug, user-reported):** a darker rim around the whole dock body on both monitors. Cause: the
    blur backdrop window is inset (`Core/Geometry/BackdropPlacement.Compute`) because DWM's accent blur only rounds
    with fixed 4/8 DIP radii, leaving an unblurred rim between the backdrop and the body's larger rounded outline
    (`Features/Dock/DockWindow.xaml.cs` `SyncBackdrop`, `Interop/BlurBackdrop.cs`). Spike whether
    `SetWindowRgn` or `DWMWA_SYSTEMBACKDROP_TYPE` on a region-clipped window now clips the blur exactly on build
    26200; otherwise reduce the rim (e.g. tint the rim to match, or snap the default radius to DWM's). Also
    affects the top bar's floating mode. Check light and dark.
-3. **Windows Security tray icon ignores clicks** (user-reported; WinGnome delivers the callback without error, log
+2. **Windows Security tray icon ignores clicks** (user-reported; WinGnome delivers the callback without error, log
    shows nothing). Investigate `Features/TopBar/Tray/TrayViewModel.Deliver` / `TrayCallback` for
    `SecurityHealthSystray` (version-4 icon with GUID; may need `NIN_SELECT`/`WM_CONTEXTMENU` with the right
    anchor, or `AllowSetForegroundWindow` for its process). Check if the everyday build has the same problem.
    Add a KNOWN_ISSUES entry if unfixable.
-4. **Panel load failures leave rows busy** (KI-089, KI-091): when a panel's background read throws,
-   `SystemPanelViewModel.LoadAsync` never calls `show`, so Printers, Removable Media and the Apps list keep
-   `IsBusy` set until reopened. Add a failure callback to `LoadAsync` (small, shared base) and use it.
-5. **Spec 0016 GNOME window management**, phased: v1 (Alt+Tab app switcher, Super+A/S/N, Super+Page Up/Down,
+3. **Spec 0016 GNOME window management**, phased: v1 (Alt+Tab app switcher, Super+A/S/N, Super+Page Up/Down,
    tiling halves/quarters/expand with gaps), then v1.1 (layouts, Ctrl+drag zones, neighbour resize), then v1.2
    (Super+drag move/resize). WP0 spike first (which Win+ combos can be `RegisterHotKey`ed). Safety-critical:
    the shared low-level keyboard hook host — never block in the callback, swallow/unswallow symmetry, fail open.
    `Tiling.Enabled` defaults to true only if the 100 %/150 % cross-DPI QA passes.
-6. **Spec 0017 OSD + Night Light / Do Not Disturb** (spike first; OSD on every monitor per the user). When the DND
+4. **Spec 0017 OSD + Night Light / Do Not Disturb** (spike first; OSD on every monitor per the user). When the DND
    service exists, wire it into the Notifications panel's hidden DND row (KI-085).
-7. **Spec 0018 overview**: workspace strip, window-to-workspace move (undocumented COM, strict build/UBR table,
+5. **Spec 0018 overview**: workspace strip, window-to-workspace move (undocumented COM, strict build/UBR table,
    crash marker), app folders, dock pin/unpin by drag, file search. Results order Apps, Windows, Files.
-8. **Spec 0019 connectivity panels**, three parts: (a) Win+I and dock Settings pin redirect (needs 0016's hook
+6. **Spec 0019 connectivity panels**, three parts: (a) Win+I and dock Settings pin redirect (needs 0016's hook
    host), (b) Wi-Fi, (c) Network + Bluetooth.
 
 ## 5. Things that need the user (batch them into one message)
 
-- 0010 live session (above).
+- **Spec 0010 live session** for the checks that still need someone at the machine: B7 unplug/replug, B11 scale
+  change / primary swap / sleep-resume, B12 native taskbar mode, the stacked-records unwind on one monitor, the
+  corrupt-marker repair with the taskbar hidden, the crash path and the TbExp hide-order experiment. A
+  step-by-step runbook (who does what, expected work areas, pass/fail per step) is ready at
+  `C:\Users\samhe\AppData\Local\Temp\opencode\mm-session\RUNBOOK.md`. It needs the everyday instance quit, so
+  agree a window with the user first — and don't forget to restart it through `explorer.exe` afterwards.
 - Accessibility high-contrast spike (steps in the spec 0020 notes / KI entry) and, if they want, cursor size
   (needs the white pointer style).
 - AutoPlay "Memory card": change it once in Windows Settings while you diff
@@ -195,6 +122,11 @@ phase) per branch, review, merge, then the next. Specs 0017/0018/0020-dependent 
   Windows may use `CameraAlternate\ShowPicturesOnArrival`).
 - Notifications: does a switched-off app stop showing toasts without sign-out? Privacy: does the Camera app lose
   access when the switch is off?
+- **New (KI-100):** with Docker Desktop running, look at the dock and confirm there is one grouped icon, with the
+  pin's own label and icon and a running dot — not a second, generic one.
+- **New (spec 0010 behaviour change):** the top bar now appears on **every** monitor by default
+  (`TopBar.Monitors = All`) and the dock on the main display only (`Dock.Monitors = Primary`). Ask the user to
+  confirm both look right; both are settings (Top Bar → "Show on", Dock → "Show on").
 
 ## 6. How this session worked (copy what helped)
 

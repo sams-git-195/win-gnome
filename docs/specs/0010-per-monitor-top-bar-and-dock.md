@@ -1,10 +1,25 @@
 # 0010 — Top bar and dock on every monitor
 
-Status: Implemented 2026-10-09 (packages 0–6), awaiting Opus review and the manual QA that needs hot-plugging (see
-*Implementation notes*). User decisions 2026-10-09; advisor review (Fable) applied 2026-10-09.
+Status: Implemented (merged in e85e68e, 2026-10-09). User decisions 2026-10-09; advisor review (Fable) applied
+2026-10-09.
 
 Plans KI-001. Owns KI-069 to KI-072. Safety-critical (AppBars, work areas, taskbar): implemented alone, before any
 other spec, and reviewed by Opus before merge.
+
+*As built / as verified (2026-10-09, on the two-monitor machine described in the QA steps):* the T criteria 1–7 and
+B1–B5 are covered by the Core suite (3157 tests green at the merge). Q9–Q13, Q15's exit and force-kill paths and
+Q16's `--selftest --safe` check were exercised in the live sessions on the branch and on merged main: the everyday
+build (e85e68e) reserved both strips ~4.3 s after start through the outcome-B fallback — one "work area set
+directly" line per monitor, marker correct, the forced pass found no further action (B6; details and log lines in
+KI-099) — and `--selftest --safe` exits 0 and writes no marker. A solo non-safe test verified the shrink after an
+external reset, marker discipline, graceful quit, force-kill + `--restore-taskbar` recovery and the corrupt-marker
+repair's taskbar-visible branch (B9 in part).
+**Still to verify, and needs the user at the machine** (runbook:
+`C:\Users\samhe\AppData\Local\Temp\opencode\mm-session\RUNBOOK.md`): Q14/B7 unplug and replug; Q14/B11 scale change,
+primary swap, sleep/resume; B12 native taskbar mode; the two-records-on-one-monitor unwind (Core-tested only); the
+budget refusal (never triggered); the corrupt-marker repair's taskbar-hidden branch; Q15's crash-path variant
+(`EmergencyRestore`, never exercised — only `taskkill /f`, which by design runs nothing); Q16's leaked-AppBar exit-1
+check; and the TbExp hide-order experiment below.
 
 ## Problem
 On multi-monitor setups the top bar and dock exist only on the primary monitor, and `TaskbarController` hides the
@@ -365,9 +380,10 @@ So the janitor is the outcome A shape (one nudge at start and on `--restore-task
     `ShowWindow(SW_HIDE)`s every `Shell_TrayWnd`/`Shell_SecondaryTrayWnd` (unchanged by this spec).
   - With the taskbar visible before start: the branch registered at +0.2 s, found both strips missing at +2.3 s and
     +10.8 s and registered again each time; at +14 s neither strip was reserved. The old build (main before 0010)
-    docked at the same point and its strip appeared only ~35 s later, with no activity of its own at that moment.
-    Session 1 also started unreserved. So the delay predates this spec, and re-registering during it neither helped
-    nor is known to be harmless (it may restart Explorer's delay).
+    docked at the same point and its strip appeared only ~35 s later, with no activity of its own at that moment —
+    and ~35 s is not a ceiling: after a restart of the pre-fix build on 2026-10-09 20:14 the primary's work area was
+    still full when observed at 20:28. Session 1 also started unreserved. So the delay predates this spec, and
+    re-registering during it neither helped nor is known to be harmless (it may restart Explorer's delay).
   - In a steady state (taskbar already hidden for a while) Explorer applies a strip within ~0.3 s (spike 0, storm
     check), and after `SPI_SETWORKAREA` reset the work area, registering again restored every strip at once.
 
@@ -498,10 +514,11 @@ remove the need for this; the fallback also fixes the unplugged-monitor case, wh
 
 Explorer owns work areas. WinGnome's bars are registered AppBars and Explorer grants their rectangles, but it applies
 them to work areas only inside its own taskbar layout pass, which is deferred while its taskbar is auto-hidden and
-`SW_HIDE`n (measured ~35 s), and which it can skip entirely when a monitor is unplugged. In both cases maximised
-windows cover the bar and a strip nothing reserves is left in the desktop. `SystemParametersInfo(SPI_SETWORKAREA)` is
-documented, needs no elevation and writes exactly the value Explorer writes, so WinGnome can finish the job itself —
-provided it changes as little as possible, records it before it changes it, and gives it back.
+`SW_HIDE`n (measured ~35 s — not a ceiling: a fresh start of the pre-fix build was observed still unreserved minutes
+later), and which it can skip entirely when a monitor is unplugged. In both cases maximised windows cover the bar and
+a strip nothing reserves is left in the desktop. `SystemParametersInfo(SPI_SETWORKAREA)` is documented, needs no
+elevation and writes exactly the value Explorer writes, so WinGnome can finish the job itself — provided it changes
+as little as possible, records it before it changes it, and gives it back.
 
 ### Rules
 

@@ -16,9 +16,8 @@ Status is one of *Open*, *In progress*, *By design* (a limitation we've chosen t
 or *Fixed* (with the commit). When in doubt, pick the higher severity. A resolved entry may carry a `### KI-…`
 detail section below the Resolved table when the measured evidence behind the fix is worth keeping (KI-100).
 
-IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017, KI-098 and KI-099 by
-spec 0010, and KI-100 by the Docker Desktop dock-grouping fix. The next free ID is **KI-102**; grep the specs for
-`KI-0` before allocating one.
+IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-101 all
+have entries now). The next free ID is **KI-102**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
@@ -36,7 +35,7 @@ spec 0010, and KI-100 by the Docker Desktop dock-grouping fix. The next free ID 
 | [KI-018](#ki-018) | S4 | Performance | Idle CPU needs profiling on a quiet machine | Open |
 | [KI-019](#ki-019) | S4 | Tray | The tray host can take up to 1 s to get back in front of Explorer's taskbar | By design |
 | [KI-021](#ki-021) | S4 | Top bar | Brightness slider controls only a laptop's built-in display | Open |
-| [KI-022](#ki-022) | S4 | Tray | A `WM_CLOSE` posted to "the taskbar" quits WinGnome while it hosts tray icons | Open |
+| [KI-022](#ki-022) | S4 | Tray | A `WM_CLOSE` posted to "the taskbar" quits WinGnome while it hosts tray icons | By design |
 | [KI-023](#ki-023) | S4 | Dock | Two pins with the same target group the app's windows into the first one | Open |
 | [KI-031](#ki-031) | S4 | Overview | Overview animation details not verified on every path | Open |
 | [KI-032](#ki-032) | S4 | Overview | The overview's close glide gets 8–13 frames | Open |
@@ -205,17 +204,21 @@ first, so writes go through `SWbemServices.ExecMethod` (an undocumented quirk; l
 *Fix direction:* planned in spec [0011](specs/0011-external-monitor-brightness.md) (draft, needs a product decision).
 
 ### KI-022
-**A `WM_CLOSE` posted to "the taskbar" quits WinGnome while it hosts tray icons** · S4 · Tray · Open
+**A `WM_CLOSE` posted to "the taskbar" quits WinGnome while it hosts tray icons** · S4 · Tray · By design
 
 While WinGnome hosts the tray, its hidden host window is the first `Shell_TrayWnd` that `FindWindow` returns.
 Since 085fa14 a posted `WM_CLOSE` to it is treated as a quit request (that fixed KI-020, where a graceful
 `taskkill` was ignored). A tool or script that posts `WM_CLOSE` to the taskbar to open Explorer's *Shut Down
-Windows* dialog therefore quits WinGnome instead. *Triage (2026-10-09):* history suggests taskkill posts
-to one window only: the UI-thread `WM_CLOSE` filter (b4bd338) predates 085fa14 and KI-020 was still seen in
-between. Forwarding the message to Explorer would then most likely bring KI-020 back, so nothing was changed.
-*To verify:* quit the everyday instance, start a `--safe` profile through `explorer.exe`, `taskkill /PID` it, and
-check whether the log has both the tray-host and the `ControlWindow` close lines. If both appear, forward the
-message to Explorer and rely on `ControlWindow`; if only the tray host's, mark this By design.
+Windows* dialog therefore quits WinGnome instead.
+*Verified (2026-10-09):* the `ControlWindow` filter is what acts, and it is thread-wide — its
+`ComponentDispatcher.ThreadFilterMessage` hook catches a `WM_CLOSE` posted to **any** window on the UI thread, not
+just the tray host. Posting `WM_CLOSE` to the running everyday instance's Settings window (hwnd 0x260410) quit the
+whole app: "Close requested from outside (WM_CLOSE); shutting down", then *Window buttons stopped*, *Tray host
+stopped*, *Taskbar restored*, "WinGnome exited with code 0". That is by design: a posted `WM_CLOSE` is the quit
+request, whichever of our windows a graceful `taskkill` (without `/f`) happens to pick, and forwarding the message
+to Explorer instead would bring back KI-020. Practical consequence for anything automating WinGnome: you cannot
+close the settings window — or any other WinGnome window — programmatically with `WM_CLOSE` without quitting the
+shell.
 
 ### KI-023
 **Two pins with the same target group the app's windows into the first one** · S4 · Dock · Open
@@ -579,6 +582,17 @@ the read throws, on the dispatcher and under the same conditions as `show` (stil
 newest load on its channel — the counting lives in Core's `PanelLoadGate`, with tests). Printers, Removable Media and
 Apps pass it, so a failed read clears the busy state instead of leaving the controls disabled or the loading indicator
 up until the panel is reopened.
+*Correction (2026-10-09, measured):* the Printers symptom behind the fix does not reproduce on a machine whose spooler
+is merely disabled. With the spooler off, `EnumPrinters` fails with Win32 error 1722, but `PrinterService.Read` catches
+that internally and returns a `PrinterSnapshot` with `ListFailed = true`, so `LoadAsync`'s throw path is never taken
+and the panel was never stuck. PrintWindow screenshots of the panel on the pre-fix build (3d65d76) and the fixed build
+(e3fe726) are pixel-identical: the printer-specific banner ("Couldn't read the printer list from Windows. The print
+spooler may be stopped…"), *Add Printer…* and *Refresh* enabled, the default-printer toggle enabled, no misleading
+"no printers" note. Both builds logged only "Printers: could not list the printers" (the service's own catch), never
+`LoadAsync`'s "Settings: could not read the \"printers\" panel's settings"; Removable Media and Apps read successfully
+here, so no panel threw and none was stuck. The `onFailed` fix stands as a correct, defensive change and its Core gate
+is unit-tested, but UI-level proof of the failure path needs a read that really throws (an injected throw in
+`AutoplayStore.Read` or `InstalledAppsService.Read`), not a disabled spooler.
 *Not verified live:* printers and set-default were not tried on real printers (the spooler is disabled on the
 development machine), and no USB stick, memory card or disc was inserted for AutoPlay.
 
@@ -615,9 +629,10 @@ given and refuses one whose bounds changed (spec 0010, risk 10).
 
 Explorer grants WinGnome's AppBars their strips but applies them to monitor work areas only inside its own taskbar
 layout pass. That pass is deferred while its taskbar is auto-hidden and `SW_HIDE`n (measured ~35 s on build 26200,
-in the build before spec 0010 as well) and can be skipped entirely after a monitor is unplugged, so maximised windows
-cover the bar and the strip is left unreserved. Re-registering the AppBar did not help and may restart the deferral
-(three live sessions, spec 0010).
+in the build before spec 0010 as well — and ~35 s is not a ceiling: the pre-fix build, restarted 2026-10-09 20:14,
+still had the primary's work area at its full bounds when observed at 20:28) and can be skipped entirely after a
+monitor is unplugged, so maximised windows cover the bar and the strip is left unreserved. Re-registering the AppBar
+did not help and may restart the deferral (three live sessions, spec 0010).
 
 Since outcome B of spec 0010, a bar whose granted strip is still missing 1.5 s after a check sets that monitor's work
 area itself with the documented `SystemParametersInfo(SPI_SETWORKAREA)`, never `SPIF_UPDATEINIFILE`, so nothing is
@@ -645,8 +660,39 @@ cannot recover, as for `display-revert.json` (KI-068). `--restore-taskbar` does 
 (as it already did not for `taskbar.state`), so running it while a healthy instance is up gives back a strip that
 instance's bar still holds and deletes its marker; the broadcast reaches the live bar, which re-shrinks and rewrites
 the marker within ~1.5 s, so only a force-kill inside that window could strand it.
-*Not verified live:* the whole path. Safe-mode runs cannot reach it (verified: `--selftest --safe` exits 0, no
-`workareas.state` written, both strips stacked correctly on the primary). Spec 0010's B6–B12 are the live checks.
+*Verified live (2026-10-09, build 26200; DISPLAY1 primary 2560×1600 at 125 % at (0,0), DISPLAY2 3440×1440 at 100 %
+above it at (−447,−1440)):*
+- **B6, in the real failing scenario.** The everyday build, republished from merged main (e85e68e) and started
+  through `explorer.exe` at 20:35:22: taskbar hidden 20:35:22.8; the display pass at 20:35:24.990 found Explorer had
+  applied *neither* strip; both bars logged "leaving it to Explorer for 1.5 s"; then exactly one direct set per
+  monitor — `\\.\DISPLAY1: work area set directly for the Top strip 0,0,2560,40: 0,0,2560,1600 -> 0,40,2560,1600`
+  at 20:35:26.791 and the DISPLAY2 mirror (`-447,-1440,2993,0 -> -447,-1408,2993,0`) at 20:35:27.096 — "the strip
+  … is reserved again" for both at 20:35:27.097, and the forced pass at 20:35:33.490 found both still reserved with
+  no further action. Both strips reserved ~4.3 s after start; no repeats, no budget warning, no WARN/ERROR.
+  `%APPDATA%\WinGnome\workareas.state` held exactly two records — `Original` the full bounds, `Applied` the shrunk
+  rectangles, owners the two bar HWNDs from the log (0xF05FC, 0x1550530); `taskbar.state` still `{"WasAutoHide":false}`.
+- **Recovery paths** (a non-safe test profile that did *not* hide the taskbar — top bars on both displays, dock and
+  window buttons off — with the fallback triggered by resetting DISPLAY2's work area from another process with
+  `SPI_SETWORKAREA`): the shrink fired ~1.5–3 s after each reset, one line, marker written with one record whose
+  `Owner` was the bar's HWND; a second reset produced a second shrink (this exposed the duplicate-record growth that
+  `WorkAreaLedger` then fixed). Graceful quit: Explorer restored the strip first, so the plan dropped the record
+  through its "already given back" branch and deleted the marker, and DISPLAY1's work area was never touched at any
+  point in the whole test. Force-kill (`taskkill /f`): the marker survived verbatim, Explorer released the dead
+  HWNDs' strips itself within about a second, and the `--restore-taskbar` recovery run logged "Recovering 1 work
+  area(s) a previous run set directly", found nothing to write and deleted the marker. Corrupt marker
+  (`{not valid json`, no `taskbar.state` present): WARN "… is unreadable; repairing what can be repaired", then INFO
+  "The taskbar is not hidden, so no work area is reset" — no write at all, file deleted, i.e. the conservative branch
+  behaved as designed. `--selftest --safe` exits 0 with the fallback compiled in and writes no marker (verified on
+  the branch and again on merged main).
+*Still to verify (needs the user at the machine; runbook prepared at
+`C:\Users\samhe\AppData\Local\Temp\opencode\mm-session\RUNBOOK.md`):* spec 0010's B7 (unplug/replug the secondary)
+and B11 (scale change, primary swap, sleep/resume); the stacked top-bar-plus-always-visible-dock chain on one
+monitor (two records unwinding newest first — Core-tested only); B12 (native taskbar mode: taskbar visible, a dock's
+strip above the taskbar's); the budget refusal (never triggered — at most two applications per monitor per run were
+observed); the taskbar-**hidden** branch of the corrupt-marker repair ("work area reset to the full monitor …"); the
+crash path (`EmergencyRestore` → `AppBar.UndockAll` → `ReleaseAll` without the broadcast — only `taskkill /f` was
+exercised, which by design runs nothing); and the TbExp hide-order experiment (immediate / settle / nohide / spi),
+which would say whether the cheaper option 1 in the spec could complement or replace the fallback.
 *Workaround:* none needed; without it the strip simply arrives late or not at all.
 
 ### KI-101
