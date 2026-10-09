@@ -49,7 +49,7 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | Theming | `HexColor`, `TrafficLightPalette` | Colour parsing, presets → `TrafficLightColors` |
 | Input | `Hotkey`, `SuperKeyStateMachine`, `HotCornerDetector` | Hotkey parsing, the "Win alone" detector, corner dwell |
 | Geometry | `PixelRect`, `LayoutRect`, `LayoutSize`, `BackdropPlacement` | Integer screen rectangles, double layout rectangles, blur backdrop inset under rounded bodies |
-| Windows | `WindowInfo`, `WindowFilter`, `AppIdentity`, `AppPathMatch`, `CaptionButtonLayout`, `CaptionButtonGeometry`, `CaptionHitTestProbe` | Alt-tab filtering, app grouping keys, matching a process to a shortcut's install (Squirrel `app-<version>` folders, generated AUMIDs), traffic-light geometry, finding custom title bars' buttons from hit-test samples |
+| Windows | `WindowInfo`, `WindowFilter`, `AppIdentity`, `AppPathMatch`, `CaptionButtonLayout`, `CaptionButtonHitTest`, `CaptionButtonGeometry`, `CaptionHitTestProbe` | Alt-tab filtering, app grouping keys, matching a process to a shortcut's install (Squirrel `app-<version>` folders, generated AUMIDs), traffic-light geometry and hit-testing (overlays and WinGnome's own header bars via `ComputeForHeaderBar`/`FindInHeaderBar`), finding custom title bars' buttons from hit-test samples |
 | Dock | `DockModelBuilder`, `DockApp`, `RunningWindow`, `DockLayout`, `DockClickPlanner` | Dock items, geometry, magnification, click behaviour |
 | Overview | `OverviewLayout` | Arranges window thumbnails in a grid that preserves aspect ratios |
 | Search | `FuzzyMatcher` | Ranks apps and windows by a query |
@@ -70,9 +70,10 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | `Services/Apps/` | dock agent | `AppCatalog` (shell:AppsFolder), `IconProvider`, `AppLauncher` |
 | `Features/Dock/` | dock agent | Dock window, intellihide, trigger strip, context menu, `TaskbarController` |
 | `Features/TopBar/` | top-bar agent | Top-bar AppBar, clock and calendar, indicators (network, volume, battery), quick settings, power menu, workspace dots |
+| `Controls/TrafficLights/` | shared | `TrafficLightButtonsView` and `GlyphGeometry` (the circles, used by the overlay and header bars), `HeaderBarWindow` (WindowChrome header bar with round buttons and Snap Layouts for WinGnome's own windows) |
 | `Features/WindowButtons/` | traffic-light agent | Overlay manager and per-window overlay |
 | `Features/Overview/` | overview agent | Activities overview with DWM thumbnails and search, hot corner, Super key hook, global hotkey, centring new windows, focus-follows-mouse |
-| `Features/Settings/` | settings agent | Settings window (all pages), tweaks page with `RegistryStore` (HKCU), start-with-Windows |
+| `Features/Settings/` | settings agent | Settings window (all pages, header bar), tweaks page with `RegistryStore` (HKCU), start-with-Windows |
 
 ## Safety rules
 

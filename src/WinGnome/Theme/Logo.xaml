@@ -1,0 +1,135 @@
+<!--
+    The WinGnome logo as a WPF DrawingImage, hand-derived from assets/logo/wingnome.svg (the source of truth).
+    Change the SVG first, then mirror the change here and re-run tools/Export-AppIcon.ps1, which renders this file
+    into src/WinGnome/Assets/wingnome.ico and assets/logo/wingnome-256.png.
+
+    Differences from the SVG, which WPF drawings can't express:
+    - The soft drop shadow (SVG feGaussianBlur, stdDeviation 4, dy 3) is approximated by three offset copies of
+      the mark, each wider and fainter than the last (widened with a stroke).
+    - Each shape's vertical gradient follows its rotated bounding box rather than its own unrotated axis.
+      The gradient is white to #DEEBFB, so the difference isn't visible.
+    This file must stay loadable on its own (no x:Class, no code references): the export script parses it.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                    xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
+                    mc:Ignorable="po">
+
+    <!-- Heel: the Windows four-pane mark, an ellipse cut by a cross, then tilted. -->
+    <CombinedGeometry x:Key="LogoHeel" GeometryCombineMode="Exclude">
+        <CombinedGeometry.Geometry1>
+            <EllipseGeometry Center="154,158" RadiusX="54" RadiusY="64" />
+        </CombinedGeometry.Geometry1>
+        <CombinedGeometry.Geometry2>
+            <GeometryGroup FillRule="Nonzero">
+                <RectangleGeometry Rect="150,80,8,160" />
+                <RectangleGeometry Rect="74,154,160,8" />
+            </GeometryGroup>
+        </CombinedGeometry.Geometry2>
+        <CombinedGeometry.Transform>
+            <RotateTransform Angle="-18" CenterX="154" CenterY="158" />
+        </CombinedGeometry.Transform>
+    </CombinedGeometry>
+
+    <!-- Toes: window panes, largest first, curling round the heel. -->
+    <RectangleGeometry x:Key="LogoToe1" Rect="114,38,42,42" RadiusX="11" RadiusY="11">
+        <RectangleGeometry.Transform>
+            <RotateTransform Angle="-8" CenterX="135" CenterY="59" />
+        </RectangleGeometry.Transform>
+    </RectangleGeometry>
+    <RectangleGeometry x:Key="LogoToe2" Rect="68,70,34,34" RadiusX="9" RadiusY="9">
+        <RectangleGeometry.Transform>
+            <RotateTransform Angle="-24" CenterX="85" CenterY="87" />
+        </RectangleGeometry.Transform>
+    </RectangleGeometry>
+    <RectangleGeometry x:Key="LogoToe3" Rect="45,114,28,28" RadiusX="8" RadiusY="8">
+        <RectangleGeometry.Transform>
+            <RotateTransform Angle="-40" CenterX="59" CenterY="128" />
+        </RectangleGeometry.Transform>
+    </RectangleGeometry>
+    <RectangleGeometry x:Key="LogoToe4" Rect="44,162,23,23" RadiusX="6" RadiusY="6">
+        <RectangleGeometry.Transform>
+            <RotateTransform Angle="-56" CenterX="55.5" CenterY="173.5" />
+        </RectangleGeometry.Transform>
+    </RectangleGeometry>
+
+    <LinearGradientBrush x:Key="LogoMarkBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#FFFFFF" />
+        <GradientStop Offset="1" Color="#DEEBFB" />
+    </LinearGradientBrush>
+
+    <SolidColorBrush x:Key="LogoShadowBrush" Color="#0B3A75" />
+    <Pen x:Key="LogoShadowWidePen" Brush="{StaticResource LogoShadowBrush}" Thickness="10" LineJoin="Round" />
+    <Pen x:Key="LogoShadowNarrowPen" Brush="{StaticResource LogoShadowBrush}" Thickness="4" LineJoin="Round" />
+
+    <!-- Frozen: shared by every Image that shows it, and never changes. -->
+    <DrawingImage x:Key="WinGnomeLogo" po:Freeze="True">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <!-- Fixes the image to the SVG's 256 x 256 view box. -->
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 H256 V256 H0 Z" />
+
+                <!-- Adwaita-style app tile with a top sheen. -->
+                <GeometryDrawing>
+                    <GeometryDrawing.Geometry>
+                        <RectangleGeometry Rect="8,8,240,240" RadiusX="56" RadiusY="56" />
+                    </GeometryDrawing.Geometry>
+                    <GeometryDrawing.Brush>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Offset="0" Color="#62A0EA" />
+                            <GradientStop Offset="0.55" Color="#3584E4" />
+                            <GradientStop Offset="1" Color="#1A5FB4" />
+                        </LinearGradientBrush>
+                    </GeometryDrawing.Brush>
+                </GeometryDrawing>
+                <GeometryDrawing>
+                    <GeometryDrawing.Geometry>
+                        <RectangleGeometry Rect="8,8,240,240" RadiusX="56" RadiusY="56" />
+                    </GeometryDrawing.Geometry>
+                    <GeometryDrawing.Brush>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Offset="0" Color="#2EFFFFFF" />
+                            <GradientStop Offset="0.5" Color="#00FFFFFF" />
+                        </LinearGradientBrush>
+                    </GeometryDrawing.Brush>
+                </GeometryDrawing>
+
+                <!-- Shadow: three faint copies 3 px down, the outer ones widened to fake the blur. -->
+                <DrawingGroup>
+                    <DrawingGroup.Transform>
+                        <TranslateTransform Y="3" />
+                    </DrawingGroup.Transform>
+                    <DrawingGroup Opacity="0.07">
+                        <GeometryDrawing Brush="{StaticResource LogoShadowBrush}" Pen="{StaticResource LogoShadowWidePen}" Geometry="{StaticResource LogoHeel}" />
+                        <GeometryDrawing Brush="{StaticResource LogoShadowBrush}" Pen="{StaticResource LogoShadowWidePen}" Geometry="{StaticResource LogoToe1}" />
+                        <GeometryDrawing Brush="{StaticResource LogoShadowBrush}" Pen="{StaticResource LogoShadowWidePen}" Geometry="{StaticResource LogoToe2}" />
+                        <GeometryDrawing Brush="{StaticResource LogoShadowBrush}" Pen="{StaticResource LogoShadowWidePen}" Geometry="{StaticResource LogoToe3}" />
+                        <GeometryDrawing Brush="{StaticResource LogoShadowBrush}" Pen="{StaticResource LogoShadowWidePen}" Geometry="{StaticResource LogoToe4}" />
+                    </DrawingGroup>
+                    <DrawingGroup Opacity="0.1">
+                        <GeometryDrawing Brush="{StaticResource LogoShadowBrush}" Pen="{StaticResource LogoShadowNarrowPen}" Geometry="{StaticResource LogoHeel}" />
+                        <GeometryDrawing Brush="{StaticResource LogoShadowBrush}" Pen="{StaticResource LogoShadowNarrowPen}" Geometry="{StaticResource LogoToe1}" />
+                        <GeometryDrawing Brush="{StaticResource LogoShadowBrush}" Pen="{StaticResource LogoShadowNarrowPen}" Geometry="{StaticResource LogoToe2}" />
+                        <GeometryDrawing Brush="{StaticResource LogoShadowBrush}" Pen="{StaticResource LogoShadowNarrowPen}" Geometry="{StaticResource LogoToe3}" />
+                        <GeometryDrawing Brush="{StaticResource LogoShadowBrush}" Pen="{StaticResource LogoShadowNarrowPen}" Geometry="{StaticResource LogoToe4}" />
+                    </DrawingGroup>
+                    <DrawingGroup Opacity="0.14">
+                        <GeometryDrawing Brush="{StaticResource LogoShadowBrush}" Geometry="{StaticResource LogoHeel}" />
+                        <GeometryDrawing Brush="{StaticResource LogoShadowBrush}" Geometry="{StaticResource LogoToe1}" />
+                        <GeometryDrawing Brush="{StaticResource LogoShadowBrush}" Geometry="{StaticResource LogoToe2}" />
+                        <GeometryDrawing Brush="{StaticResource LogoShadowBrush}" Geometry="{StaticResource LogoToe3}" />
+                        <GeometryDrawing Brush="{StaticResource LogoShadowBrush}" Geometry="{StaticResource LogoToe4}" />
+                    </DrawingGroup>
+                </DrawingGroup>
+
+                <!-- The mark: each shape gets its own top-to-bottom gradient, as in the SVG. -->
+                <GeometryDrawing Brush="{StaticResource LogoMarkBrush}" Geometry="{StaticResource LogoHeel}" />
+                <GeometryDrawing Brush="{StaticResource LogoMarkBrush}" Geometry="{StaticResource LogoToe1}" />
+                <GeometryDrawing Brush="{StaticResource LogoMarkBrush}" Geometry="{StaticResource LogoToe2}" />
+                <GeometryDrawing Brush="{StaticResource LogoMarkBrush}" Geometry="{StaticResource LogoToe3}" />
+                <GeometryDrawing Brush="{StaticResource LogoMarkBrush}" Geometry="{StaticResource LogoToe4}" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+</ResourceDictionary>

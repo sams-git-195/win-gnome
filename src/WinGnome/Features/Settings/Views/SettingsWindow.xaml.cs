@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using WinGnome.Controls.TrafficLights;
 using WinGnome.Features.Settings.Tweaks;
 using WinGnome.Features.Settings.ViewModels;
 using WinGnome.Infrastructure;
@@ -13,16 +14,19 @@ namespace WinGnome.Features.Settings.Views;
 
 /// <summary>The settings window: a sidebar of pages and the selected page. Every change applies live.</summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
-    Justification = "The view model is disposed in OnClosed, which is the end of a window's life.")]
+    Justification = "The view model is disposed in OnClosed, which is the end of a window's life; the header bar disposes itself when the window closes.")]
 internal sealed partial class SettingsWindow : Window, IDialogService
 {
     private readonly ShellContext _context;
     private readonly SettingsWindowViewModel _viewModel;
+    private readonly HeaderBarWindow _headerBar;
 
     public SettingsWindow(ShellContext context, TweakService tweaks)
     {
         _context = context;
         InitializeComponent();
+        _headerBar = HeaderBarWindow.Attach(this, Root, context.Settings, closeOnly: false);
+        _headerBar.ButtonsArranged += OnHeaderButtonsArranged;
         _viewModel = new SettingsWindowViewModel(context, tweaks, this);
         DataContext = _viewModel;
 
@@ -61,10 +65,15 @@ internal sealed partial class SettingsWindow : Window, IDialogService
             }
         }
 
+        if (_headerBar.ProbeSnapLayoutsHitTest() == false)
+        {
+            throw new InvalidOperationException("The settings header bar does not answer HTMAXBUTTON over its maximise circle (no Snap Layouts).");
+        }
+
         var picker = new AppPickerViewModel(_context.Apps, _context.Icons, []);
         try
         {
-            var dialog = new AppPickerWindow(picker, _context.Theme.IsDark) { Owner = this };
+            var dialog = new AppPickerWindow(picker, _context.Settings, _context.Theme.IsDark) { Owner = this };
             dialog.Show();
             dialog.UpdateLayout();
             dialog.Close();
@@ -84,7 +93,7 @@ internal sealed partial class SettingsWindow : Window, IDialogService
     AppEntry? IDialogService.PickApp(IReadOnlyCollection<string> hiddenLaunchIds)
     {
         using var picker = new AppPickerViewModel(_context.Apps, _context.Icons, hiddenLaunchIds);
-        var dialog = new AppPickerWindow(picker, _context.Theme.IsDark) { Owner = this };
+        var dialog = new AppPickerWindow(picker, _context.Settings, _context.Theme.IsDark) { Owner = this };
         return dialog.ShowDialog() == true ? picker.Chosen : null;
     }
 
@@ -102,10 +111,19 @@ internal sealed partial class SettingsWindow : Window, IDialogService
         }
     }
 
+    /// <summary>With the buttons on the left, centre the sidebar title in the space to their right.</summary>
+    private void OnHeaderButtonsArranged(object? sender, EventArgs e)
+    {
+        var buttons = _headerBar.ButtonsBounds;
+        var onSidebar = !buttons.IsEmpty && buttons.Left < Root.ColumnDefinitions[0].ActualWidth;
+        SidebarTitle.Margin = onSidebar ? new Thickness(buttons.Right, 0, 0, 0) : default;
+    }
+
     private void OnThemeChanged(object? sender, EventArgs e) => TitleBarTheme.Apply(this, _context.Theme.IsDark);
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        _headerBar.ButtonsArranged -= OnHeaderButtonsArranged;
         _context.Theme.ThemeChanged -= OnThemeChanged;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         _viewModel.Dispose();

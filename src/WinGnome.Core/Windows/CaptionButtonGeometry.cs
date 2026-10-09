@@ -42,6 +42,20 @@ public static class CaptionButtonGeometry
         return new PixelRect(buttonsScreen.Left, top, right, buttonsScreen.Bottom);
     }
 
+    /// <summary>
+    /// How far, in DIPs, a maximised window extends past its monitor on each side: the sizing frame plus the padded
+    /// border, as GetSystemMetricsForDpi reports them in physical pixels for the window's own DPI. A window that
+    /// draws its own caption pads its content by this much so nothing is cut off while maximised.
+    /// </summary>
+    /// <param name="framePixels">SM_CXFRAME (or SM_CYFRAME) at the window's DPI.</param>
+    /// <param name="paddedBorderPixels">SM_CXPADDEDBORDER at the window's DPI.</param>
+    /// <param name="dpiScale">Physical pixels per DIP of the window; invalid scales count as 100 %.</param>
+    public static double MaximisedOverhangDips(int framePixels, int paddedBorderPixels, double dpiScale)
+    {
+        var scale = double.IsFinite(dpiScale) && dpiScale > 0 ? dpiScale : 1;
+        return (Math.Max(0, framePixels) + Math.Max(0, paddedBorderPixels)) / scale;
+    }
+
     /// <summary>The radius of the border's inner edge at a window corner of radius <paramref name="outerRadius"/>.</summary>
     public static int InnerCornerRadius(int outerRadius, int border) => Math.Max(0, outerRadius - Math.Max(0, border));
 

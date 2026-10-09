@@ -1,7 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using WinGnome.Controls.TrafficLights;
 using WinGnome.Features.Settings.ViewModels;
+using WinGnome.Infrastructure;
 
 namespace WinGnome.Features.Settings.Views;
 
@@ -10,9 +12,10 @@ internal sealed partial class AppPickerWindow : Window
 {
     private readonly AppPickerViewModel _viewModel;
 
-    public AppPickerWindow(AppPickerViewModel viewModel, bool isDark)
+    public AppPickerWindow(AppPickerViewModel viewModel, SettingsService settings, bool isDark)
     {
         InitializeComponent();
+        HeaderBarWindow.Attach(this, Root, settings, closeOnly: true);
         _viewModel = viewModel;
         DataContext = viewModel;
         SourceInitialized += (_, _) => TitleBarTheme.Apply(this, isDark);

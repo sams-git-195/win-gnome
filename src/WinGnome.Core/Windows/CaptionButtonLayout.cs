@@ -24,6 +24,9 @@ public static class CaptionButtonLayout
     /// <summary>Smallest circle diameter in DIPs the layout will shrink to.</summary>
     public const double MinDiameter = 8;
 
+    /// <summary>Width in DIPs of the native minimise, maximise and close buttons of a standard Windows 11 caption.</summary>
+    private const int HeaderBarNativeButtonsWidth = 138;
+
     /// <summary>
     /// Computes the overlay layout, or null when the native caption buttons rectangle is empty or the DPI scale is invalid.
     /// </summary>
@@ -34,14 +37,20 @@ public static class CaptionButtonLayout
     public static CaptionOverlayLayout? Compute(PixelRect nativeButtonsScreen, PixelRect windowScreen, double dpiScale, WindowButtonSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        CaptionButtonKind[] order = settings.Order == ButtonOrder.CloseMinimizeMaximize
+            ? [CaptionButtonKind.Close, CaptionButtonKind.Minimize, CaptionButtonKind.Maximize]
+            : [CaptionButtonKind.Minimize, CaptionButtonKind.Maximize, CaptionButtonKind.Close];
+        return Compute(nativeButtonsScreen, windowScreen, dpiScale, settings, order);
+    }
+
+    private static CaptionOverlayLayout? Compute(
+        PixelRect nativeButtonsScreen, PixelRect windowScreen, double dpiScale, WindowButtonSettings settings, CaptionButtonKind[] order)
+    {
         if (nativeButtonsScreen.IsEmpty || !double.IsFinite(dpiScale) || dpiScale <= 0)
         {
             return null;
         }
 
-        CaptionButtonKind[] order = settings.Order == ButtonOrder.CloseMinimizeMaximize
-            ? [CaptionButtonKind.Close, CaptionButtonKind.Minimize, CaptionButtonKind.Maximize]
-            : [CaptionButtonKind.Minimize, CaptionButtonKind.Maximize, CaptionButtonKind.Close];
         var count = order.Length;
 
         var diameter = Math.Max(MinDiameter, double.IsFinite(settings.Diameter) ? settings.Diameter : MinDiameter);
@@ -68,7 +77,8 @@ public static class CaptionButtonLayout
         var available = Math.Max(0, widthDip - (Padding * 2));
         if (naturalGroup > available + 1e-6)
         {
-            if (count * diameter <= available)
+            // count > 1 also keeps the division safe; a lone circle has no spacing to shrink.
+            if (count > 1 && count * diameter <= available)
             {
                 spacing = (available - (count * diameter)) / (count - 1);
             }
@@ -92,6 +102,40 @@ public static class CaptionButtonLayout
         }
 
         return new CaptionOverlayLayout(bounds, diameter, slots);
+    }
+
+    /// <summary>
+    /// Lays out the circles in a header bar that WinGnome draws itself (the settings window, the app picker), as if
+    /// the bar were a <paramref name="widthDip"/> × <paramref name="heightDip"/> window at 100 % whose native buttons
+    /// fill the standard 138 DIP block on the right. The result uses the same rules as the overlay, so the header bar
+    /// and the settings preview match what other windows get.
+    /// </summary>
+    /// <returns>
+    /// The layout in DIPs: <see cref="CaptionOverlayLayout.Bounds"/> is the button group's area inside the bar and the
+    /// slot centres are relative to it. Null when the bar has no area.
+    /// </returns>
+    /// <param name="widthDip">Width of the bar in DIPs.</param>
+    /// <param name="heightDip">Height of the bar in DIPs.</param>
+    /// <param name="settings">User settings (side, order, diameter, spacing).</param>
+    /// <param name="closeOnly">Lay out only the close circle (dialogs), at the end of the bar on the configured side.</param>
+    public static CaptionOverlayLayout? ComputeForHeaderBar(double widthDip, double heightDip, WindowButtonSettings settings, bool closeOnly = false)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        if (!double.IsFinite(widthDip) || !double.IsFinite(heightDip))
+        {
+            return null;
+        }
+
+        var bar = PixelRect.FromSize(0, 0, RoundToInt(widthDip), RoundToInt(heightDip));
+        if (bar.IsEmpty)
+        {
+            return null;
+        }
+
+        var native = new PixelRect(Math.Max(0, bar.Right - HeaderBarNativeButtonsWidth), 0, bar.Right, bar.Bottom);
+        return closeOnly
+            ? Compute(native, bar, 1.0, settings, [CaptionButtonKind.Close])
+            : Compute(native, bar, 1.0, settings);
     }
 
     private static int RoundToInt(double value) => (int)Math.Round(value, MidpointRounding.AwayFromZero);

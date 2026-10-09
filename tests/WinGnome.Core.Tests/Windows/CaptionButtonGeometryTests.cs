@@ -154,4 +154,19 @@ public class CaptionButtonGeometryTests
     {
         Assert.Equal(expected, CaptionButtonGeometry.InnerCornerRadius(outer, border));
     }
+
+    [Theory]
+    [InlineData(4, 4, 1.0, 8.0)]
+    [InlineData(5, 5, 1.25, 8.0)]
+    [InlineData(5, 4, 1.25, 7.2)]
+    [InlineData(6, 6, 1.5, 8.0)]
+    [InlineData(0, 0, 1.5, 0.0)]
+    [InlineData(-3, 4, 1.0, 4.0)]          // a failed metric (negative) counts as zero
+    [InlineData(4, -1, 1.0, 4.0)]
+    [InlineData(4, 4, 0.0, 8.0)]           // invalid scales count as 100 %
+    [InlineData(4, 4, double.NaN, 8.0)]
+    public void MaximisedOverhangDips_AddsFrameAndPaddingInDips(int frame, int padded, double scale, double expected)
+    {
+        Assert.Equal(expected, CaptionButtonGeometry.MaximisedOverhangDips(frame, padded, scale), precision: 9);
+    }
 }

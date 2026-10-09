@@ -2,11 +2,20 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls">
+    <UserControl.Resources>
+        <ResourceDictionary Source="/WinGnome;component/Theme/Logo.xaml" />
+    </UserControl.Resources>
     <StackPanel>
         <Border Style="{DynamicResource CardBorder}" Margin="0,0,0,24" Padding="24">
             <StackPanel>
-                <TextBlock Text="WinGnome" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource ForegroundBrush}" />
-                <TextBlock Text="{Binding Version, StringFormat='Version {0}'}" Style="{DynamicResource RowSubtitleText}" Margin="0,2,0,12" />
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                    <Image Source="{StaticResource WinGnomeLogo}" Width="72" Height="72" Margin="0,0,16,0"
+                           AutomationProperties.Name="WinGnome logo" />
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="WinGnome" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource ForegroundBrush}" />
+                        <TextBlock Text="{Binding Version, StringFormat='Version {0}'}" Style="{DynamicResource RowSubtitleText}" Margin="0,2,0,0" />
+                    </StackPanel>
+                </StackPanel>
                 <TextBlock Style="{DynamicResource RowTitleText}"
                            Text="A lightweight shell companion that makes Windows 11 feel like GNOME, with a dash of macOS: a top bar, a dock, round window buttons, an Activities overview and reversible streamline tweaks. WinGnome puts everything back the way it was when it exits." />
             </StackPanel>

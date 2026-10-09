@@ -5,7 +5,7 @@ using WinGnome.Core.Settings;
 using WinGnome.Core.Theming;
 using WinGnome.Core.Windows;
 
-namespace WinGnome.Features.WindowButtons;
+namespace WinGnome.Controls.TrafficLights;
 
 /// <summary>
 /// Draws the three traffic-light circles and turns clicks into <see cref="ButtonClicked"/>. Everything is drawn
@@ -35,6 +35,8 @@ internal sealed class TrafficLightButtonsView : FrameworkElement
     private bool _isGroupHovered;
     private CaptionButtonKind? _hovered;
     private CaptionButtonKind? _pressed;
+    private CaptionButtonKind? _nonClientHovered;
+    private bool _nonClientPressed;
 
     public TrafficLightButtonsView()
     {
@@ -88,6 +90,26 @@ internal sealed class TrafficLightButtonsView : FrameworkElement
         }
     }
 
+    /// <summary>
+    /// Pointer state over a circle that the host window reports as non-client area. A header bar answers
+    /// HTMAXBUTTON over its maximise circle so Windows shows Snap Layouts, and WPF then never sees the mouse there,
+    /// so the host relays hover and press from its WM_NCMOUSEMOVE and WM_NCLBUTTONDOWN handling instead.
+    /// </summary>
+    /// <param name="hovered">The circle under the pointer, or null when the pointer left it.</param>
+    /// <param name="pressed">The left button went down on <paramref name="hovered"/> and hasn't been released.</param>
+    public void SetNonClientPointer(CaptionButtonKind? hovered, bool pressed)
+    {
+        pressed &= hovered is not null;
+        if (_nonClientHovered == hovered && _nonClientPressed == pressed)
+        {
+            return;
+        }
+
+        _nonClientHovered = hovered;
+        _nonClientPressed = pressed;
+        InvalidateVisual();
+    }
+
     /// <summary>Physical pixels per DIP of the overlay window itself (changes when it moves between monitors).</summary>
     public void SetSurfaceScale(double surfaceScale)
     {
@@ -105,7 +127,8 @@ internal sealed class TrafficLightButtonsView : FrameworkElement
             return;
         }
 
-        var showGlyphs = TrafficLightAppearance.ShowGlyphs(_colors, _settings, _isGroupHovered);
+        var groupHovered = _isGroupHovered || _nonClientHovered is not null;
+        var showGlyphs = TrafficLightAppearance.ShowGlyphs(_colors, _settings, groupHovered);
         var radius = _layout.Diameter / 2;
 
         drawingContext.PushTransform(_contentTransform);
@@ -113,7 +136,7 @@ internal sealed class TrafficLightButtonsView : FrameworkElement
         {
             var slot = _layout.Buttons[i];
             var enabled = IsAvailable(slot.Kind);
-            var fill = TrafficLightAppearance.Fill(_colors, slot.Kind, enabled, _isWindowActive, _isGroupHovered,
+            var fill = TrafficLightAppearance.Fill(_colors, slot.Kind, enabled, _isWindowActive, groupHovered,
                 _settings.DimInactiveWindows, InteractionOf(slot.Kind));
 
             // Inset by half the ring's thickness so the ring sits inside the circle's footprint.
@@ -203,6 +226,11 @@ internal sealed class TrafficLightButtonsView : FrameworkElement
 
     private CaptionButtonInteraction InteractionOf(CaptionButtonKind kind)
     {
+        if (_nonClientHovered == kind)
+        {
+            return _nonClientPressed ? CaptionButtonInteraction.Pressed : CaptionButtonInteraction.Hovered;
+        }
+
         if (_pressed is { } pressed)
         {
             return pressed == kind && _hovered == kind ? CaptionButtonInteraction.Pressed : CaptionButtonInteraction.None;

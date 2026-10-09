@@ -13,38 +13,49 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <Grid Margin="20">
+    <!-- Row 0 is the header bar (HeaderBarWindow.CaptionHeight) with the title and a close button. -->
+    <Grid x:Name="Root">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
+            <RowDefinition Height="46" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBox x:Name="SearchBox" Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"
-                 AutomationProperties.Name="Search apps" PreviewKeyDown="OnSearchKeyDown" />
+        <TextBlock Text="{Binding Title, RelativeSource={RelativeSource AncestorType=Window}}" Style="{StaticResource GroupHeaderText}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
 
-        <Grid Grid.Row="1">
-            <ListBox x:Name="AppList" Style="{StaticResource PlainListBox}" ItemContainerStyle="{StaticResource PickerItem}"
-                     ItemsSource="{Binding Results}" SelectedItem="{Binding Selected}"
-                     AutomationProperties.Name="Installed apps" MouseDoubleClick="OnListDoubleClick">
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Orientation="Horizontal">
-                            <Image Source="{Binding Icon}" Width="28" Height="28" Margin="0,0,12,0"
-                                   RenderOptions.BitmapScalingMode="HighQuality" />
-                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-            <TextBlock Text="{Binding EmptyMessage}" Style="{StaticResource RowSubtitleText}" HorizontalAlignment="Center"
-                       VerticalAlignment="Center" FontSize="14" />
+        <Grid Grid.Row="1" Margin="20,4,20,20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TextBox x:Name="SearchBox" Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"
+                     AutomationProperties.Name="Search apps" PreviewKeyDown="OnSearchKeyDown" />
+
+            <Grid Grid.Row="1">
+                <ListBox x:Name="AppList" Style="{StaticResource PlainListBox}" ItemContainerStyle="{StaticResource PickerItem}"
+                         ItemsSource="{Binding Results}" SelectedItem="{Binding Selected}"
+                         AutomationProperties.Name="Installed apps" MouseDoubleClick="OnListDoubleClick">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="{Binding Icon}" Width="28" Height="28" Margin="0,0,12,0"
+                                       RenderOptions.BitmapScalingMode="HighQuality" />
+                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock Text="{Binding EmptyMessage}" Style="{StaticResource RowSubtitleText}" HorizontalAlignment="Center"
+                           VerticalAlignment="Center" FontSize="14" />
+            </Grid>
+
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                <Button Content="Cancel" Style="{StaticResource SettingsButton}" IsCancel="True" />
+                <Button Content="Add" Style="{StaticResource SettingsAccentButton}" Margin="8,0,0,0" IsDefault="True"
+                        IsEnabled="{Binding HasSelection}" Click="OnAddClick" />
+            </StackPanel>
         </Grid>
-
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button Content="Cancel" Style="{StaticResource SettingsButton}" IsCancel="True" />
-            <Button Content="Add" Style="{StaticResource SettingsAccentButton}" Margin="8,0,0,0" IsDefault="True"
-                    IsEnabled="{Binding HasSelection}" Click="OnAddClick" />
-        </StackPanel>
     </Grid>
 </Window>
