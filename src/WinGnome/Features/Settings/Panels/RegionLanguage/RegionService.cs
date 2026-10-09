@@ -152,6 +152,13 @@ internal static unsafe class RegionService
     /// <summary>Writes the locale's own value of every format and the first day of the week. Continues past a failure and reports it.</summary>
     public static bool ResetFormats(string localeName)
     {
+        // GetLocaleInfoEx reads "" as the invariant locale, whose US-style formats must never be written as the user's.
+        if (localeName.Length == 0)
+        {
+            Log.Warn("Settings: did not reset the formats because the format locale is unknown");
+            return false;
+        }
+
         var allWritten = true;
         foreach (var type in ResettableTypes)
         {

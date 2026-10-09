@@ -108,14 +108,18 @@ internal static class UpdateStatusService
         }
     }
 
-    /// <summary>Runs <paramref name="read"/>; a COM or binding failure is logged and its HRESULT kept in <paramref name="failure"/>.</summary>
+    /// <summary>
+    /// Runs <paramref name="read"/>; a COM or binding failure is logged and its HRESULT kept in <paramref name="failure"/>.
+    /// E_ACCESSDENIED (a policy refusing a standard user) arrives as <see cref="UnauthorizedAccessException"/>, not COMException.
+    /// </summary>
     private static T? Guard<T>(string what, FirstFailure failure, Func<T> read)
     {
         try
         {
             return read();
         }
-        catch (Exception ex) when (ex is COMException or InvalidCastException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
+        catch (Exception ex) when (ex is COMException or UnauthorizedAccessException or InvalidCastException
+                                       or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
         {
             // Feature boundary: the other values are still shown, and the failure is logged with the code.
             Log.Warn($"Windows Update: could not read the {what}", ex);

@@ -2,11 +2,14 @@
 
 ## KNOWN_ISSUES rows
 
-- KI-093 S4 Settings: the Windows Update panel shows the Windows Update Agent's cached state only (offline search,
+Merge into KI-092 (shared with the Region & Language note; spec 0020 owns KI-085..KI-092 and KI-093 on belongs to
+spec 0017). KI-092 becomes "settings left to Windows Settings by design":
+
+- KI-092 S4 Settings: the Windows Update panel shows the Windows Update Agent's cached state only (offline search,
   `Online = false`): updates Windows hasn't found yet, or that were found since the last check, are not listed until
   Windows checks. It can differ from Windows Settings' list, which also merges Microsoft Store and driver sources.
   The panel never scans or installs (By design).
-- KI-093 (cont.): a standard user may be refused by policy on managed machines; the panel then shows the error with the
+- KI-092 (cont.): a standard user may be refused by policy on managed machines; the panel then shows the error with the
   Windows Settings link.
 
 ## PLAN.md rows

@@ -63,12 +63,29 @@ internal sealed class WindowsUpdatePanelViewModel : SystemPanelViewModel
         Problem = null;
 
         // longRunning: the Windows Update Agent can block for as long as its service takes to answer.
-        LoadAsync(() => UpdateStatusService.Read(SearchTimeout), status =>
+        LoadAsync(ReadStatus, status =>
         {
+            IsLoading = false;
             _lines = UpdateStatusText.Build(status, DateTime.Now, CultureInfo.CurrentCulture);
             Problem = _lines.Error;
-            IsLoading = false;
             OnPropertyChanged(string.Empty);
         }, longRunning: true);
+    }
+
+    /// <summary>
+    /// Never throws: LoadAsync's own failure path only sets the problem, which would leave the progress bar up and
+    /// Refresh disabled until the panel is reopened. Any failure becomes a status carrying its HRESULT instead.
+    /// </summary>
+    private static UpdateStatus ReadStatus()
+    {
+        try
+        {
+            return UpdateStatusService.Read(SearchTimeout);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Windows Update: could not read the status", ex);
+            return new UpdateStatus(null, null, [], false, ex.HResult);
+        }
     }
 }
