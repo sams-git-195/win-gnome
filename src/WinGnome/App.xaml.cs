@@ -155,6 +155,10 @@ public partial class App : Application
         }
 
         settings.Changed += OnSettingsChanged;
+
+        // Explorer may drop our strips from the work area after we docked (it recomputes them once the taskbar is
+        // hidden); the bars and docks re-check theirs on these passes.
+        _displays.VerifyAfterStart();
     }
 
     private void OnSettingsChanged(object? sender, AppSettings settings)

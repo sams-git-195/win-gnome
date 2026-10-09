@@ -347,6 +347,18 @@ So the janitor is the outcome A shape (one nudge at start and on `--restore-task
   re-registration restores it is expected but still to be confirmed in the next unplug test. A strip that is present
   costs one `GetMonitorInfo` and no `SHAppBarMessage`, so the storm guard is unchanged. Settings changes now re-dock
   bars only when the height, margin or corner radius changed (every settings change used to re-dock every bar).
+- **Strips lost right after start** (second live session, 2026-10-09; a regression of the idempotent reposition).
+  With the taskbar hidden at start, Explorer recomputed work areas after our bars had docked and left both strips
+  out; the old reposition answered every `ABN_POSCHANGED` with a SETPOS, the new one compared slots only. Now the
+  idempotence rule is "the slot is ours **and** a fresh work area leaves the strip out"
+  (`AppBarReservation.Decide`, Core, tested; `ABN_STATECHANGE` is handled the same way), with a 2 s per-bar cool-down
+  on re-registering from notifications so two bars can never feed each other. When the strip is missing the bar
+  registers again: reproduced by resetting the primary's work area with `SPI_SETWORKAREA` against a `--safe`
+  instance, a SETPOS of the unchanged rectangle did not bring the strip back and registering again did (for every
+  AppBar on that monitor, the everyday bar's too), within 0.25 s via the `WM_SETTINGCHANGE` pass. A reset without
+  the broadcast is caught by the forced passes 1.5 s and 10 s after start (`DisplayLayoutService.VerifyAfterStart`)
+  or fixed by Explorer itself on the next AppBar traffic. Self-test cannot reproduce this (it never hides the
+  taskbar); the manual check is the spike's `resetwork` step above, plus a non-safe start with the taskbar hidden.
 - Turning the dock off now destroys its instances (it used to hide the window and keep it).
 - `AppBar.RegisterAndRemove` serves the janitor, so `SHAppBarMessage` stays in one place and is counted.
 - Footprint measured on the QA machine (`--safe`, top bar only, 20 s idle): main display only 91.9 MB private,

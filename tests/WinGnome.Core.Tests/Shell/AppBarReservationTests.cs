@@ -68,6 +68,46 @@ public class AppBarReservationTests
         Assert.Equal(expected, AppBarReservation.IsReserved(AppBarEdge.Right, dock, new PixelRect(0, 40, workRight, 1600)));
     }
 
+    private static readonly PixelRect Lower = new(0, 40, 2560, 80);
+
+    [Fact]
+    public void Decide_SameSlotAndStripReserved_DoesNothing()
+    {
+        Assert.Equal(AppBarRecheck.None, AppBarReservation.Decide(PrimaryBar, PrimaryBar, PrimaryBar, stripReserved: true, long.MaxValue));
+    }
+
+    [Fact]
+    public void Decide_SameSlotButStripLostFromTheWorkArea_Reclaims()
+    {
+        // The regression: Explorer recomputed work areas after the taskbar went auto-hide and left our strip out
+        // without moving any bar; comparing slots alone did nothing.
+        Assert.Equal(AppBarRecheck.Reclaim, AppBarReservation.Decide(PrimaryBar, PrimaryBar, PrimaryBar, stripReserved: false, long.MaxValue));
+    }
+
+    [Theory]
+    [InlineData(1999, AppBarRecheck.None)]
+    [InlineData(2000, AppBarRecheck.Reclaim)]
+    public void Decide_StripLostSoonAfterAReclaim_WaitsForTheCooldown(long msSinceLastReclaim, AppBarRecheck expected)
+    {
+        Assert.Equal(expected, AppBarReservation.Decide(PrimaryBar, PrimaryBar, PrimaryBar, stripReserved: false, msSinceLastReclaim));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Decide_ShellOffersAnotherSlot_Moves(bool stripReserved)
+    {
+        // Another top bar arrived above ours: the shell now offers the strip below it.
+        Assert.Equal(AppBarRecheck.Move, AppBarReservation.Decide(Lower, PrimaryBar, PrimaryBar, stripReserved, 0));
+    }
+
+    [Fact]
+    public void Decide_ShellAdjustedOurRequest_IsNotAMove()
+    {
+        // We asked for Lower, SETPOS granted PrimaryBar; QUERYPOS answering Lower again is our own request.
+        Assert.Equal(AppBarRecheck.None, AppBarReservation.Decide(Lower, PrimaryBar, Lower, stripReserved: true, long.MaxValue));
+    }
+
     [Fact]
     public void EmptyStrip_IsAlwaysReserved()
     {

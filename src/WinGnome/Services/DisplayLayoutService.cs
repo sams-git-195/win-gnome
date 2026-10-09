@@ -79,6 +79,30 @@ internal sealed class DisplayLayoutService : IDisposable
     }
 
     /// <summary>
+    /// Schedules forced passes 1.5 s and 10 s from now (then nothing). Call once after every feature has started:
+    /// hiding the Windows taskbar makes Explorer recompute work areas asynchronously after our bars docked, and it
+    /// does not always notify them, so the owners re-check their strips at those points.
+    /// </summary>
+    public void VerifyAfterStart()
+    {
+        var delays = new Queue<TimeSpan>([TimeSpan.FromSeconds(1.5), TimeSpan.FromSeconds(8.5)]);
+        var timer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher) { Interval = delays.Dequeue() };
+        timer.Tick += (_, _) =>
+        {
+            Invalidate(force: true);
+            if (delays.Count > 0 && !_disposed)
+            {
+                timer.Interval = delays.Dequeue();
+            }
+            else
+            {
+                timer.Stop();
+            }
+        };
+        timer.Start();
+    }
+
+    /// <summary>
     /// The key of the monitor nearest to <paramref name="hwnd"/>, or null when even a direct read fails (callers treat
     /// that as the primary). HMONITORs are not stable across display changes, so a handle missing from the last read
     /// is read directly and triggers a new pass.

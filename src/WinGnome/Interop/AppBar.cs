@@ -43,6 +43,7 @@ internal sealed partial class AppBar : IDisposable
     private const uint ABM_QUERYPOS = 0x02;
     private const uint ABM_SETPOS = 0x03;
     private const uint ABM_WINDOWPOSCHANGED = 0x09;
+    private const int ABN_STATECHANGE = 0x00;
     private const int ABN_POSCHANGED = 0x01;
     private const int ABN_FULLSCREENAPP = 0x02;
 
@@ -65,6 +66,7 @@ internal sealed partial class AppBar : IDisposable
     private bool _registered;
     private bool _inCall;
     private bool _recheckPending;
+    private long? _lastReclaimMs;
 
     /// <param name="window">Window that must already have a handle.</param>
     public AppBar(Window window)
@@ -155,28 +157,31 @@ internal sealed partial class AppBar : IDisposable
     }
 
     /// <summary>
-    /// Registers the bar again (ABM_REMOVE, ABM_NEW, then the full docking sequence) when its monitor's work area no
-    /// longer leaves its strip out. Explorer resets work areas on some display changes (a monitor unplugged) and keeps
-    /// our registration, but sends no ABN_POSCHANGED, and a plain SETPOS on that registration was seen not to reserve
-    /// the strip again. Only acts when the strip is really missing, so it cannot feed a notification storm; skipped
-    /// when the cached monitor no longer exists with the same bounds (the owner's reconcile pass handles that).
-    /// Returns true when it registered again.
+    /// Brings the strip back when its monitor's work area no longer leaves it out (display passes call this; shell
+    /// notifications use the same check in <see cref="OnPositionChanged"/>). Explorer recomputes work areas on its own
+    /// (after the taskbar's auto-hide state changes, after a monitor is unplugged), sometimes without notifying the
+    /// bars. The bar then registers again (ABM_REMOVE, ABM_NEW, then the full docking sequence): a SETPOS of the
+    /// unchanged rectangle was tried first and did not bring the strip back (reproduced by resetting the work area
+    /// with SPI_SETWORKAREA; registering again did, for every AppBar on the monitor). Only acts when the strip is
+    /// really missing, so it cannot feed a notification storm; skipped when the cached monitor no longer exists with
+    /// the same bounds (the owner's reconcile pass handles that). Returns true when it had to act.
     /// </summary>
     public bool EnsureReserved()
     {
-        if (!_registered || Bounds.IsEmpty)
+        if (!_registered || Bounds.IsEmpty || IsStripReserved())
         {
             return false;
         }
 
-        var monitor = NativeMethods.MonitorFromRect(RECT.From(_monitor), NativeMethods.MONITOR_DEFAULTTONULL);
-        var (bounds, workArea) = monitor == 0 ? default : NativeMethods.GetMonitorRects(monitor);
-        if (bounds != _monitor || AppBarReservation.IsReserved((Core.Shell.AppBarEdge)(int)_edge, Bounds, workArea))
-        {
-            return false;
-        }
+        Reregister("a display pass");
+        return true;
+    }
 
-        Log.Info($"AppBar 0x{_hwnd:X}: the work area {workArea} of monitor {_monitor} no longer leaves out the strip {Bounds}; registering again");
+    /// <summary>Registers again and re-docks in the same slot; see <see cref="EnsureReserved"/>.</summary>
+    private void Reregister(string trigger)
+    {
+        Log.Info($"AppBar 0x{_hwnd:X}: after {trigger} the work area of monitor {Format(_monitor)} no longer leaves out the strip {Format(Bounds)}; registering again");
+        _lastReclaimMs = Environment.TickCount64;
         var before = Bounds;
         Guarded(() =>
         {
@@ -189,9 +194,9 @@ internal sealed partial class AppBar : IDisposable
         {
             Moved?.Invoke(this, EventArgs.Empty);
         }
-
-        return true;
     }
+
+    private static string Format(PixelRect r) => $"{r.Left},{r.Top},{r.Right},{r.Bottom}";
 
     /// <summary>Unregisters the bar, giving the reserved space back to the work area.</summary>
     public void Undock()
@@ -297,21 +302,42 @@ internal sealed partial class AppBar : IDisposable
             return;
         }
 
-        var moved = false;
+        var action = AppBarRecheck.None;
         Guarded(() =>
         {
             var rect = QueryRect();
-            if (rect != Bounds && rect != _requested)
+            var now = Environment.TickCount64;
+            action = AppBarReservation.Decide(rect, Bounds, _requested, IsStripReserved(),
+                _lastReclaimMs is { } last ? now - last : long.MaxValue);
+            if (action == AppBarRecheck.Move)
             {
                 Apply(rect);
-                moved = true;
             }
         });
 
-        if (moved)
+        if (action == AppBarRecheck.Move)
         {
             Moved?.Invoke(this, EventArgs.Empty);
         }
+        else if (action == AppBarRecheck.Reclaim)
+        {
+            // Same slot, but Explorer recomputed the work area without our strip (for example after the taskbar's
+            // auto-hide state changed). A SETPOS of the unchanged rectangle doesn't bring it back; registering does.
+            Reregister("a shell notification");
+        }
+    }
+
+    /// <summary>True when a fresh read of the monitor's work area leaves the strip out (or the monitor can't be read).</summary>
+    private bool IsStripReserved()
+    {
+        var monitor = NativeMethods.MonitorFromRect(RECT.From(_monitor), NativeMethods.MONITOR_DEFAULTTONULL);
+        if (monitor == 0)
+        {
+            return true;
+        }
+
+        var (bounds, workArea) = NativeMethods.GetMonitorRects(monitor);
+        return bounds != _monitor || AppBarReservation.IsReserved((Core.Shell.AppBarEdge)(int)_edge, Bounds, workArea);
     }
 
     /// <summary>True when the cached monitor rectangle is still exactly a live monitor's rectangle.</summary>
@@ -372,10 +398,12 @@ internal sealed partial class AppBar : IDisposable
 
         switch ((int)wParam)
         {
-            case ABN_POSCHANGED when _inCall:
+            // ABN_STATECHANGE: the taskbar's auto-hide or always-on-top state changed, after which Explorer recomputes
+            // work areas; the same recheck applies (it acts only when our slot or our strip is really wrong).
+            case ABN_POSCHANGED or ABN_STATECHANGE when _inCall:
                 _recheckPending = true;
                 break;
-            case ABN_POSCHANGED:
+            case ABN_POSCHANGED or ABN_STATECHANGE:
                 OnPositionChanged();
                 break;
             case ABN_FULLSCREENAPP:
