@@ -64,6 +64,11 @@ internal sealed partial class OverviewWindow : Window
     private bool _thumbnailsShown;
     private bool _closing;
     private double _dimLevel;
+    private bool _warmedUp;
+    private bool _warmingUp;
+    private int _warmUpFrames;
+    private TimeSpan _warmUpLastFrame;
+    private long _warmUpStartedAt;
     private bool _activating;
     private bool _allowClose;
     private bool _closed;
@@ -111,6 +116,8 @@ internal sealed partial class OverviewWindow : Window
     /// <remarks>While the overview is closing, a request for the same windows view turns the close around.</remarks>
     public void Open(OverviewRequest request, ActivitiesSettings settings)
     {
+        // An open during the warm-up takes the shown, cloaked window over as it is.
+        CancelWarmUp();
         var previous = _request;
         _request = request;
         _dimLevel = settings.BackdropOpacity * DimStrength;
@@ -335,6 +342,82 @@ internal sealed partial class OverviewWindow : Window
         }
     }
 
+    /// <summary>
+    /// Renders the overview once, cloaked and without activating it, so the first real open doesn't pay for WPF's
+    /// first full-screen software frame, template loading and glyph caches (KI-030: ~0.5 s otherwise). No DWM
+    /// thumbnails are registered; window icons stand in for them. Does nothing once done or while open.
+    /// </summary>
+    public void WarmUp()
+    {
+        if (_warmedUp || IsOpen || _closing || _closed || _allowClose)
+        {
+            return;
+        }
+
+        _warmedUp = true;
+        _warmingUp = true;
+        _warmUpFrames = 0;
+        _warmUpStartedAt = Stopwatch.GetTimestamp();
+        SetCloaked(true);
+        PlaceOnPrimaryMonitor();
+        _thumbnails.ShowPlaceholders(_bounds, _scale, ThumbnailArea(), GetWindows());
+
+        // Shown without activation, so focus and the foreground window are untouched.
+        ShowActivated = false;
+        Show();
+        ShowActivated = true;
+        CompositionTarget.Rendering += OnWarmUpRendering;
+    }
+
+    private void OnWarmUpRendering(object? sender, EventArgs e)
+    {
+        // As for the reveal: the third new frame means the first one has been presented.
+        var time = ((RenderingEventArgs)e).RenderingTime;
+        if (time == _warmUpLastFrame)
+        {
+            return;
+        }
+
+        _warmUpLastFrame = time;
+        if (++_warmUpFrames >= 3)
+        {
+            EndWarmUp();
+        }
+    }
+
+    /// <summary>Hides and shrinks the window again after the warm-up (unless an open has taken it over).</summary>
+    private void EndWarmUp()
+    {
+        if (!CancelWarmUp())
+        {
+            return;
+        }
+
+        Log.Info($"Overview warmed up in {Stopwatch.GetElapsedTime(_warmUpStartedAt).TotalMilliseconds:F0} ms");
+        _thumbnails.Clear();
+        if (!_closed)
+        {
+            Hide();
+            NativeMethods.SetWindowPos(_hwnd, 0, _bounds.Left, _bounds.Top, 1, 1,
+                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+        }
+
+        SetCloaked(false);
+    }
+
+    /// <summary>Stops a running warm-up, leaving the window as it is. False when none was running.</summary>
+    private bool CancelWarmUp()
+    {
+        if (!_warmingUp)
+        {
+            return false;
+        }
+
+        _warmingUp = false;
+        CompositionTarget.Rendering -= OnWarmUpRendering;
+        return true;
+    }
+
     /// <summary>Remembers who had focus, unless it is one of WinGnome's own windows (they manage themselves).</summary>
     private void RememberForeground()
     {
@@ -359,24 +442,10 @@ internal sealed partial class OverviewWindow : Window
     private void ShowOnPrimaryMonitor()
     {
         RememberForeground();
-        var (monitor, _) = NativeMethods.GetPrimaryMonitorRects();
-        _bounds = monitor;
-
         _activating = true;
         try
         {
-            // Topmost again on every open: the top bar and dock are topmost too, and the last one wins.
-            PlaceOn(monitor);
-            if (NativeMethods.GetWindowBounds(_hwnd) != monitor)
-            {
-                // Moving onto a monitor with another DPI makes WPF resize the window to keep its DIP size
-                // (WM_DPICHANGED); now that the DPI matches, the second move sticks.
-                PlaceOn(monitor);
-            }
-
-            _scale = NativeMethods.GetWindowScale(_hwnd);
-            UpdateGridColumns();
-
+            PlaceOnPrimaryMonitor();
             IsOpen = true;
             Show();
             TakeFocus();
@@ -387,6 +456,25 @@ internal sealed partial class OverviewWindow : Window
         }
 
         _context.Windows.WindowsChanged += OnWindowsChanged;
+    }
+
+    /// <summary>Sizes the (cloaked or hidden) window to the primary monitor and updates the DPI-dependent layout.</summary>
+    private void PlaceOnPrimaryMonitor()
+    {
+        var (monitor, _) = NativeMethods.GetPrimaryMonitorRects();
+        _bounds = monitor;
+
+        // Topmost again on every open: the top bar and dock are topmost too, and the last one wins.
+        PlaceOn(monitor);
+        if (NativeMethods.GetWindowBounds(_hwnd) != monitor)
+        {
+            // Moving onto a monitor with another DPI makes WPF resize the window to keep its DIP size
+            // (WM_DPICHANGED); now that the DPI matches, the second move sticks.
+            PlaceOn(monitor);
+        }
+
+        _scale = NativeMethods.GetWindowScale(_hwnd);
+        UpdateGridColumns();
     }
 
     private void PlaceOn(PixelRect monitor) =>
@@ -424,10 +512,15 @@ internal sealed partial class OverviewWindow : Window
             return;
         }
 
-        var size = new LayoutSize(_bounds.Width / _scale, _bounds.Height / _scale);
-        var area = new LayoutRect(SideMargin, ContentTop, size.Width - (2 * SideMargin), size.Height - ContentTop - BottomMargin);
-        _thumbnails.Show(_hwnd, _bounds, _scale, area, GetWindows(), fromWindows);
+        _thumbnails.Show(_hwnd, _bounds, _scale, ThumbnailArea(), GetWindows(), fromWindows);
         _thumbnailsShown = true;
+    }
+
+    /// <summary>Area (DIPs) the window grid is arranged in.</summary>
+    private LayoutRect ThumbnailArea()
+    {
+        var size = new LayoutSize(_bounds.Width / _scale, _bounds.Height / _scale);
+        return new LayoutRect(SideMargin, ContentTop, size.Width - (2 * SideMargin), size.Height - ContentTop - BottomMargin);
     }
 
     /// <summary>Task windows to show: all of them, or just the ones the request named (dock previews).</summary>
@@ -799,6 +892,7 @@ internal sealed partial class OverviewWindow : Window
     {
         // Application shutdown closes every window, possibly before the feature is disposed.
         _closed = true;
+        CancelWarmUp();
         Dismiss(restoreFocus: false);
         if (_closing)
         {
