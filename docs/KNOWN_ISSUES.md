@@ -36,6 +36,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-019](#ki-019) | S4 | Tray | The tray host can take up to 1 s to get back in front of Explorer's taskbar | Open |
 | [KI-021](#ki-021) | S4 | Top bar | Brightness slider controls only a laptop's built-in display | Open |
 | [KI-022](#ki-022) | S4 | Tray | A `WM_CLOSE` posted to "the taskbar" quits WinGnome while it hosts tray icons | Open |
+| [KI-023](#ki-023) | S4 | Dock | Two pins with the same target group the app's windows into the first one | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -182,6 +183,16 @@ Since 085fa14 a posted `WM_CLOSE` to it is treated as a quit request (that fixed
 Windows* dialog therefore quits WinGnome instead. *Fix direction:* if taskkill is confirmed to post to every
 top-level window of the process, forward the message to Explorer's real taskbar again and rely on the
 UI-thread windows for quitting.
+
+### KI-023
+**Two pins with the same target group the app's windows into the first one** · S4 · Dock · Open
+
+Since spec 0006 a window joins a pin whose shortcut target is the same install as the window's process
+(`AppPathMatch.IsSameInstall`), as well as a pin with the same identity. When two pins resolve to the same target,
+for example a named-AUMID pin and a path pin for the same executable, or two Squirrel apps pinned through stubs in
+the same folder, all of its windows go to the first pin and the second shows as not running. An exact identity
+match still wins over a path match. Also, before the app catalogue has loaded, named-AUMID pins can't resolve
+their target, so their windows show unpinned until the catalogue's `Changed` refresh.
 
 ## Resolved
 

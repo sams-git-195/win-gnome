@@ -49,7 +49,7 @@ All Win32 work lives in the app project, and every decision that can be expresse
 | Theming | `HexColor`, `TrafficLightPalette` | Colour parsing, presets → `TrafficLightColors` |
 | Input | `Hotkey`, `SuperKeyStateMachine`, `HotCornerDetector` | Hotkey parsing, the "Win alone" detector, corner dwell |
 | Geometry | `PixelRect`, `LayoutRect`, `LayoutSize`, `BackdropPlacement` | Integer screen rectangles, double layout rectangles, blur backdrop inset under rounded bodies |
-| Windows | `WindowInfo`, `WindowFilter`, `AppIdentity`, `CaptionButtonLayout`, `CaptionButtonGeometry`, `CaptionHitTestProbe` | Alt-tab filtering, app grouping keys, traffic-light geometry, finding custom title bars' buttons from hit-test samples |
+| Windows | `WindowInfo`, `WindowFilter`, `AppIdentity`, `AppPathMatch`, `CaptionButtonLayout`, `CaptionButtonGeometry`, `CaptionHitTestProbe` | Alt-tab filtering, app grouping keys, matching a process to a shortcut's install (Squirrel `app-<version>` folders, generated AUMIDs), traffic-light geometry, finding custom title bars' buttons from hit-test samples |
 | Dock | `DockModelBuilder`, `DockApp`, `RunningWindow`, `DockLayout`, `DockClickPlanner` | Dock items, geometry, magnification, click behaviour |
 | Overview | `OverviewLayout` | Arranges window thumbnails in a grid that preserves aspect ratios |
 | Search | `FuzzyMatcher` | Ranks apps and windows by a query |
