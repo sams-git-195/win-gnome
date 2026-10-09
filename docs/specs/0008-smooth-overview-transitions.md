@@ -1,6 +1,6 @@
 # 0008 — Smooth overview open and close
 
-Status: Agreed
+Status: Implemented (branch worktree-agent-a24f212757295470e, b792738, e4d8ed1 and f7357f6)
 
 ## Problem
 Pressing Super shows a flash and then a very rapid jump into the overview. Causes found in the code:
@@ -30,12 +30,30 @@ Pressing Super shows a flash and then a very rapid jump into the overview. Cause
   `ThumbnailTrack(From, To, FromOpacity, ToOpacity)` with `At` and `Reversed`, `Retarget`, `DimAlpha`,
   `DurationFor(animationsEnabled, opening)`.
 - App: prepare while cloaked (`DWMWA_CLOAK`): resize, show, register thumbnails at their start rects, dimmer
-  transparent; uncloak after the first rendered frame and start the clock from that frame's rendering time.
-  Start rects from `GetWindowRect` read at open time. Dimmer animated through its brush alpha from the same
-  `CompositionTarget.Rendering` handler (unsubscribed when the animation ends). If measurement shows fewer than
-  ~12 frames per glide, the dim layer moves to a small layered window behind the overview.
+  transparent; uncloak once the first frame has been presented (in practice the third new rendered frame) and
+  start the clock from the next frame's rendering time. Start rects from `GetWindowRect` read at open time. Dimmer
+  animated through its brush alpha from the same `CompositionTarget.Rendering` handler (unsubscribed when the
+  animation ends). If measurement shows fewer than ~12 frames per glide, the dim layer moves to a small layered
+  window behind the overview.
 - Closing runs the reversed tracks, then hides and shrinks the window to 1×1 as now. Input is ignored while
   closing except Super/hot corner, which reverse it.
+
+### As implemented
+- `OverviewTransition` replaces `ThumbnailTransition` (adding `ThumbnailTrack.Still`). The open/close state machine
+  is Core `OverviewTransitionState`: one position from the windows (0) to the grid (1) shared by every segment, so
+  a reversal takes the full duration times the distance left; the clock starts at a segment's first frame; window
+  changes during a glide (and during a close that is reversed) are applied once it settles; a watchdog delay
+  (duration + 300 ms) forces a segment to finish if frames stop. `Features/Overview/OverviewAnimator` drives it
+  from `CompositionTarget.Rendering`. Thumbnail tracks are retargeted from where they are at each segment start.
+- WPF does render while cloaked, but `Rendering` only announces a frame: revealing on the second frame still
+  showed the bare backdrop on a cold open, so the window is uncloaked on the third new frame, or 250 ms after the
+  preparation ends.
+- Measured 12–15 frames per 250 ms opening and 8–13 per 200 ms close: the same 40–60 fps either way, the close is
+  just shorter. The dim stays in the brush alpha; no layered dim window (KI-032).
+- Thumbnails are registered bottom-up in z-order so the first frame matches the desktop, and the picked window's
+  thumbnail is re-registered on close so it lands on top.
+- Closing from search results or the app grid is instant. See KI-030 (slow first open), KI-031 (paths not yet
+  verified live) and KI-032.
 
 ## Safety and recovery
 No system state changes. If the uncloak never happens (no frame rendered within 250 ms), uncloak anyway so the
