@@ -86,6 +86,32 @@ advisor was evaluating **spec 0010 "outcome B"**: WinGnome sets the work area it
 next start, either alone or as a fallback when the AppBar strip isn't applied within a few seconds. Check the
 branch for commits after 97a2538 and the spec's Risks/implementation notes before continuing.
 
+**Advisor (Fable) diagnosis and recommended design** (read-only review of the code, after the live sessions):
+- Interception by our tray host is ruled out: `TrayHost.OnCopyData` forwards AppBar `WM_COPYDATA` to Explorer's
+  real tray and Explorer answers the caller directly; the log shows granted rects. Explorer knows the bars; what
+  is missing is Explorer's **work-area recompute**, which it seems to run only inside its own taskbar layout pass,
+  deferred while its taskbar is auto-hide + `SW_HIDE` (`TaskbarController.Hide`). The ~35 s apply is probably an
+  Explorer-side event (auto-hide tick or Explorer re-showing its taskbar, which `TaskbarFeature` re-hides).
+- Also rule out "rude app" state: add a log line in `TopBarInstance.OnFullScreenChanged` (`ABN_FULLSCREENAPP`).
+- **Design:** keep the AppBar registration, and add a fallback that sets the work area directly:
+  - Core (tested): `WorkAreaFallback.Shrunk(workArea, edge, strip) -> PixelRect?` (null when already reserved),
+    plus an apply budget per monitor (e.g. 3 applications per 60 s, injected clock, `Log.Warn` when hit).
+  - App: one P/Invoke, `SystemParametersInfo(SPI_SETWORKAREA, rect, SPIF_SENDCHANGE)` (never
+    `SPIF_UPDATEINIFILE`), physical pixels, starting from a **fresh** `GetMonitorInfo` work area and moving only
+    the bar's edge (`Top = max(wa.Top, strip.Bottom)`), so other AppBars and the taskbar stay reserved.
+  - Flow in `AppBar.CheckStrip`: missing → re-register once → still missing at the 1.5 s pass → SPI shrink.
+    Re-verify on the triggers that already exist (display pass, debounced `WM_SETTINGCHANGE`, `ABN_*`); no polling.
+  - Restore: on `Undock`/`UndockAll`, after `ABM_REMOVE`, if the edge still equals the strip and this bar set it,
+    expand it back, then `AppBarJanitor.Nudge()`. After a force-kill, the next start (taskbar marker present) sets
+    each monitor's work area to full bounds, then nudges. `--safe` never calls SPI.
+- **Experiments for the next user session, in order:** (1) check whether the +35 s apply coincides with a
+  taskbar re-hide or full-screen notice in the log; (2) start with `NativeTaskbarAutoHide` (taskbar visible but
+  auto-hide) and with the taskbar untouched: if strips apply at once, the `SW_HIDE` state is the gate; (3) with
+  strips missing, from another process `ShowWindow(Shell_TrayWnd, SW_SHOWNA)` and separately a 1×1
+  `ABM_NEW`+`ABM_REMOVE`, and see which makes strips appear; (4) apply the SPI shrink by hand and watch 60 s for
+  Explorer reverting it; (5) unplug/replug with the fallback in: one "work area set directly" line per lost strip,
+  full work areas after quit.
+
 To finish: fix the reservation (with a cap and back-off, never a re-register loop), then repeat the **live session
 with the user** (they must quit the everyday instance first; nothing else may run):
 1. Start the branch build non-safe with a copy of the user's settings (`...\mm-session\start-test.cmd`).
