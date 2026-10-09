@@ -40,6 +40,13 @@ Status: Implemented (branch improvements/shell-polish)
 - App: `DockFeature.ToRunningWindow` passes `IsMinimized`; `ExternalForeground` clears `Handle` on
   `EVENT_SYSTEM_MINIMIZESTART` for that window; `AppCatalog.FindForWindow` uses the Squirrel rule so unpinned
   Squirrel apps get their catalogue name and icon.
+- File Explorer (follow-up fix): folder windows (`CabinetWClass` in `explorer.exe`) carry no AUMID, and the
+  `Microsoft.Windows.Explorer` AppsFolder entry targets `::{52205FD8-5DFB-447D-801A-D0B52F2E83E1}` (not a file
+  path, so the catalogue has no target for it). Neither the identity nor the path pass could match, so they showed
+  as a separate unpinned "Explorer" icon. Core `AppIdentity.ImpliedAppUserModelId(processPath, className)` gives
+  those windows `Microsoft.Windows.Explorer`; `WindowTracker.Inspect` uses it when the window and package have no
+  AUMID. Control Panel windows are also `CabinetWClass` and join the pin, as on the Windows taskbar. Other
+  `explorer.exe` windows keep no AUMID (KI-052).
 
 ## Safety and recovery
 No system state changes.
@@ -54,6 +61,8 @@ None: one more WinEvent case in an existing subscription, and a path comparison 
    `cmd.exe` windows; identity matches still win over path matches; no resolver behaves as before.
 3. Manual: minimise Claude, click its dock icon, it comes back focused.
 4. Manual: with GitHub Desktop pinned and open, the dock shows one icon with a running indicator.
+5. Core tests: an `explorer.exe` `CabinetWClass` window joins the `Microsoft.Windows.Explorer` pin even when the
+   pin resolves to no path; other `explorer.exe` windows (desktop, taskbar, dialogs) don't.
 
 ## Risks and open questions
 - Before the app catalogue loads, named-AUMID pins can't resolve their target and windows show unpinned until
