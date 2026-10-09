@@ -79,6 +79,41 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool SystemParametersInfoSet(uint action, uint uiParam, nint value, uint winIni);
 
+    // ---- Mouse, keyboard and snap settings (Settings app panels) --------------------------------
+    public const uint SPIF_UPDATEINIFILE = 0x0001;
+    public const uint SPI_GETMOUSE = 0x0003;
+    public const uint SPI_SETMOUSE = 0x0004;
+    public const uint SPI_GETKEYBOARDSPEED = 0x000A;
+    public const uint SPI_SETKEYBOARDSPEED = 0x000B;
+    public const uint SPI_GETKEYBOARDDELAY = 0x0016;
+    public const uint SPI_SETKEYBOARDDELAY = 0x0017;
+    public const uint SPI_SETMOUSEBUTTONSWAP = 0x0021;
+    public const uint SPI_GETWHEELSCROLLLINES = 0x0068;
+    public const uint SPI_SETWHEELSCROLLLINES = 0x0069;
+    public const uint SPI_GETMOUSESPEED = 0x0070;
+    public const uint SPI_SETMOUSESPEED = 0x0071;
+    public const uint SPI_GETWINARRANGING = 0x0082;
+    public const uint SPI_SETWINARRANGING = 0x0083;
+    public const int SM_SWAPBUTTON = 23;
+
+    /// <summary>SPI_GETWHEELSCROLLLINES value meaning "scroll one screen at a time".</summary>
+    public const int WHEEL_PAGESCROLL = -1;
+
+    /// <summary>SystemParametersInfo for actions whose pvParam is an int array (SPI_GETMOUSE / SPI_SETMOUSE).</summary>
+    [LibraryImport("user32.dll", EntryPoint = "SystemParametersInfoW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SystemParametersInfoArray(uint action, uint uiParam, [In, Out] int[] value, uint winIni);
+
+    [LibraryImport("user32.dll")]
+    public static partial int GetSystemMetrics(int index);
+
+    /// <summary>Fills <paramref name="layouts"/> with the input locale handles (HKLs) of the session; returns how many.</summary>
+    [LibraryImport("user32.dll")]
+    public static partial int GetKeyboardLayoutList(int count, [Out] nint[]? layouts);
+
+    [LibraryImport("user32.dll")]
+    public static partial nint GetKeyboardLayout(uint threadId);
+
     /// <summary>True while the key is physically held (high bit of GetAsyncKeyState).</summary>
     public static bool IsKeyDown(int virtualKey) => (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
 }
