@@ -14,6 +14,9 @@ internal sealed class TopBarPageViewModel : SettingsPageViewModel
         Preview = new TopBarPreviewViewModel(settings.Current);
 
         Enabled = Toggle(s => s.TopBar.Enabled, (s, v) => s.TopBar.Enabled = v);
+        Monitors = Choice(s => s.TopBar.Monitors, (s, v) => s.TopBar.Monitors = v,
+            ChoiceOption.Of(BarMonitors.All, "All displays"),
+            ChoiceOption.Of(BarMonitors.Primary, "Main display only"));
         Background = Color(s => s.TopBar.BackgroundColor, (s, v) => s.TopBar.BackgroundColor = v, ColorPresets.TopBarBackgrounds,
             applyPreset: (s, preset) =>
             {
@@ -56,6 +59,8 @@ internal sealed class TopBarPageViewModel : SettingsPageViewModel
     public TopBarPreviewViewModel Preview { get; }
 
     public ToggleSetting Enabled { get; }
+
+    public ChoiceSetting Monitors { get; }
 
     public ColorEditor Background { get; }
 
