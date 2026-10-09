@@ -3,6 +3,7 @@ using System.Windows.Threading;
 using WinGnome.Core.ControlCenter;
 using WinGnome.Features.Settings.ViewModels;
 using WinGnome.Infrastructure;
+using WinGnome.Services.Apps;
 
 namespace WinGnome.Features.Settings.Panels;
 
@@ -12,16 +13,32 @@ namespace WinGnome.Features.Settings.Panels;
 /// <param name="IsReadOnly">True in --safe and --selftest mode: panels show system settings but never change them.</param>
 /// <param name="OpenLink">Opens an <c>ms-settings:</c> page or control panel.</param>
 /// <param name="SettingsDirectory">WinGnome's profile folder (for the display revert record).</param>
+/// <param name="Services">The shell services some panels use (apps, icons, dialogs).</param>
 internal sealed record SystemPanelContext(
     SettingsService Settings,
     Dispatcher Dispatcher,
     bool IsReadOnly,
     Action<string> OpenLink,
-    string SettingsDirectory)
+    string SettingsDirectory,
+    SystemPanelServices Services)
 {
     /// <summary>Runs system writes off the UI thread, one at a time, and never in read-only mode.</summary>
     public SystemSettingWriter CreateWriter() => new(Dispatcher, IsReadOnly);
 }
+
+/// <summary>
+/// Shell services for the system panels, in one record so adding a service doesn't change every panel's constructor.
+/// Spec 0017's Do Not Disturb service joins it when that lands.
+/// </summary>
+/// <param name="Apps">The installed-apps catalogue the shell has already loaded.</param>
+/// <param name="Icons">App icons at a given size.</param>
+/// <param name="Launcher">Starts apps and opens URIs.</param>
+/// <param name="Dialogs">Confirmation and app-picker prompts owned by the settings window.</param>
+internal sealed record SystemPanelServices(
+    IAppCatalog Apps,
+    IIconProvider Icons,
+    IAppLauncher Launcher,
+    IDialogService Dialogs);
 
 /// <summary>
 /// Base of the panels that show Windows settings (Sound, Displays, Power, ...). The panel reads the system when it is
@@ -30,8 +47,12 @@ internal sealed record SystemPanelContext(
 /// </summary>
 internal abstract class SystemPanelViewModel : SettingsPageViewModel
 {
+    private readonly string _panelId;
     private string? _problem;
     private bool _isOpen;
+
+    // Bumped by every open and close, so a LoadAsync result is shown only by the same Open that asked for it.
+    private int _generation;
 
     protected SystemPanelViewModel(SystemPanelContext context, string panelId)
         : this(context, SettingsPanelCatalog.Find(panelId) ?? throw new ArgumentException($"Unknown panel \"{panelId}\".", nameof(panelId)))
@@ -41,6 +62,7 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
     private SystemPanelViewModel(SystemPanelContext context, SettingsPanel panel)
         : base(context.Settings, panel.Title, panel.Icon)
     {
+        _panelId = panel.Id;
         Context = context;
         var link = panel.LinkUri ?? "ms-settings:";
         OpenInWindowsCommand = new RelayCommand(() => context.OpenLink(link));
@@ -74,6 +96,7 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
         }
 
         _isOpen = true;
+        _generation++;
         Problem = null;
         Open();
     }
@@ -86,6 +109,7 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
         }
 
         _isOpen = false;
+        _generation++;
         Close();
     }
 
@@ -102,6 +126,73 @@ internal abstract class SystemPanelViewModel : SettingsPageViewModel
     protected virtual void Close()
     {
     }
+
+    /// <summary>
+    /// Runs <paramref name="read"/> off the UI thread and passes its result to <paramref name="show"/> on the dispatcher,
+    /// but only while the panel is still open from the same <see cref="Open"/>: a read that finishes after the panel was
+    /// closed (or closed and reopened) is dropped. A failure is logged and shown as <see cref="Problem"/>. Call it from
+    /// the UI thread (usually in <see cref="Open"/>).
+    /// </summary>
+    /// <param name="longRunning">
+    /// Runs the read on its own background thread (MTA, named after the panel) instead of the thread pool. Use it for
+    /// reads that can block for long (an RPC to a print server, Windows Update, a walk over hundreds of registry keys),
+    /// so a stuck call never starves the pool.
+    /// </param>
+    protected void LoadAsync<T>(Func<T> read, Action<T> show, bool longRunning = false)
+    {
+        ArgumentNullException.ThrowIfNull(read);
+        ArgumentNullException.ThrowIfNull(show);
+        var generation = _generation;
+
+        void Work()
+        {
+            T result;
+            try
+            {
+                result = read();
+            }
+            catch (Exception ex)
+            {
+                // Thread boundary: an exception escaping a worker would end the shell process.
+                Log.Warn($"Settings: could not read the \"{_panelId}\" panel's settings", ex);
+                ShowIfCurrent(generation, () => Problem = "Couldn't read these settings from Windows. You can see them in Windows Settings instead.");
+                return;
+            }
+
+            ShowIfCurrent(generation, () => show(result));
+        }
+
+        if (longRunning)
+        {
+            var thread = new Thread(Work) { IsBackground = true, Name = $"WinGnome panel: {_panelId}" };
+            thread.SetApartmentState(ApartmentState.MTA);
+            thread.Start();
+        }
+        else
+        {
+            ThreadPool.QueueUserWorkItem(_ => Work());
+        }
+    }
+
+    /// <summary>Runs <paramref name="action"/> on the dispatcher if the panel is still in the open state <paramref name="generation"/>.</summary>
+    private void ShowIfCurrent(int generation, Action action) =>
+        Context.Dispatcher.BeginInvoke(() =>
+        {
+            if (!_isOpen || generation != _generation)
+            {
+                return;
+            }
+
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"Settings: could not show the \"{_panelId}\" panel's settings", ex);
+                Problem = "Couldn't show these settings. You can see them in Windows Settings instead.";
+            }
+        });
 
     /// <summary>Reports a failed change; the panel shows it with the Windows Settings link.</summary>
     protected void ReportWriteFailure(string what) =>

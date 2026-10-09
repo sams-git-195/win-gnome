@@ -86,6 +86,9 @@ internal static partial class NativeMethods
     /// <summary>Don't show an error message box when the launch fails.</summary>
     public const uint SEE_MASK_FLAG_NO_UI = 0x00000400;
 
+    /// <summary>Return the started process's handle in hProcess (0 when the launch was handed to an existing process).</summary>
+    public const uint SEE_MASK_NOCLOSEPROCESS = 0x00000040;
+
     /// <summary>Win32 error for "the operation was cancelled by the user", e.g. "No" on a UAC prompt.</summary>
     public const int ERROR_CANCELLED = 1223;
 
@@ -137,6 +140,11 @@ internal static partial class NativeMethods
     /// <summary>Parses a shell name ("shell:AppsFolder\...") to an absolute ID list; free it with Marshal.FreeCoTaskMem.</summary>
     [LibraryImport("shell32.dll", StringMarshalling = StringMarshalling.Utf16)]
     public static partial int SHParseDisplayName(string name, nint bindContext, out nint idList, uint attributesIn, out uint attributesOut);
+
+    // ---- shlwapi ----------------------------------------------------------------------------
+    /// <summary>Resolves an indirect string ("@file.dll,-123", "@{package?ms-resource://...}") into <paramref name="buffer"/>.</summary>
+    [LibraryImport("shlwapi.dll", EntryPoint = "SHLoadIndirectString", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial int SHLoadIndirectString(string source, [Out] char[] buffer, int bufferLength, nint reserved);
 
     // ---- Helpers ----------------------------------------------------------------------------
 
