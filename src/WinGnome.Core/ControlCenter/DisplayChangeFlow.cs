@@ -6,6 +6,9 @@ public enum DisplayApplyResult
     /// <summary>The change is showing for this session and waits for "Keep changes?".</summary>
     Applied,
 
+    /// <summary>Applied, but Windows adjusted it; the pending change records what is really showing.</summary>
+    AppliedAdjusted,
+
     /// <summary>The target equals the current settings; nothing was done.</summary>
     NoChange,
 
@@ -94,11 +97,40 @@ public sealed class DisplayChangeFlow(
 
         if (applyForSession(target))
         {
-            return new(DisplayApplyResult.Applied, pending);
+            return Confirm(pending);
         }
 
         return Revert(pending)
             ? new(DisplayApplyResult.FailedAndRestored, null)
+            : new(DisplayApplyResult.FailedNotRestored, null);
+    }
+
+    /// <summary>
+    /// After a successful apply: Windows may have adjusted the configuration (SDC_ALLOW_CHANGES), so what is showing is
+    /// read back. When it differs from the target, the record is rewritten with what is showing, so Keep saves that and
+    /// recovery recognises it; if the record can't be rewritten, the change is reverted.
+    /// </summary>
+    private DisplayApplyOutcome Confirm(DisplayRevert pending)
+    {
+        var showing = readCurrent();
+        if (DisplayRevertRecord.IsStillApplied(pending, showing))
+        {
+            return new(DisplayApplyResult.Applied, pending);
+        }
+
+        var adjusted = pending with
+        {
+            Target = showing
+                .Where(s => pending.Target.Any(t => string.Equals(t.DeviceName, s.DeviceName, StringComparison.OrdinalIgnoreCase)))
+                .ToList(),
+        };
+        if (writeRecord(adjusted))
+        {
+            return new(DisplayApplyResult.AppliedAdjusted, adjusted);
+        }
+
+        return Revert(pending)
+            ? new(DisplayApplyResult.NotRecorded, null)
             : new(DisplayApplyResult.FailedNotRestored, null);
     }
 
