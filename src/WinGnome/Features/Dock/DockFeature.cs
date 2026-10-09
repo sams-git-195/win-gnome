@@ -96,7 +96,7 @@ internal sealed class DockFeature : IFeature
         RefreshNow();
         foreach (var dock in _docks)
         {
-            dock.DockOn(dock.Monitor);
+            dock.RelayoutIfMonitorUnchanged();
             dock.SetEnabled(true);
         }
     }

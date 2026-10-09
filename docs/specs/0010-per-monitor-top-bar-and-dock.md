@@ -31,6 +31,11 @@ User decisions of 2026-10-09, in substance:
 - **Hot corner:** on every monitor whose top-left corner is a true screen corner: no other monitor lies directly to
   its left or directly above it at that corner (GNOME's rule; a monitor touching only diagonally doesn't disable it).
   The dwell delay (`Activities.HotCornerDelayMs`) and full-screen/drag suppression are unchanged.
+  **The primary always keeps its hot corner** (user decision 2026-10-09, after the first build disabled it on a
+  layout with a monitor above the primary). Where the primary's corner is not a true corner the pointer does not
+  stop there, so it is a *guarded* corner: it fires only after the pointer rests inside an 8×8 physical-pixel box at
+  the primary's top-left for the configured delay, but at least 300 ms. A sample on another monitor (passing through
+  to the monitor above or to the left) restarts the dwell, so moving between monitors never triggers it.
 - **Overview** stays on the primary monitor in this spec (not trivial: `OverviewWindow`, `OverviewLayout` input,
   `ThumbnailLayer` and the backdrop all assume one monitor). Activities buttons and hot corners on secondary
   monitors open it on the primary (KI-072).
@@ -226,9 +231,11 @@ WinGnome's own tray broadcast as well). Relayout logs the dock's monitor and edg
 hinted (KI-071). `DockFeature` drops `IEmergencyRestore`: its reservation is covered by `AppBar.UndockAll()`.
 
 **Hot corner (`Features/Overview/HotCornerWatcher.cs`)**: the existing 50 ms cursor poll (unchanged cost) looks up
-the monitor under the cursor with `DisplayLayoutService.Current.At`, skips monitors where `HotCornerRules.IsTrueCorner`
-is false, and passes that monitor to the existing detector and `ShouldTrigger` full-screen check (which takes the
-monitor rect already). The ad-hoc `IsOnAnyMonitor` checks are replaced by the Core rule.
+the monitor under the cursor with `DisplayLayoutService.Current.At`, asks `HotCornerRules.KindOf` (`Corner`,
+`Guarded` for the primary when it is not a true corner, `None`), and passes that monitor to the matching detector
+(the 1-pixel one with the configured delay, or an 8 px one with `GuardedDwellMs`) and the `ShouldTrigger`
+full-screen check (which takes the monitor rect already). Samples of any other kind reset a detector. The ad-hoc
+`IsOnAnyMonitor` checks are replaced by the Core rule.
 
 ### Threading, DPI, hostile cases
 - Everything above runs on the dispatcher, except `TrayHost`'s own thread (unchanged) and the crash path.
@@ -369,7 +376,8 @@ placed left of and above the primary (negative coordinates).
 11. Q Focused app per monitor follows focus and Win+Shift+Arrow moves.
 12. Q Dock: Primary default; All → a dock on each; isolation shows only that monitor's windows; Super+N uses the
     primary dock; one edge poll running (log) with two intellihide docks hidden.
-13. Q Hot corner fires on each true corner, not on a corner shared with the other monitor.
+13. Q Hot corner fires on each true corner, not on a secondary's corner shared with the other monitor; on a primary
+    whose corner is shared, it fires after resting at the corner and not when passing through to the other monitor.
 14. Q Unplug, replug, rearrange, change scale, swap primary, sleep/resume, Explorer restart: instances rebuilt within
     1 s (log timestamps), one pass per event, no double strip, work areas correct (`GetMonitorInfo` logged per monitor).
 15. Q Exit, crash (temporary `throw`), and `taskkill /f` + restart with the same `--settings-dir`: every work area and
@@ -401,3 +409,13 @@ placed left of and above the primary (negative coordinates).
 8. WPF popups across mixed DPI have had scaling glitches in older .NET builds; QA 9 covers it.
 9. A third-party AppBar on the same top edge (e.g. another bar app) now shares the storm protection; it still stacks
    below or above ours as Explorer decides (unchanged).
+10. **Recycled HMONITOR after a display change** (Opus review, low; no KI number free in 069–072, ID to be assigned):
+    `MonitorKeyOf` maps `MonitorFromWindow` handles through the table of the last read. If Windows reuses an old
+    HMONITOR value for a different monitor, a window can be given the wrong monitor key until the next pass, at most
+    250 ms (plus the 1.5 s follow-up). Effect: a bar's focused app, an isolated dock's window list or the dock's
+    full-screen/intellihide check can be wrong for that moment; no AppBar or work-area effect.
+11. Fixed after the Opus review (no longer open): a settings change within 250 ms of a display change re-docked bars
+    and docks on their cached, possibly stale rectangle; they now re-dock only when a fresh read shows their monitor
+    with the same bounds (`TopBarInstance.RestoreStrip`, `DockInstance.RelayoutIfMonitorUnchanged`) and otherwise
+    leave it to the pass. A `TopBarInstance` constructor that threw after `DockOn` left its AppBar registered until
+    exit; it now disposes itself (undocking first) before rethrowing.

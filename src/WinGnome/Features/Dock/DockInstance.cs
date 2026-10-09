@@ -260,15 +260,23 @@ internal sealed class DockInstance : IDisposable
         _context.Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
             _relayoutQueued = false;
-
-            // Only on a monitor that still exists with the same bounds: Windows also sends WM_DPICHANGED when it moves
-            // the window off a removed monitor, and the coordinator's pass handles that case.
-            if (!_disposed && !_reservation.IsDetached
-                && DisplayLayoutService.Read().Find(Monitor.Key) is { } monitor && monitor.Bounds == Monitor.Bounds)
-            {
-                DockOn(monitor);
-            }
+            RelayoutIfMonitorUnchanged();
         });
+    }
+
+    /// <summary>
+    /// Lays the dock out again on its monitor, read fresh, but only while it still exists with the same bounds (after a
+    /// DPI change or a settings change). Windows also sends WM_DPICHANGED when it moves the window off a removed
+    /// monitor, and a settings change can arrive between a display change and the coordinator's pass: reserving on a
+    /// stale rectangle could take a strip on another monitor, so that case is left to the pass.
+    /// </summary>
+    public void RelayoutIfMonitorUnchanged()
+    {
+        if (!_disposed && !_reservation.IsDetached
+            && DisplayLayoutService.Read().Find(Monitor.Key) is { } monitor && monitor.Bounds == Monitor.Bounds)
+        {
+            DockOn(monitor);
+        }
     }
 
     private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)

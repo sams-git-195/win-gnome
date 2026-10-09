@@ -73,7 +73,7 @@ internal sealed class TopBarFeature : IFeature, IEmergencyRestore
         foreach (var bar in _bars)
         {
             bar.ApplySettings(_settings);
-            bar.DockOn(bar.Monitor);
+            bar.RestoreStrip();
         }
     }
 

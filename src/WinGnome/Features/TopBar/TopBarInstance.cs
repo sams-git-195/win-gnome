@@ -55,9 +55,18 @@ internal sealed class TopBarInstance : IDisposable
         _source = HwndSource.FromHwnd(hwnd);
         _source?.AddHook(WndProc);
 
-        _window.ApplySettings(settings);
-        DockOn(monitor);
-        _window.Show();
+        try
+        {
+            _window.ApplySettings(settings);
+            DockOn(monitor);
+            _window.Show();
+        }
+        catch
+        {
+            // The coordinator never gets this instance, so nothing else would give the strip back before exit.
+            Dispose();
+            throw;
+        }
     }
 
     /// <summary>Explorer restarted (raised for every bar; the coordinator coalesces them into one pass).</summary>
@@ -141,11 +150,12 @@ internal sealed class TopBarInstance : IDisposable
     }
 
     /// <summary>
-    /// Re-docks on the same monitor, read fresh, but only while it still exists with the same bounds: Windows also
-    /// sends WM_DPICHANGED when it moves the window off a removed monitor, and docking on a stale rectangle could
-    /// reserve a second strip elsewhere (the coordinator's pass handles that case).
+    /// Re-docks on the same monitor, read fresh, but only while it still exists with the same bounds (after a DPI
+    /// change or a settings change). Windows also sends WM_DPICHANGED when it moves the window off a removed monitor,
+    /// and a settings change can arrive between a display change and the coordinator's pass: docking on a stale
+    /// rectangle could reserve a second strip elsewhere, so that case is left to the pass.
     /// </summary>
-    private void RestoreStrip()
+    public void RestoreStrip()
     {
         if (!_disposed && !IsDetached && _appBar.IsRegistered
             && DisplayLayoutService.Read().Find(Monitor.Key) is { } monitor && monitor.Bounds == Monitor.Bounds)
