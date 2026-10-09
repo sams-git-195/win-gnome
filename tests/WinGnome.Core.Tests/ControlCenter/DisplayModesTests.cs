@@ -42,10 +42,15 @@ public class DisplayModesTests
         Assert.Empty(DisplayModes.RefreshRates(Modes, new Resolution(3840, 2160)));
     }
 
+    public static TheoryData<int[], int, int> RefreshPicks { get; } = new()
+    {
+        { [144, 120, 60], 120, 120 },
+        { [144, 120, 60], 75, 144 },
+        { [], 60, 60 },
+    };
+
     [Theory]
-    [InlineData(new[] { 144, 120, 60 }, 120, 120)]
-    [InlineData(new[] { 144, 120, 60 }, 75, 144)]
-    [InlineData(new int[0], 60, 60)]
+    [MemberData(nameof(RefreshPicks))]
     public void PickRefresh_KeepsTheCurrentRateWhenAvailable(int[] rates, int current, int expected)
     {
         Assert.Equal(expected, DisplayModes.PickRefresh(rates, current));

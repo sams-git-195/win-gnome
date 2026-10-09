@@ -33,12 +33,17 @@ public class InputTuningTests
         Assert.Equal(16.25, (InputTuning.RepeatsPerSecond(15) + InputTuning.RepeatsPerSecond(16)) / 2, 3);
     }
 
+    public static TheoryData<int[], bool> MouseParameters { get; } = new()
+    {
+        { [6, 10, 1], true },
+        { [6, 10, 2], true },
+        { [0, 0, 0], false },
+        { [6, 10, 0], false },
+        { [1, 2], false },
+    };
+
     [Theory]
-    [InlineData(new[] { 6, 10, 1 }, true)]
-    [InlineData(new[] { 6, 10, 2 }, true)]
-    [InlineData(new[] { 0, 0, 0 }, false)]
-    [InlineData(new[] { 6, 10, 0 }, false)]
-    [InlineData(new[] { 1, 2 }, false)]
+    [MemberData(nameof(MouseParameters))]
     public void IsAccelerationOn_ReadsTheThirdValue(int[] mouse, bool expected)
     {
         Assert.Equal(expected, InputTuning.IsAccelerationOn(mouse));
