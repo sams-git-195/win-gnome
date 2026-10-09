@@ -1,6 +1,6 @@
 # 0008 — Smooth overview open and close
 
-Status: Implemented (branch worktree-agent-a24f212757295470e, b792738, e4d8ed1, f7357f6 and 1e4522f)
+Status: Implemented (branch improvements/shell-polish)
 
 ## Problem
 Pressing Super shows a flash and then a very rapid jump into the overview. Causes found in the code:

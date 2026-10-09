@@ -1,6 +1,6 @@
 # 0009 — Round buttons on more custom title bars
 
-Status: Implemented (merged to improvements/shell-polish; the Dia addendum on its branch, verified by tests only)
+Status: Implemented (branch improvements/shell-polish; the Dia rule is verified by tests only)
 
 ## Problem
 With *Decorate apps with custom title bars (experimental)* on (spec 0005), Claude desktop is decorated, but Dia,

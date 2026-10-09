@@ -1,6 +1,6 @@
 # 0007 — Settings header bar with round buttons, and the app icon
 
-Status: Implemented (branch worktree-agent-a2cc1c66c5b17f2a0, not yet merged)
+Status: Implemented (branch improvements/shell-polish)
 
 ## Problem
 The settings window uses the standard Windows title bar and the default app icon. WinGnome's own windows

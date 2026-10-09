@@ -26,22 +26,21 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-006](#ki-006) | S4 | Tray | No tray icons when running elevated or alongside another tray host | By design |
 | [KI-007](#ki-007) | S4 | Window buttons | Some apps that draw their own title bars keep their own buttons | Partly fixed |
 | [KI-008](#ki-008) | S4 | Taskbar | The native taskbar isn't restyled | By design |
-| [KI-009](#ki-009) | S4 | Repo | No CI workflow, although the README says `--selftest` is used by CI | Open |
-| [KI-010](#ki-010) | S3 | App | Launched from a sandboxed terminal, WinGnome uses a private copy of its settings folder | Open |
+| [KI-010](#ki-010) | S3 | App | Launched from a sandboxed terminal, WinGnome uses a private copy of its settings folder | By design |
 | [KI-014](#ki-014) | S4 | Tweaks | GNOME look tweaks are verified by tests only, not yet on a live Windows install | Open |
 | [KI-016](#ki-016) | S4 | Window buttons | The patch behind the circles is a flat colour | Open |
 | [KI-018](#ki-018) | S4 | Performance | Idle CPU needs profiling on a quiet machine | Open |
-| [KI-019](#ki-019) | S4 | Tray | The tray host can take up to 1 s to get back in front of Explorer's taskbar | Open |
+| [KI-019](#ki-019) | S4 | Tray | The tray host can take up to 1 s to get back in front of Explorer's taskbar | By design |
 | [KI-021](#ki-021) | S4 | Top bar | Brightness slider controls only a laptop's built-in display | Open |
 | [KI-022](#ki-022) | S4 | Tray | A `WM_CLOSE` posted to "the taskbar" quits WinGnome while it hosts tray icons | Open |
 | [KI-023](#ki-023) | S4 | Dock | Two pins with the same target group the app's windows into the first one | Open |
-| [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
 | [KI-031](#ki-031) | S4 | Overview | Overview animation details not verified on every path | Open |
 | [KI-032](#ki-032) | S4 | Overview | The overview's close glide gets 8–13 frames | Open |
 | [KI-033](#ki-033) | S4 | Overview | A dock request for some windows doesn't narrow an open overview | Open |
 | [KI-040](#ki-040) | S4 | Window buttons | A custom title bar resized often keeps its circles hidden for up to a minute | By design |
 | [KI-041](#ki-041) | S4 | Window buttons | Clicks on custom title bars wait for one hit test, and clicks meanwhile are ignored | By design |
 | [KI-042](#ki-042) | S4 | Window buttons | WinGnome builds from before the window-buttons role still decorate alongside newer ones | Open |
+| [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -49,7 +48,7 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 On multi-monitor setups the dock and top bar exist only on the primary monitor. Secondary monitors have
 no top bar or dock.
 *Workaround:* none; use the Windows taskbar mode if per-monitor taskbars are needed.
-*Fix direction:* per-monitor top bar and dock instances with per-monitor window lists (roadmap item 1).
+*Fix direction:* planned in spec [0010](specs/0010-per-monitor-top-bar-and-dock.md) (draft, needs decisions).
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -109,15 +108,8 @@ In native taskbar mode WinGnome doesn't make the Windows taskbar rounded, floati
 *Reason:* that needs code injected into Explorer, which breaks with Windows updates. Tools such as
 Windhawk's *Taskbar Styler* can run alongside WinGnome in native taskbar mode.
 
-### KI-009
-**No CI workflow, although the README says `--selftest` is used by CI** · S4 · Repo · Open
-
-There's no `.github/workflows` yet, so nothing builds or tests on push.
-*Fix direction:* a Windows workflow that runs `dotnet build -c Release -warnaserror`, `dotnet test` and
-the self-test, triggered on push to `main` and on pull requests only.
-
 ### KI-010
-**Launched from a sandboxed terminal, WinGnome uses a private copy of its settings folder** · S3 · App · Open
+**Launched from a sandboxed terminal, WinGnome uses a private copy of its settings folder** · S3 · App · By design
 
 An AI coding agent's sandboxed shell can give the processes it starts a private, copy-on-write view of
 `%APPDATA%\WinGnome`. A WinGnome started there reads and saves settings, logs and its taskbar marker in that
@@ -128,10 +120,15 @@ up again. The sandboxed shell then misread the real log as silent and the real s
 Writes succeed inside the sandbox, so the *Changes won't be kept* banner (6e07eb0) does not catch this case.
 *Workaround:* start the everyday WinGnome from Explorer, the Start menu or sign-in. Agents must launch it with
 `explorer.exe <path>\WinGnome.exe` and read its real files through an Explorer-launched process (AGENTS.md).
-*Fix direction:* none in WinGnome itself; keep test runs on `--safe` with their own `--settings-dir`.
+*Reason:* the sandbox, not WinGnome, decides what the process sees, and its writes succeed, so WinGnome can't
+detect it. Keep test runs on `--safe` with their own `--settings-dir` (triaged 2026-10-09).
 
 ### KI-014
 **GNOME look tweaks are verified by tests only, not yet on a live Windows install** · S4 · Tweaks · Open
+
+*Next step:* a manual pass on the user's machine (it writes real HKCU values, so only with the user's go-ahead):
+apply each tweak, check Start, taskbar and title bars with and without an Explorer restart, then *Revert all* and
+compare HKCU with `tweaks-backup.json`.
 
 The *Adwaita blue accent*, *Neutral window chrome*, *Hide desktop icons* and *Hide "Learn about this picture"*
 tweaks were written and tested against an in-memory registry. Still to confirm on a real machine:
@@ -154,17 +151,23 @@ frame.
 ### KI-018
 **Idle CPU needs profiling on a quiet machine** · S4 · Performance · Open
 
+*Next step:* a WPR CPU and context-switch trace (`wpr -start CPU`) over 10 idle minutes with only the everyday
+instance running, ranking WinGnome's thread wake-ups in WPA. Note the overview warm-up (1e4522f) adds ~30 MB
+private memory from start instead of from the first open.
+
 On 2026-10-08 the footprint work measured 0.6–1 s of CPU per idle minute, but with other test instances
 running. The final build, measured alone with every feature on (user's settings, safe mode, one decorated
 window), used 0.24 s per idle minute, ~82 MB private memory and 15 threads once settled.
 *Fix direction:* ETW / PerfView CPU sampling over a long idle period to find the remaining wake-ups.
 
 ### KI-019
-**The tray host can take up to 1 s to get back in front of Explorer's taskbar** · S4 · Tray · Open
+**The tray host can take up to 1 s to get back in front of Explorer's taskbar** · S4 · Tray · By design
 
 The front check runs every 250 ms for 2 s after activity and every 1 s at rest (it was 250 ms always).
 If Explorer raises its taskbar with no event announcing it, a tray-icon call in that gap reaches Explorer
 only, and the icon appears in the top bar when the app next updates it.
+*Reason:* no event announces Explorer raising its taskbar, and checking more often costs idle CPU all day (the
+trade-off accepted in spec 0004). Triaged 2026-10-09.
 
 ### KI-021
 **Brightness slider controls only a laptop's built-in display** · S4 · Top bar · Open
@@ -174,6 +177,7 @@ desktops. External monitors would need DDC/CI (`dxva2` `GetMonitorBrightness`/`S
 Also: after any WMI failure (for example while Windows has dimmed the display) the row hides until the card
 is next opened, and on the development laptop `WmiSetBrightness` failed on every instance object except the
 first, so writes go through `SWbemServices.ExecMethod` (an undocumented quirk; late-bound COM via `dynamic`).
+*Fix direction:* planned in spec [0011](specs/0011-external-monitor-brightness.md) (draft, needs a product decision).
 
 ### KI-022
 **A `WM_CLOSE` posted to "the taskbar" quits WinGnome while it hosts tray icons** · S4 · Tray · Open
@@ -181,9 +185,12 @@ first, so writes go through `SWbemServices.ExecMethod` (an undocumented quirk; l
 While WinGnome hosts the tray, its hidden host window is the first `Shell_TrayWnd` that `FindWindow` returns.
 Since 085fa14 a posted `WM_CLOSE` to it is treated as a quit request (that fixed KI-020, where a graceful
 `taskkill` was ignored). A tool or script that posts `WM_CLOSE` to the taskbar to open Explorer's *Shut Down
-Windows* dialog therefore quits WinGnome instead. *Fix direction:* if taskkill is confirmed to post to every
-top-level window of the process, forward the message to Explorer's real taskbar again and rely on the
-UI-thread windows for quitting.
+Windows* dialog therefore quits WinGnome instead. *Triage (2026-10-09):* history suggests taskkill posts
+to one window only: the UI-thread `WM_CLOSE` filter (b4bd338) predates 085fa14 and KI-020 was still seen in
+between. Forwarding the message to Explorer would then most likely bring KI-020 back, so nothing was changed.
+*To verify:* quit the everyday instance, start a `--safe` profile through `explorer.exe`, `taskkill /PID` it, and
+check whether the log has both the tray-host and the `ControlWindow` close lines. If both appear, forward the
+message to Explorer and rely on `ControlWindow`; if only the tray host's, mark this By design.
 
 ### KI-023
 **Two pins with the same target group the app's windows into the first one** · S4 · Dock · Open
@@ -194,18 +201,6 @@ for example a named-AUMID pin and a path pin for the same executable, or two Squ
 the same folder, all of its windows go to the first pin and the second shows as not running. An exact identity
 match still wins over a path match. Also, before the app catalogue has loaded, named-AUMID pins can't resolve
 their target, so their windows show unpinned until the catalogue's `Changed` refresh.
-
-### KI-050
-**Another WinGnome instance draws its circles over this one's header bars** · S4 · Settings · Open
-
-The settings window and app picker hide the Windows caption with `WindowChrome` but keep `WS_CAPTION`, the
-system menu and the maximise box (needed for Snap Layouts), so DWM still reports caption-button bounds. Each
-instance skips only its own process, so another WinGnome that decorates windows overlays its circles on top of
-the header bar's own ones. Since dbf86fb only one instance per session decorates (the window-buttons session
-role), so with current builds this happens only when the decorating instance is a different one from the
-instance whose header bar is shown, e.g. a QA profile's settings window while the everyday instance holds the
-role. A pre-role build (KI-042) still decorates regardless and overlays every other instance's header bars. One
-instance alone is unaffected. Capture header bars with `PrintWindow` to see only the window's own drawing.
 
 ### KI-031
 **Overview animation details not verified on every path** · S4 · Overview · Open
@@ -272,16 +267,29 @@ open: the instance logs a warning and decorates, as before the role existed, rat
 buttons; two instances may then both draw.
 *Fix direction:* republish the everyday copy.
 
+### KI-050
+**Another WinGnome instance draws its circles over this one's header bars** · S4 · Settings · Open
+
+The settings window and app picker hide the Windows caption with `WindowChrome` but keep `WS_CAPTION`, the
+system menu and the maximise box (needed for Snap Layouts), so DWM still reports caption-button bounds. Each
+instance skips only its own process, so another WinGnome that decorates windows overlays its circles on top of
+the header bar's own ones. Since dbf86fb only one instance per session decorates (the window-buttons session
+role), so with current builds this happens only when the decorating instance is a different one from the
+instance whose header bar is shown, e.g. a QA profile's settings window while the everyday instance holds the
+role. A pre-role build (KI-042) still decorates regardless and overlays every other instance's header bars. One
+instance alone is unaffected. Capture header bars with `PrintWindow` to see only the window's own drawing.
+
 ## Resolved
 
 | ID | Severity | Area | Summary | Fixed in |
 |---|---|---|---|---|
-| KI-051 | S3 | Accessibility | The round window buttons weren't exposed to screen readers or the keyboard | fea478b |
+| KI-002 | S4 | App | The executable had no app icon | 2f7c44b |
+| KI-009 | S4 | Repo | No CI workflow, although the README said `--selftest` is used by CI | 94b9013 |
 | KI-011 | S2 | Settings | Non-safe runs with `--settings-dir` rewrote or deleted the shared "Start with Windows" entry | 6aeef5f |
 | KI-012 | S3 | Settings | A settings folder that couldn't be written silently dropped every change | 6e07eb0 (warning banner) |
 | KI-013 | S4 | Top bar | Large hover corner radius drew oval highlights instead of pills | c26e1c8 |
 | KI-015 | S3 | Window buttons | Two WinGnome instances that both decorated windows fought over title-bar colours | dbf86fb (one instance per session decorates; see KI-042) |
 | KI-017 | S3 | Window buttons | The patch behind the circles didn't match Mica title bars and hid the window border | 45ae75a |
-| KI-002 | S4 | App | The executable had no app icon | 2f7c44b |
 | KI-020 | S3 | App | A graceful `taskkill` that reached the tray host window was ignored, so WinGnome didn't quit | 085fa14 |
 | KI-030 | S4 | Overview | The first overview open after start took about half a second (WPF's first full-screen frame) | 1e4522f (cloaked warm-up 3 s after start) |
+| KI-051 | S3 | Accessibility | The round window buttons weren't exposed to screen readers or the keyboard | fea478b |

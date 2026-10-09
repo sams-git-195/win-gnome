@@ -1,6 +1,6 @@
 # 0006 — Dock: restore minimised apps and group pinned Electron apps
 
-Status: Implemented (branch worktree-agent-afeeeb2f2d5b1b75b, not yet merged)
+Status: Implemented (branch improvements/shell-polish)
 
 ## Problem
 1. Minimising Claude desktop and then clicking its dock icon does nothing. After the minimise, nothing outside
