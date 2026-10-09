@@ -20,7 +20,6 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | ID | Severity | Area | Summary | Status |
 |---|---|---|---|---|
 | [KI-001](#ki-001) | S3 | Dock, Top bar | Dock and top bar appear on the primary monitor only | Open |
-| [KI-002](#ki-002) | S4 | App | The executable has no app icon yet | Open |
 | [KI-003](#ki-003) | S4 | Workspaces | Desktop switching relies on simulated Ctrl+Win+arrow keys | By design |
 | [KI-004](#ki-004) | S4 | Overview | Super key opens Start when an elevated window has focus | By design |
 | [KI-005](#ki-005) | S4 | Tray | Some tray icons only appear in the Windows tray | By design |
@@ -36,6 +35,8 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-019](#ki-019) | S4 | Tray | The tray host can take up to 1 s to get back in front of Explorer's taskbar | Open |
 | [KI-021](#ki-021) | S4 | Top bar | Brightness slider controls only a laptop's built-in display | Open |
 | [KI-022](#ki-022) | S4 | Tray | A `WM_CLOSE` posted to "the taskbar" quits WinGnome while it hosts tray icons | Open |
+| [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
+| [KI-051](#ki-051) | S3 | Accessibility | The round window buttons aren't exposed to screen readers or keyboard | Open |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -44,14 +45,6 @@ On multi-monitor setups the dock and top bar exist only on the primary monitor. 
 no top bar or dock.
 *Workaround:* none; use the Windows taskbar mode if per-monitor taskbars are needed.
 *Fix direction:* per-monitor top bar and dock instances with per-monitor window lists (roadmap item 1).
-
-### KI-002
-**The executable has no app icon yet** · S4 · App · Open
-
-`WinGnome.exe` has no `ApplicationIcon`, so Explorer, Task Manager and Alt+Tab show the default icon.
-The logo exists as [assets/logo/wingnome.svg](../assets/logo/wingnome.svg).
-*Fix direction:* export a multi-size `.ico` (16, 20, 24, 32, 40, 48, 64, 256) from the SVG, add it as
-`ApplicationIcon` in `src/WinGnome/WinGnome.csproj`, and use it for the settings window.
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -183,6 +176,25 @@ Windows* dialog therefore quits WinGnome instead. *Fix direction:* if taskkill i
 top-level window of the process, forward the message to Explorer's real taskbar again and rely on the
 UI-thread windows for quitting.
 
+### KI-050
+**Another WinGnome instance draws its circles over this one's header bars** · S4 · Settings · Open
+
+The settings window and app picker hide the Windows caption with `WindowChrome` but keep `WS_CAPTION`, the
+system menu and the maximise box (needed for Snap Layouts), so DWM still reports caption-button bounds. Each
+instance skips only its own process, so a second WinGnome with window buttons on (a QA profile next to the
+everyday one) overlays its circles on top of the header bar's own ones. One instance alone is unaffected. As
+with KI-015, turn window buttons off in test profiles; capture header bars with `PrintWindow` to see only
+the window's own drawing.
+
+### KI-051
+**The round window buttons aren't exposed to screen readers or keyboard** · S3 · Accessibility · Open
+
+`TrafficLightButtonsView` draws all three circles in one element with no `AutomationPeer`, so Narrator and UI
+Automation see no Close, Minimise or Maximise buttons in the settings header bar or the overlay, and the circles
+can't be focused. The settings window still closes with Alt+F4 and its system menu (Alt+Space) has Minimise,
+Maximise and Close. *Fix direction:* an `AutomationPeer` for the view with one child peer per circle
+(`IInvokeProvider`), named from `CaptionButtonKind`.
+
 ## Resolved
 
 | ID | Severity | Area | Summary | Fixed in |
@@ -191,4 +203,5 @@ UI-thread windows for quitting.
 | KI-012 | S3 | Settings | A settings folder that couldn't be written silently dropped every change | 6e07eb0 (warning banner) |
 | KI-013 | S4 | Top bar | Large hover corner radius drew oval highlights instead of pills | c26e1c8 |
 | KI-017 | S3 | Window buttons | The patch behind the circles didn't match Mica title bars and hid the window border | 45ae75a |
+| KI-002 | S4 | App | The executable had no app icon | 2f7c44b |
 | KI-020 | S3 | App | A graceful `taskkill` that reached the tray host window was ignored, so WinGnome didn't quit | 085fa14 |

@@ -45,6 +45,7 @@ the way it was when it exits.
 - Glyphs (× − +) appear on hover, and inactive windows can be dimmed, as on macOS.
 - **Unified title bars**: optionally paints every decorated window's title bar in an Adwaita header colour so the round buttons blend in seamlessly. The original colours come back on exit.
 - Per-app exclusions. Apps that draw their own title bars (Chrome, Edge, VS Code, Windows Terminal, WinUI 3 apps) are left alone automatically, unless you turn on *Decorate apps with custom title bars (experimental)*, which adds the circles to apps that report their buttons to Windows (Claude desktop, for example).
+- WinGnome's own settings window has a GNOME-style **header bar** with the same round buttons in your style (even with the overlay turned off). Hovering its maximise button shows Windows 11 Snap Layouts.
 
 ### Activities overview
 - Full-screen overview with **live window thumbnails** (DWM). Click a thumbnail to focus that window, or hover and click × to close it.
@@ -164,11 +165,12 @@ src/WinGnome               WPF app (net8.0-windows): interop, services and featu
   Interop/                 P/Invoke (NativeMethods.*.cs), WinEvent hooks, AppBar, COM interfaces
   Services/                WindowTracker, TaskbarController, Apps (catalogue, icons, launcher)
   Features/                TopBar, Dock, Taskbar, WindowButtons, Overview, Behaviour, Settings
+  Controls/TrafficLights/  Round window buttons shared by the overlay and the settings header bar
   Theme/                   Adwaita light and dark palettes and shared control styles
 tests/WinGnome.Core.Tests  xUnit tests for Core
 docs/PLAN.md               Engineering plan and conventions
 docs/KNOWN_ISSUES.md       Known bugs, risks and limitations, by severity
-assets/logo/               App logo (SVG source for all icon sizes)
+assets/logo/               App logo (SVG source for all icon sizes; tools/Export-AppIcon.ps1 renders the .ico)
 AGENTS.md                  How to work on WinGnome: planning, code, tests, QA, git
 ```
 

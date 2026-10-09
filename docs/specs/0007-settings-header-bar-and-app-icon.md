@@ -1,6 +1,6 @@
 # 0007 — Settings header bar with round buttons, and the app icon
 
-Status: Agreed
+Status: Implemented (branch worktree-agent-a2cc1c66c5b17f2a0, not yet merged)
 
 ## Problem
 The settings window uses the standard Windows title bar and the default app icon. WinGnome's own windows
@@ -29,8 +29,9 @@ never decorated. The executable has no icon (KI-002) and the About page shows no
   (`src/WinGnome/Assets/wingnome.ico`, committed) plus `assets/logo/wingnome-256.png`. `ApplicationIcon` set in the
   csproj. No new packages.
 - `TrafficLightButtonsView` and `GlyphGeometry` move to a shared `src/WinGnome/Controls/TrafficLights/` folder.
-- Core: `CaptionButtonLayout.ComputeForHeaderBar(widthDip, heightDip, WindowButtonSettings)` (the synthetic
-  native rect `TitleBarPreviewViewModel` builds today), used by the preview and the header bar.
+- Core: `CaptionButtonLayout.ComputeForHeaderBar(widthDip, heightDip, WindowButtonSettings, closeOnly)` (the synthetic
+  native rect `TitleBarPreviewViewModel` builds today), used by the preview and the header bar; `closeOnly` lays out
+  the dialog's single close circle. `CaptionButtonHitTest.FindInHeaderBar` maps a WM_NCHITTEST pixel position to a circle.
 - `HeaderBarWindow` helper (app): applies `WindowChrome` (caption height 46, glass frame 1, resize border),
   hosts the buttons, maps clicks to `SystemCommands`, adds the maximised margin, and hooks `WM_NCHITTEST` to return
   `HTMAXBUTTON` over the maximise circle (plus `WM_NCLBUTTONDOWN/UP`, `WM_NCMOUSEMOVE/LEAVE` handling for hover
@@ -52,3 +53,8 @@ None at idle; the settings window only exists while open.
 
 ## Risks and open questions
 - `Logo.xaml` is a second representation of the logo; the SVG stays the source of truth.
+- The maximise circle is non-client area (HTMAXBUTTON), so it has no mouse capture: pressing it and dragging off
+  cancels the click, and releasing outside the window does nothing. A double-click toggles once. The self-test checks
+  that the header bar's hook answers HTMAXBUTTON there, since that depends on hook order inside WPF's WindowChrome.
+- The app picker drops its minimise and maximise boxes (no Snap Layouts, no double-click maximise).
+- Another WinGnome instance can draw its overlay over the header bar (KI-050); the circles have no automation peer (KI-051).
