@@ -1,0 +1,162 @@
+<UserControl x:Class="WinGnome.Features.Settings.Panels.Apps.AppsPanel" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls"
+             xmlns:p="clr-namespace:WinGnome.Features.Settings.Panels">
+    <UserControl.Resources>
+        <!-- Chevron that expands a packaged app's row (its details load on first expand). -->
+        <Style x:Key="ExpandToggle" TargetType="ToggleButton">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Back" CornerRadius="16" Background="Transparent">
+                            <TextBlock x:Name="Glyph" Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="12"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource ForegroundBrush}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Back" Property="Background" Value="{DynamicResource HoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Glyph" Property="Text" Value="&#xE70E;" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <StackPanel>
+        <p:PanelNotices />
+
+        <c:SettingsGroup Header="Installed Apps" Description="Uninstalling starts the app's own uninstaller, which may ask for permission. Store and packaged apps are removed for your account only.">
+            <c:SettingsRow IsStacked="True">
+                <StackPanel>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Search installed apps" />
+                        <Button Grid.Column="1" Content="Refresh" Style="{DynamicResource SettingsButton}" Margin="8,0,0,0"
+                                Command="{Binding RefreshCommand}" />
+                    </Grid>
+                    <TextBlock Text="Loading installed apps&#x2026;" Style="{DynamicResource RowSubtitleText}" Margin="0,8"
+                               Visibility="{Binding IsLoadingApps, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                    <TextBlock Text="No apps match." Style="{DynamicResource RowSubtitleText}" Margin="0,8"
+                               Visibility="{Binding HasNoMatches, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                    <!-- Its own virtualised scroller: hundreds of rows, and only the visible ones load their icons. -->
+                    <ItemsControl ItemsSource="{Binding Apps}" MaxHeight="480" Focusable="False" AutomationProperties.Name="Installed apps"
+                                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                                  ScrollViewer.CanContentScroll="True">
+                        <ItemsControl.Template>
+                            <ControlTemplate TargetType="ItemsControl">
+                                <ScrollViewer Style="{DynamicResource SettingsScrollViewer}" CanContentScroll="True" Focusable="False"
+                                              VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                    <ItemsPresenter />
+                                </ScrollViewer>
+                            </ControlTemplate>
+                        </ItemsControl.Template>
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <VirtualizingStackPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemContainerStyle>
+                            <!-- Screen readers name each row after its app, not its view model type. -->
+                            <Style TargetType="ContentPresenter">
+                                <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+                            </Style>
+                        </ItemsControl.ItemContainerStyle>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,4,8,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Image Source="{Binding Icon}" Width="32" Height="32" Margin="0,0,12,0" VerticalAlignment="Center"
+                                           RenderOptions.BitmapScalingMode="HighQuality" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" Style="{DynamicResource RowTitleText}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Subtitle}" Style="{DynamicResource RowSubtitleText}" TextTrimming="CharacterEllipsis"
+                                                   Visibility="{Binding Subtitle, Converter={x:Static c:Converters.NotNullToVisibility}}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <ToggleButton Style="{StaticResource ExpandToggle}" IsChecked="{Binding IsExpanded}" ToolTip="Details"
+                                                      AutomationProperties.Name="Show details"
+                                                      Visibility="{Binding IsPackaged, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                                        <Button Content="{Binding UninstallLabel}" Style="{DynamicResource SettingsButton}"
+                                                IsEnabled="{Binding CanUninstall}"
+                                                Command="{Binding DataContext.UninstallCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Startup Apps" Description="Apps that start when you sign in. Turning one off keeps it installed, and Task Manager can turn it back on. Items for all users are changed in Task Manager.">
+            <c:SettingsRow IsStacked="True">
+                <StackPanel>
+                    <ItemsControl ItemsSource="{Binding StartupApps}" Focusable="False" AutomationProperties.Name="Startup apps">
+                        <ItemsControl.ItemContainerStyle>
+                            <!-- Screen readers name each row after its app, not its view model type. -->
+                            <Style TargetType="ContentPresenter">
+                                <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+                            </Style>
+                        </ItemsControl.ItemContainerStyle>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Image Source="{Binding Icon}" Width="32" Height="32" Margin="0,0,12,0" VerticalAlignment="Center"
+                                           RenderOptions.BitmapScalingMode="HighQuality" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" Style="{DynamicResource RowTitleText}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Subtitle}" Style="{DynamicResource RowSubtitleText}" TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding Row.Entry.CommandLine}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button Content="&#xE74D;" Style="{DynamicResource SettingsIconButton}" ToolTip="Remove (to the Recycle Bin)"
+                                                AutomationProperties.Name="{Binding Name, StringFormat=Remove {0}}" Margin="0,0,8,0"
+                                                IsEnabled="{Binding CanRemove}"
+                                                Visibility="{Binding Row.Removable, Converter={x:Static c:Converters.BoolToVisibility}}"
+                                                Command="{Binding DataContext.RemoveStartupCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}" />
+                                        <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding IsEnabled}" IsEnabled="{Binding CanToggle}"
+                                                  AutomationProperties.Name="{Binding Name, StringFormat=Start {0} at sign-in}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Content="Add app&#x2026;" Style="{DynamicResource SettingsAccentButton}" Command="{Binding AddStartupCommand}" />
+                        <Button Content="Open Task Manager" Style="{DynamicResource SettingsButton}" Margin="8,0,0,0"
+                                Command="{Binding TaskManagerCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </c:SettingsRow>
+            <c:SettingsRow Title="Store App Startup Tasks" Subtitle="Store and packaged apps that start at sign-in are listed in Windows Settings.">
+                <Button Content="Open" Style="{DynamicResource SettingsButton}" Command="{Binding StartupSettingsCommand}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <p:PanelFooter />
+    </StackPanel>
+</UserControl>
