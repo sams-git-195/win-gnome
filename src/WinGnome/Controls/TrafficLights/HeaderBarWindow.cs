@@ -63,6 +63,7 @@ internal sealed class HeaderBarWindow : IDisposable
             _buttons.HorizontalAlignment = HorizontalAlignment.Left;
             _buttons.VerticalAlignment = VerticalAlignment.Top;
             WindowChrome.SetIsHitTestVisibleInChrome(_buttons, true);
+            _buttons.IsKeyboardNavigable = true;
             root.Children.Add(_buttons);
 
             _buttons.ButtonClicked += OnButtonClicked;
@@ -252,6 +253,7 @@ internal sealed class HeaderBarWindow : IDisposable
 
         _root.Margin = margin;
         _chrome.CaptionHeight = CaptionHeight + margin.Top;
+        _buttons.IsTargetMaximized = _window.WindowState == WindowState.Maximized;
     }
 
     /// <summary>

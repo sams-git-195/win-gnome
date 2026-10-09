@@ -57,4 +57,4 @@ None at idle; the settings window only exists while open.
   cancels the click, and releasing outside the window does nothing. A double-click toggles once. The self-test checks
   that the header bar's hook answers HTMAXBUTTON there, since that depends on hook order inside WPF's WindowChrome.
 - The app picker drops its minimise and maximise boxes (no Snap Layouts, no double-click maximise).
-- Another WinGnome instance can draw its overlay over the header bar (KI-050); the circles have no automation peer (KI-051).
+- Another WinGnome instance can draw its overlay over the header bar (KI-050); the circles are UI Automation buttons and, in the header bar, a keyboard tab stop (KI-051, fixed in fea478b).
