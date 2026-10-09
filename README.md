@@ -73,7 +73,15 @@ WinGnome's settings window works like GNOME Settings: a header bar, a **searchab
   - **Multitasking**: hot corner, workspace indicator, Windows snapping (snap, snap layouts, snap suggestions) and whether Alt+Tab shows windows from all workspaces.
   - **Date & Time**: time zone (searchable) and the top bar clock's format.
   - **About**: device name, hardware model, memory, processor, graphics, disk capacity and Windows version.
-- **Linked panels** open the matching Windows Settings page and are marked with an arrow: Wi-Fi, Network, Bluetooth, Printers, Removable Media, Colour (the colour management control panel), Notifications, Apps, Default Apps, Online Accounts, Sharing, Privacy & Security, Region & Language, Users, Accessibility and Windows Update.
+  - **Notifications**: all notifications and on the lock screen, and per app whether it may show notifications, banners and entries in the notification centre (the apps that Windows lists in the registry).
+  - **Printers**: your printers with their status, the default printer (or let Windows manage it), and each printer's print queue, properties and printing preferences.
+  - **Apps**: installed desktop and Store apps with search, size, publisher and version, *Uninstall…* (apps whose uninstall command can't be run safely link to Windows Settings instead), and **Startup apps**: switch your start-up items on or off, add an app and remove Startup-folder shortcuts (machine-wide items are read-only, with a button for Task Manager).
+  - **Accessibility**: sticky keys, slow keys and bounce keys, text cursor thickness, reduce animation, pointer size, and buttons for the on-screen keyboard, Magnifier and Narrator. High contrast is shown read-only with a link to Windows Settings for now.
+  - **Region & Language**: country or region, the date and time formats and the first day of the week (the format locale and display language are changed in Windows Settings).
+  - **Privacy**: camera, microphone and location, for all apps, desktop apps and each app, with when each was last used (the device-wide switch is read-only).
+  - **Removable Media**: what AutoPlay does for each kind of media and device.
+  - **Windows Update**: when Windows last checked and installed updates, the updates it already knows about and whether a restart is needed. It never checks for or installs updates itself.
+- **Linked panels** open the matching Windows Settings page and are marked with an arrow: Wi-Fi, Network, Bluetooth, Colour (the colour management control panel), Default Apps, Online Accounts, Sharing and Users.
 - **WinGnome's own pages** (General, Top Bar, Dock, Window Buttons, Activities, Streamline, About WinGnome) sit in their own group at the bottom.
 - In `--safe` mode the system panels are read-only. If Windows refuses a change (a policy, a missing API), the panel says so and offers the Windows Settings page.
 
