@@ -103,7 +103,8 @@ General → *Start with Windows*).
 - **`SystemPanelContext`** gains one `SystemPanelServices Services` record: `IAppCatalog Apps`,
   `IIconProvider Icons`, `IAppLauncher Launcher` (the interface, from `ShellContext`), `IDialogService Dialogs`, and
   spec 0017's DND service (nullable until 0017 lands). Panels take only the record, so adding a service doesn't
-  change every constructor.
+  change every constructor. As built in WP0 the record has the first four; the DND member is added (nullable) by
+  whichever of 0017 or WP1 lands second, since its type doesn't exist yet.
 - **`SystemPanelViewModel.LoadAsync<T>(Func<T> read, Action<T> show, bool longRunning = false)`**: runs `read` on the
   thread pool, or with `longRunning` on a dedicated named background thread (`"WinGnome panel: <id>"`, MTA), and
   calls `show` on the dispatcher only if the panel is still open from the same `Open` (a generation counter), logging
@@ -123,8 +124,11 @@ General → *Start with Windows*).
     `ERROR_ELEVATION_REQUIRED`.
   - `StartAndWatch(PlannedCommand, Action exited)`: same, with `SEE_MASK_NOCLOSEPROCESS`. `hProcess` may be 0 (the
     file was handed to an already-running process, or the launch was a DDE/handler hand-off): then `exited` is
-    posted at once (refresh immediately). Otherwise a one-shot `RegisteredWaitHandle` posts `exited`; the handle is
-    always closed (`CloseHandle`) when the wait fires or is unregistered on `Close`.
+    posted at once (refresh immediately), as it is when the launch fails. Otherwise a one-shot `RegisteredWaitHandle`
+    posts `exited`; the handle is always closed (`CloseHandle`) when the wait fires or is unregistered on `Close`.
+    It returns an `IDisposable` the panel disposes in `Close` (cancels the wait, closes the handle, drops `exited`).
+    `PlannedCommand(Executable, Arguments)` is a Core record (`ControlCenter/PlannedCommand.cs`, WP0) that WP3's
+    `UninstallPlan` returns; `StartAndWatch` rejects an executable that isn't fully qualified.
 - **`IndirectString.Load("@res.dll,-123")`** (`SHLoadIndirectString`, declared once in `NativeMethods.Shell.cs`),
   used by Notifications, Removable Media and Apps.
 - **`Panels/PanelRegistry.cs`**: one line per system panel (`[PanelIds.X] = context => new XPanelViewModel(context)`),
