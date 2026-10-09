@@ -31,7 +31,8 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
         _storageProblem = settings.StorageProblem;
         settings.Changed += OnSettingsChanged;
 
-        var panels = new SystemPanelContext(settings, context.Dispatcher, context.IsSafeMode, OpenLink, settings.Directory);
+        var services = new SystemPanelServices(context.Apps, context.Icons, context.Launcher, dialogs);
+        var panels = new SystemPanelContext(settings, context.Dispatcher, context.IsSafeMode, OpenLink, settings.Directory, services);
         var pages = new Dictionary<string, SettingsPageViewModel>(StringComparer.Ordinal)
         {
             [PanelIds.General] = new GeneralPageViewModel(settings, context.IsSafeMode, context.ManagesStartupEntry, ShowTaskbarTweaks),
