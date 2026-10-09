@@ -5,6 +5,7 @@ using WinGnome.Core.Settings;
 using WinGnome.Core.Theming;
 using WinGnome.Core.TopBar;
 using WinGnome.Features.Settings.ViewModels.Items;
+using WinGnome.Features.TopBar;
 using WinGnome.Infrastructure;
 
 namespace WinGnome.Features.Settings.ViewModels;
@@ -22,6 +23,7 @@ internal sealed class TopBarPreviewViewModel : ObservableObject
         Background = Brushes.Black;
         Foreground = Brushes.White;
         ItemHover = Brushes.Transparent;
+        FontFamily = TopBarFonts.For(settings.TopBar.FontFamily);
         ClockText = "";
         Update(settings);
     }
@@ -33,6 +35,11 @@ internal sealed class TopBarPreviewViewModel : ObservableObject
     public double Height { get; private set; }
 
     public double FontSize { get; private set; }
+
+    public FontFamily FontFamily { get; private set; }
+
+    /// <summary>Status icon size in DIPs, in the same ratio to the text as on the bar.</summary>
+    public double IconSize { get; private set; }
 
     public Thickness Margin { get; private set; }
 
@@ -63,6 +70,8 @@ internal sealed class TopBarPreviewViewModel : ObservableObject
         Foreground = ColorConversion.ToBrush(bar.ForegroundColor, HexColor.FromRgb(255, 255, 255));
         Height = bar.Height;
         FontSize = bar.FontSize;
+        FontFamily = TopBarFonts.For(bar.FontFamily);
+        IconSize = BarMetrics.SymbolicIconPx(bar.FontSize, 1);
         Margin = new Thickness(bar.Margin);
         CornerRadius = bar.CornerRadius;
         ItemHover = ColorConversion.ToBrush(bar.ForegroundColor, HexColor.FromRgb(255, 255, 255), HoverOpacity);

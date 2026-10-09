@@ -112,6 +112,37 @@ public class SettingsSerializerTests
     }
 
     [Fact]
+    public void Deserialize_TopBarWithoutFontFamilyField_UsesAdwaitaSans()
+    {
+        // A settings file written before TopBar.FontFamily existed.
+        var settings = SettingsSerializer.Deserialize("""{ "TopBar": { "Enabled": true, "FontSize": 14 } }""");
+
+        Assert.Equal(TopBarFont.AdwaitaSans, settings.TopBar.FontFamily);
+        Assert.Equal(14, settings.TopBar.FontSize);
+    }
+
+    [Fact]
+    public void RoundTrip_PreservesTopBarFontFamily()
+    {
+        var original = new AppSettings();
+        original.TopBar.FontFamily = TopBarFont.SegoeUI;
+
+        var json = SettingsSerializer.Serialize(original);
+        var copy = SettingsSerializer.Deserialize(json);
+
+        Assert.Contains("\"FontFamily\": \"SegoeUI\"", json);
+        Assert.Equal(TopBarFont.SegoeUI, copy.TopBar.FontFamily);
+    }
+
+    [Fact]
+    public void Deserialize_UnknownTopBarFontFamily_UsesAdwaitaSans()
+    {
+        var settings = SettingsSerializer.Deserialize("""{ "TopBar": { "FontFamily": 42 } }""");
+
+        Assert.Equal(TopBarFont.AdwaitaSans, settings.TopBar.FontFamily);
+    }
+
+    [Fact]
     public void Serialize_WritesEnumsAsStrings()
     {
         var settings = new AppSettings();

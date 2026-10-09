@@ -1,5 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="clr-namespace:WinGnome.Features.TopBar.Controls">
     <!--
         Styles for the top bar's popup cards (calendar, quick settings, confirm dialog). Colours come from the
         theme palette via DynamicResource so the cards follow light/dark switches live. Hover and press feedback
@@ -17,7 +18,7 @@
     <Style x:Key="PopupButtonBase" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
-        <Setter Property="FontFamily" Value="{StaticResource ShellFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource TopBarFont}" />
         <Setter Property="FontSize" Value="13.5" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -203,7 +204,6 @@
     <Style x:Key="CalendarNavButton" TargetType="Button" BasedOn="{StaticResource QuickRoundButton}">
         <Setter Property="Width" Value="32" />
         <Setter Property="Height" Value="32" />
-        <Setter Property="FontSize" Value="12" />
         <Setter Property="Background" Value="Transparent" />
     </Style>
 
@@ -299,9 +299,22 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Button x:Name="PART_PreviousButton" Style="{StaticResource CalendarNavButton}" Content="&#xE76B;" Focusable="False" />
+                            <!-- GNOME's pan-start / pan-end: the caret turned to point left and right. -->
+                            <Button x:Name="PART_PreviousButton" Style="{StaticResource CalendarNavButton}" Focusable="False">
+                                <controls:SymbolicIcon Icon="PanDown">
+                                    <controls:SymbolicIcon.LayoutTransform>
+                                        <RotateTransform Angle="90" />
+                                    </controls:SymbolicIcon.LayoutTransform>
+                                </controls:SymbolicIcon>
+                            </Button>
                             <Button x:Name="PART_HeaderButton" Grid.Column="1" Style="{StaticResource CalendarHeaderButton}" Focusable="False" />
-                            <Button x:Name="PART_NextButton" Grid.Column="2" Style="{StaticResource CalendarNavButton}" Content="&#xE76C;" Focusable="False" />
+                            <Button x:Name="PART_NextButton" Grid.Column="2" Style="{StaticResource CalendarNavButton}" Focusable="False">
+                                <controls:SymbolicIcon Icon="PanDown">
+                                    <controls:SymbolicIcon.LayoutTransform>
+                                        <RotateTransform Angle="-90" />
+                                    </controls:SymbolicIcon.LayoutTransform>
+                                </controls:SymbolicIcon>
+                            </Button>
                         </Grid>
                         <Grid x:Name="PART_MonthView" Grid.Row="1" Visibility="Visible" HorizontalAlignment="Center">
                             <Grid.RowDefinitions>
@@ -356,7 +369,7 @@
     <Style x:Key="GnomeCalendar" TargetType="Calendar">
         <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="FontFamily" Value="{StaticResource ShellFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource TopBarFont}" />
         <Setter Property="IsTodayHighlighted" Value="True" />
         <Setter Property="CalendarItemStyle" Value="{StaticResource GnomeCalendarItem}" />
         <Setter Property="CalendarDayButtonStyle" Value="{StaticResource GnomeCalendarDayButton}" />

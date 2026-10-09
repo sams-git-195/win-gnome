@@ -30,6 +30,9 @@ internal sealed class TopBarPageViewModel : SettingsPageViewModel
             ChoiceOption.Of(BlurEffect.Blur, "Blur"),
             ChoiceOption.Of(BlurEffect.Acrylic, "Acrylic"));
         Height = Slider(s => s.TopBar.Height, (s, v) => s.TopBar.Height = v, 24, 48, 1, SliderSetting.Pixels);
+        Font = Choice(s => s.TopBar.FontFamily, (s, v) => s.TopBar.FontFamily = v,
+            ChoiceOption.Of(TopBarFont.AdwaitaSans, "Adwaita Sans"),
+            ChoiceOption.Of(TopBarFont.SegoeUI, "Segoe UI"));
         FontSize = Slider(s => s.TopBar.FontSize, (s, v) => s.TopBar.FontSize = v, 10, 20, 0.5, SliderSetting.Pixels);
         Margin = Slider(s => s.TopBar.Margin, (s, v) => s.TopBar.Margin = v, 0, 24, 1, SliderSetting.Pixels);
         CornerRadius = Slider(s => s.TopBar.CornerRadius, (s, v) => s.TopBar.CornerRadius = v, 0, 24, 1, SliderSetting.Pixels);
@@ -63,6 +66,8 @@ internal sealed class TopBarPageViewModel : SettingsPageViewModel
     public ChoiceSetting Blur { get; }
 
     public SliderSetting Height { get; }
+
+    public ChoiceSetting Font { get; }
 
     public SliderSetting FontSize { get; }
 
