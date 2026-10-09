@@ -52,6 +52,14 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity.
 | [KI-066](#ki-066) | S4 | Settings | Input sources are listed but not switched or reordered in the Keyboard panel | Open |
 | [KI-067](#ki-067) | S4 | Settings | Appearance style and accent are read-only while the matching Streamline tweak is on | By design |
 | [KI-068](#ki-068) | S4 | Settings | A few exit paths leave an unconfirmed display change until sign-out | Open |
+| [KI-085](#ki-085) | S4 | Settings | Notifications use undocumented registry values, and the app list is only the part Windows keeps in the registry | Open |
+| [KI-086](#ki-086) | S4 | Settings | Privacy switches write the undocumented `ConsentStore`; device-wide switches are read-only | Open |
+| [KI-087](#ki-087) | S4 | Settings | Accessibility: cursor size uses undocumented values, and high contrast is read-only until a live spike passes | Open |
+| [KI-088](#ki-088) | S4 | Settings | Slow keys and bounce keys can't both be on, and bounce keys turn repeat keys off | By design |
+| [KI-089](#ki-089) | S4 | Settings | Apps: limited details for packaged apps, and uninstall limits | Open |
+| [KI-090](#ki-090) | S4 | Settings | Startup apps: machine-wide items are read-only, packaged startup tasks aren't listed | Open |
+| [KI-091](#ki-091) | S4 | Settings | Printers and Removable Media: undocumented values, no change notifications, a limited event list, little tested on real devices | Open |
+| [KI-092](#ki-092) | S4 | Settings | Region & Language formats and Windows Update status are partly left to Windows Settings | By design |
 
 ### KI-001
 **Dock and top bar appear on the primary monitor only** · S3 · Dock, Top bar · Open
@@ -365,6 +373,9 @@ if Windows adjusts the configuration, the panel records and keeps what is really
 *Next step:* a manual pass per panel on a test machine (acceptance criteria 2 of spec 0015): change, confirm it
 shows in Windows Settings, change back; for Displays, let the countdown revert, kill WinGnome during a countdown
 and restart it.
+The native panels of spec 0020 (Notifications, Printers, Apps and Startup apps, Accessibility, Region & Language,
+Privacy, Removable Media, Windows Update) were partly checked live; what remains unchecked for each is listed in
+KI-085 to KI-092.
 
 ### KI-064
 **Snap and Alt+Tab options may need a new sign-in to take effect** · S4 · Settings · Open
@@ -403,6 +414,151 @@ to revert; the record does it at the next start); the UI thread is hung, so neit
 WinGnome is force-killed and next started with a different `--settings-dir` (the record is per profile) or with
 `--safe` (which never changes system state, so it leaves the record for a normal start). *Workaround:* sign out, or
 start WinGnome normally with the same profile.
+
+### KI-085
+**Notifications use undocumented registry values, and the app list is only the part Windows keeps in the registry** · S4 · Settings · Open
+
+The panel (spec [0020](specs/0020-native-system-panels.md)) reads and writes undocumented HKCU values:
+`PushNotifications\ToastEnabled` and `LockScreenToastEnabled` first, then `NOC_GLOBAL_SETTING_TOASTS_ENABLED` /
+`NOC_GLOBAL_SETTING_ALLOW_TOASTS_ABOVE_LOCK` as the fallback (written only when they already exist), the
+`NoToastApplicationNotificationOnLockScreen` policy, and per app `Enabled`, `ShowBanner` and `ShowInActionCenter`. The
+app list is the registry subset of Windows' own list (`wpndatabase.db`): apps that never wrote a key are missing,
+Windows' own sources are shown only from a small name table, and generated notification-icon ids are hidden. The Do Not
+Disturb row stays hidden until spec 0017's service is added to `SystemPanelServices` and
+`NotificationsPanelViewModel.DoNotDisturb` is filled in `Open`.
+*Not verified live:* the registry writes round-trip through the panel (master, lock screen and one app's three
+switches), but that a disabled app stops showing toasts without signing out (acceptance criterion 3) was not
+demonstrated: `ToastNotifier.Setting` for the test app did not change after the per-app `Enabled` write, and a test
+toast from a throwaway id created no settings key. *Next step:* send a real toast from a listed app with its switch off;
+if it still shows, the row must say "Takes effect after you sign out".
+
+### KI-086
+**Privacy switches write the undocumented `ConsentStore`; device-wide switches are read-only** · S4 · Settings · Open
+
+The switches write `CapabilityAccessManager\ConsentStore` values under HKCU (`Value`, `NonPackaged\Value`, per-package
+`Value`). The device-wide switches (HKLM) are read-only and need an administrator. A per-app value of `Prompt` is shown
+off and turning it on stores `Allow`; a value other than Allow, Deny or Prompt is shown off and left unchangeable.
+Desktop apps have no per-app switch (Windows has none) and show only *In use* / *Last used*. Packaged apps the app
+catalogue can't name (system packages) are hidden.
+*Not verified live:* the microphone "Let apps access" and "Let desktop apps access" switches and one packaged app
+round-tripped and were restored, but that the Camera app then reports no access without signing out (acceptance
+criterion 7) was not exercised.
+
+### KI-087
+**Accessibility: cursor size uses undocumented values, and high contrast is read-only until a live spike passes** · S4 · Settings · Open
+
+*Cursor size* writes the undocumented `HKCU\Software\Microsoft\Accessibility\CursorSize` (1–15) and
+`HKCU\Control Panel\Cursors\CursorBaseSize` (32 + 16 per step), then `SPI_SETCURSORS` (`CursorSizeStore`). The two
+registry writes are separate, so if the second fails the first stays written (the problem banner shows). The row is
+disabled with a link to Windows Settings for black, inverted and custom-colour pointers (`CursorType` ≠ 0) and for a
+user cursor scheme (`Scheme Source` = 1), because Windows regenerates those cursor files through a private API. Pointer
+colour, text size (`TextScaleFactor`, shown read-only) and the text cursor indicator stay in Windows Settings (by
+design).
+*High contrast* is a read-only row with a link to `ms-settings:easeofaccess-highcontrast` until a spike on a live
+machine passes (spec: spike first, link if unproven). It shows the theme Windows reports (Aquatic = "High Contrast
+Black"/`hcblack.theme`, Desert = "High Contrast White"/`hcwhite.theme`, Dusk = "High Contrast #1"/`hc1.theme`, Night sky
+= "High Contrast #2"/`hc2.theme`, matched by the files' colours; the read accepts the Windows 11 name, the legacy name,
+the file name or a path). The write was removed from the UI (no dead code); how to put it back and the spike steps are in
+the spec's Accessibility section.
+*Not verified live:* the high-contrast spike (turns the whole desktop to a contrast theme; needs the user at the
+machine) and cursor size (the development machine has a custom-colour pointer, so the row is correctly disabled). The
+other switches (sticky, slow and bounce keys, text cursor thickness, reduce animation, on-screen keyboard) were checked
+live and restored bit for bit. WinGnome's own surfaces don't follow high contrast (separate work).
+
+### KI-088
+**Slow keys and bounce keys can't both be on, and bounce keys turn repeat keys off** · S4 · Settings · By design
+
+Windows' `FILTERKEYS` needs a bounce time to come with the acceptance delay and repeat timings at 0, so turning one of
+slow and bounce keys on turns the other off and the panel says so. Turning bounce keys on also turns Windows' repeat
+keys off (`iDelayMSec`/`iRepeatMSec` 0), and switching back to slow keys leaves them off; Windows Settings' filter keys
+page turns them back on. WinGnome has no repeat-keys control to restore them from.
+
+### KI-089
+**Apps: limited details for packaged apps, and uninstall limits** · S4 · Settings · Open
+
+Packaged apps show no size, and publisher, version and install date only when the row is expanded; the first expand or
+packaged uninstall loads the WinRT projection (`Microsoft.Windows.SDK.NET`), which then stays for the session.
+Uninstallers that relaunch themselves from %TEMP% exit early, so the list still shows the app until *Refresh*; an
+uninstaller that fails to start is only logged (`ShellLaunch.StartAndWatch` doesn't report the failure). A desktop app
+gets WinGnome's *Uninstall…* only when its command is safe (`UninstallPlan`: MSI product code → `System32\msiexec.exe
+/X`, bare `msiexec`/`rundll32` rooted at System32, otherwise a fully qualified `.exe`); every other one shows
+*Uninstall in Windows Settings*. System-signed and framework packages can't be removed here. The Recycle Bin operation
+has no owner window (the panel has no HWND), so a shell prompt such as "delete permanently?" isn't modal to Settings.
+The installed-apps list reads on a background thread; if that read throws, the loading indicator stays until the panel
+is reopened (the shared failure path of `LoadAsync`, see KI-091).
+*Not verified live:* uninstall itself was not run during development (desktop or packaged); the plans were checked by
+Core tests and by reading all 282 Uninstall keys on the development machine (64 listed, 63 with a plan, 1 without an
+`UninstallString`).
+
+### KI-090
+**Startup apps: machine-wide items are read-only, packaged startup tasks aren't listed** · S4 · Settings · Open
+
+Machine-wide items (HKLM Run, Run32, common Startup folder) are read-only with an *Open Task Manager* button, and their
+approval is read from HKLM `StartupApproved` only. The spec's standard-user check of where Task Manager stores an HKLM
+item's approval wasn't possible (the development account is an administrator, and a test HKLM item needs elevation); an
+HKLM item disabled earlier through Task Manager had its value under HKLM. Packaged apps' startup tasks aren't listed (no
+documented API; a row links to `ms-settings:startupapps`). Per-user items can be switched on and off; only Startup-folder
+shortcuts can be removed (to the Recycle Bin), HKCU Run values can be turned off but not removed (deferred by design).
+*Add app…* reuses the dock's app picker, whose heading still reads "Add app to dock" (`IDialogService.PickApp` takes
+no title).
+*Not verified live:* Task Manager's display after a toggle (it runs elevated, so it can't be automated) and start-up at
+the next sign-in.
+
+### KI-091
+**Printers and Removable Media: undocumented values, no change notifications, a limited event list, little tested on real devices** · S4 · Settings · Open
+
+Undocumented storage: `LegacyDefaultPrinterMode` (HKCU `Software\Microsoft\Windows NT\CurrentVersion\Windows`, DWORD,
+1 = the user manages the default printer, 0 or absent = Windows does; stable since Windows 10 1511) is isolated in
+`PrinterService`, and the AutoPlay handler keys (HKCU `Software\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers`:
+`DisableAutoplay`, `UserChosenExecuteHandlers\<Event>`, `EventHandlersDefaultSelection\<Event>`, handlers from
+`EventHandlers\<Event>` and `Handlers\<id>\Action|Provider` in HKCU and HKLM) are isolated in `AutoplayStore`. Both
+panels show what they read back after every write.
+*Printers:*
+- The list is one `EnumPrinters` (level 2, local and connections) per open, action and *Refresh*; there is no change
+  notification, so a printer added, removed or going offline elsewhere shows on the next *Refresh*. A print server that
+  doesn't answer keeps the list empty until its RPC times out (the read has its own thread, so the window stays
+  responsive).
+- With the print spooler stopped or disabled the list reads as empty with the "couldn't read the printer list" banner;
+  the *Let Windows manage my default printer* switch still works (a registry value).
+- *Print queue*, *Printer properties* and *Printing preferences* start `rundll32.exe printui.dll,PrintUIEntry /o|/p|/e
+  /n "<name>"`; a printer whose name contains a double quote can't be passed on (PrintUIEntry has no escape) and the
+  panel points to Windows Settings instead.
+
+*Removable Media:*
+- Only the media types in `AutoplayModel`'s event table are listed (about 18 of the ~35 events Windows registers);
+  vendor-specific portable-player events and `WPD` are hidden. An event Windows knows but this machine has no named
+  handler for is hidden too, except Removable drive and Memory card, which are always listed.
+- *Open folder* is offered for every media type, as the spec says; Windows Settings itself only offers it for some. If
+  Explorer ignores it for a type (for example a DVD movie), the choice is stored but has no visible effect.
+- In shell mode (spec 0013) Explorer's AutoPlay does not run, so the choices have no effect there.
+- The *Memory card* row uses `ShowPicturesOnArrival`; Windows Settings may store that choice under
+  `UserChosenExecuteHandlers\CameraAlternate\ShowPicturesOnArrival` instead. Unverified: this machine has no
+  `CameraAlternate` key (HKCU has `EventHandlers\CameraMemoryOnArrival`). *Next step:* change *Memory card* in Windows
+  Settings and diff the registry.
+
+*Shared failure path:* `SystemPanelViewModel.LoadAsync` has no failure callback, so when a read throws (it logs and
+shows the problem banner) a panel that set `IsBusy = true` before loading never clears it: Printers' and Removable
+Media's controls stay disabled (Removable Media can't retry) until the panel is closed and reopened, and Apps' installed
+list keeps its loading indicator. *Fix direction:* an optional failure callback in `LoadAsync`.
+*Not verified live:* printers and set-default were not tried on real printers (the spooler is disabled on the
+development machine), and no USB stick, memory card or disc was inserted for AutoPlay.
+
+### KI-092
+**Region & Language formats and Windows Update status are partly left to Windows Settings** · S4 · Settings · By design
+
+*Region & Language:* the format locale and display language are changed in Windows Settings; the panel shows them
+read-only with links. Region, the five formats and the first day of the week are written here (documented
+`SetLocaleInfoW` / `SetUserGeoName`). .NET keeps the user's formats on the `CurrentCulture` instance it already built,
+so `ClearCachedData()` alone doesn't make the clock and calendar follow a format change; `SettingsFeature` replaces the
+culture on `WM_SETTINGCHANGE "intl"` (see the spec). The first day of the week and the short date were checked live
+(changed, read back, restored exactly). Region, long date, short and long time and *Reset to defaults* use the same code
+path but were not changed live.
+*Windows Update:* the panel shows the Windows Update Agent's cached state only (offline search, `Online = false`):
+updates Windows hasn't found yet, or found since the last check, aren't listed until Windows checks, and the list can
+differ from Windows Settings', which also merges Microsoft Store and driver sources. The panel never scans or installs.
+A standard user may be refused by policy on managed machines; the panel then shows the error with the Windows Settings
+link.
+
 ## Resolved
 
 | ID | Severity | Area | Summary | Fixed in |
