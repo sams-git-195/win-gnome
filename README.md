@@ -78,7 +78,7 @@ WinGnome's settings window works like GNOME Settings: a header bar, a **searchab
   - **Apps**: installed desktop and Store apps with search, size, publisher and version, *Uninstall…* (apps whose uninstall command can't be run safely link to Windows Settings instead), and **Startup apps**: switch your start-up items on or off, add an app and remove Startup-folder shortcuts (machine-wide items are read-only, with a button for Task Manager).
   - **Accessibility**: sticky keys, slow keys and bounce keys, text cursor thickness, reduce animation, pointer size, and buttons for the on-screen keyboard, Magnifier and Narrator. High contrast is shown read-only with a link to Windows Settings for now.
   - **Region & Language**: country or region, the date and time formats and the first day of the week (the format locale and display language are changed in Windows Settings).
-  - **Privacy**: camera, microphone and location, for all apps, desktop apps and each app, with when each was last used (the device-wide switch is read-only).
+  - **Privacy & Security**: camera, microphone and location, for all apps, desktop apps and each app, with when each was last used (the device-wide switch is read-only).
   - **Removable Media**: what AutoPlay does for each kind of media and device.
   - **Windows Update**: when Windows last checked and installed updates, the updates it already knows about and whether a restart is needed. It never checks for or installs updates itself.
 - **Linked panels** open the matching Windows Settings page and are marked with an arrow: Wi-Fi, Network, Bluetooth, Colour (the colour management control panel), Default Apps, Online Accounts, Sharing and Users.
