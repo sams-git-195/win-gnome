@@ -330,6 +330,13 @@ public sealed class WindowButtonSettings
     /// </summary>
     public bool DecorateCustomTitleBars { get; set; }
 
+    /// <summary>
+    /// Experimental, only used with <see cref="DecorateCustomTitleBars"/>: also decorate the few known apps that
+    /// draw their buttons in HTML (GitHub Desktop), found from a built-in profile of their button size. Off by
+    /// default.
+    /// </summary>
+    public bool DecorateWebTitleBarButtons { get; set; }
+
     /// <summary>Process names (without .exe, case-insensitive) that keep their native buttons.</summary>
     public List<string> ExcludedProcesses { get; set; } = [];
 

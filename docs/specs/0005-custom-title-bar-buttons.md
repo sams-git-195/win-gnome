@@ -25,7 +25,8 @@ point (`WM_NCHITTEST`): Claude desktop answers `HTMINBUTTON`/`HTMAXBUTTON`/`HTCL
 
 ## Non-goals
 - Apps that answer `HTCLIENT` over their buttons (HTML buttons in GitHub Desktop, Dia). They can't be supported
-  without injection or app-specific geometry.
+  without injection or app-specific geometry. Spec 0009 later added app-specific geometry for GitHub Desktop
+  (behind its own setting) and the Docker Desktop and child-window cases; Dia still can't be decorated (KI-007).
 - UI Automation (measured too slow and incomplete; see spec 0001).
 
 ## Design

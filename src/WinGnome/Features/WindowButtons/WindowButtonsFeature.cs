@@ -15,7 +15,11 @@ namespace WinGnome.Features.WindowButtons;
 internal sealed class WindowButtonsFeature : IFeature, IEmergencyRestore
 {
     private readonly ShellContext _context;
+    /// <summary>The session-wide role of decorating windows (one WinGnome instance at a time).</summary>
+    private const string RoleName = @"Local\WinGnome-WindowButtons";
+
     private readonly CaptionColorizer _colorizer;
+    private SessionRole? _role;
     private CaptionOverlayManager? _manager;
     private WindowButtonSettings? _settings;
     private string? _styleSignature;
@@ -53,10 +57,30 @@ internal sealed class WindowButtonsFeature : IFeature, IEmergencyRestore
         if (!_settings.Enabled)
         {
             StopOverlays();
+            ReleaseRole();
             return;
         }
 
-        var style = CreateStyle(_settings);
+        // Only one instance per session decorates (KI-015): two would draw over each other and, with unified
+        // title bars, restore each other's colours. The role arrives later if another instance holds it.
+        _role ??= new SessionRole(RoleName, "decorates windows", _context.Dispatcher, OnRoleAcquired);
+        if (_role.IsHeld)
+        {
+            UpdateOverlays(_settings);
+        }
+    }
+
+    private void OnRoleAcquired()
+    {
+        if (!_disposed && _settings is { Enabled: true } settings)
+        {
+            UpdateOverlays(settings);
+        }
+    }
+
+    private void UpdateOverlays(WindowButtonSettings settings)
+    {
+        var style = CreateStyle(settings);
         var signature = Signature(style);
         if (_manager is null)
         {
@@ -84,6 +108,7 @@ internal sealed class WindowButtonsFeature : IFeature, IEmergencyRestore
         _disposed = true;
         _context.Theme.ThemeChanged -= OnThemeChanged;
         StopOverlays();
+        ReleaseRole();
     }
 
     /// <summary>Crash path: puts back every caption colour WinGnome changed (Win32 and file calls only, any thread).</summary>
@@ -105,6 +130,12 @@ internal sealed class WindowButtonsFeature : IFeature, IEmergencyRestore
     /// <summary>Everything a <see cref="DecorationStyle"/> is made of, as comparable text.</summary>
     private static string Signature(DecorationStyle style) =>
         $"{JsonSerializer.Serialize(style.Settings)}|{style.Colors}|{style.UnifiedCaption}|{style.UnifiedText}|{style.PlaceholderCaption}";
+
+    private void ReleaseRole()
+    {
+        _role?.Dispose();
+        _role = null;
+    }
 
     private void StopOverlays()
     {
