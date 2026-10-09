@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Text.RegularExpressions;
 
 namespace WinGnome.Core.Shell;
@@ -71,6 +72,27 @@ public sealed class StartupApprovedSet
     /// <summary>0x02/0x06 enabled, 0x03/0x07 disabled. Null, empty and unknown first bytes count as enabled.</summary>
     public static StartupApproval Parse(byte[]? data) =>
         data is { Length: > 0 } && data[0] is 0x03 or 0x07 ? StartupApproval.Disabled : StartupApproval.Enabled;
+
+    /// <summary>
+    /// The 12-byte value Windows (Task Manager, Windows Settings) writes: enabled is <c>02 00 00 00</c> and eight zero
+    /// bytes; disabled is <c>03 00 00 00</c> and the time of the change as a little-endian UTC FILETIME.
+    /// </summary>
+    /// <param name="fileTimeUtc">When the item was disabled (<c>DateTime.ToFileTimeUtc</c>); ignored for enabled.</param>
+    public static byte[] Encode(StartupApproval approval, long fileTimeUtc)
+    {
+        var data = new byte[12];
+        if (approval == StartupApproval.Disabled)
+        {
+            data[0] = 0x03;
+            BinaryPrimitives.WriteInt64LittleEndian(data.AsSpan(4), fileTimeUtc);
+        }
+        else
+        {
+            data[0] = 0x02;
+        }
+
+        return data;
+    }
 }
 
 /// <summary>
