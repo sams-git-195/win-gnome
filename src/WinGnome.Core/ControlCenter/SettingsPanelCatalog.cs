@@ -55,6 +55,14 @@ public static class SettingsPanelCatalog
     /// <summary>The panel with this id, or null.</summary>
     public static SettingsPanel? Find(string id) => ById.GetValueOrDefault(id);
 
+    /// <summary>
+    /// What a shortcut to <paramref name="panelId"/> (a top-bar row) launches instead of opening the settings window: a
+    /// link panel's Windows Settings page, so a Wi-Fi row doesn't also pop up the settings app. Null for native panels
+    /// and WinGnome pages, which the window shows, and for unknown ids, which the window logs.
+    /// </summary>
+    public static string? DirectLinkFor(string panelId) =>
+        Find(panelId) is { Kind: PanelKind.Link } panel ? panel.LinkUri : null;
+
     /// <summary>Heading of a sidebar group.</summary>
     public static string GroupTitle(PanelGroup group) => group switch
     {

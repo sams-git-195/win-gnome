@@ -246,7 +246,8 @@ public partial class App : Application
 
     /// <summary>
     /// One WinGnome per settings directory. Launching a second copy asks the running one to open
-    /// its settings window (WinGnome has no tray icon, so this is how users get back to settings).
+    /// its settings window (WinGnome has no tray icon, so this is how users get back to settings),
+    /// at the panel given by <c>--settings-panel</c>, if any.
     /// </summary>
     private bool AcquireSingleInstance(CommandLineOptions options)
     {
@@ -260,18 +261,27 @@ public partial class App : Application
             _instanceMutex = null;
             if (!options.SelfTest)
             {
+                // The file goes first: the running instance reads it as soon as the event is set.
+                SettingsActivationFile.Write(_settingsDirectory, options.SettingsPanel);
                 _activationEvent.Set();
             }
 
-            Log.Info("Another instance is running; asked it to show settings");
+            Log.Info($"Another instance is running; asked it to show settings{(options.SettingsPanel is { } panel ? $" at \"{panel}\"" : "")}");
             return false;
         }
 
         _ownsInstance = true;
         _activationWait = ThreadPool.RegisterWaitForSingleObject(_activationEvent,
-            (_, _) => Dispatcher.BeginInvoke(() => _context?.Commands.ShowSettings()),
+            (_, _) => ShowRequestedSettings(),
             null, Timeout.Infinite, executeOnlyOnce: false);
         return true;
+    }
+
+    /// <summary>On a thread-pool thread: reads the second launch's request off the UI thread, then shows settings.</summary>
+    private void ShowRequestedSettings()
+    {
+        var panelId = SettingsActivationFile.Take(_settingsDirectory);
+        Dispatcher.BeginInvoke(() => _context?.Commands.ShowSettings(panelId));
     }
 
     private void InstallCrashHandlers()
