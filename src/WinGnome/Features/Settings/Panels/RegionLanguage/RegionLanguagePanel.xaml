@@ -1,0 +1,73 @@
+<UserControl x:Class="WinGnome.Features.Settings.Panels.RegionLanguage.RegionLanguagePanel" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls"
+             xmlns:p="clr-namespace:WinGnome.Features.Settings.Panels">
+    <StackPanel>
+        <p:PanelNotices />
+
+        <c:SettingsGroup Header="Region" Description="Where you are. Apps and Windows use it for local content and services.">
+            <c:SettingsRow Title="Region" Subtitle="{Binding RegionText}">
+                <Button Content="Change&#x2026;" Style="{DynamicResource SettingsButton}" Command="{Binding ChooseGeoCommand}" />
+            </c:SettingsRow>
+            <StackPanel Margin="16,4,16,16" Visibility="{Binding IsChoosingGeo, Converter={x:Static c:Converters.BoolToVisibility}}">
+                <TextBox Text="{Binding GeoSearch, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"
+                         AutomationProperties.Name="Search regions" />
+                <!-- Buttons rather than a selectable list: arrowing through the list must not change the region at each step. -->
+                <ScrollViewer Height="260" Style="{DynamicResource SettingsScrollViewer}" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding FilteredGeos}" Focusable="False" AutomationProperties.Name="Regions">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <VirtualizingStackPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{DynamicResource FlatButton}" HorizontalContentAlignment="Left" Padding="10,7" FontSize="14"
+                                        Command="{Binding DataContext.SetGeoCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                        CommandParameter="{Binding}" Content="{Binding DisplayName}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </StackPanel>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Formats" Description="How dates, times and the calendar are written. Each list shows the patterns of your format language, with today's date and the current time.">
+            <c:SettingsRow Title="Formats" Subtitle="{Binding FormatLocaleText}">
+                <Button Content="Change&#x2026;" Style="{DynamicResource SettingsButton}" Command="{Binding ChangeFormatsCommand}" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="First Day of Week" IsEnabled="{Binding CanChange}">
+                <ComboBox ItemsSource="{Binding FirstDayChoices}" SelectedItem="{Binding FirstDay}" DisplayMemberPath="Name" MinWidth="160"
+                          AutomationProperties.Name="First day of week" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Short Date" IsEnabled="{Binding CanChange}">
+                <ComboBox ItemsSource="{Binding ShortDate.Choices}" SelectedItem="{Binding ShortDate.Selected}" DisplayMemberPath="Label" MaxWidth="340"
+                          AutomationProperties.Name="Short date" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Long Date" IsEnabled="{Binding CanChange}">
+                <ComboBox ItemsSource="{Binding LongDate.Choices}" SelectedItem="{Binding LongDate.Selected}" DisplayMemberPath="Label" MaxWidth="340"
+                          AutomationProperties.Name="Long date" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Short Time" IsEnabled="{Binding CanChange}">
+                <ComboBox ItemsSource="{Binding ShortTime.Choices}" SelectedItem="{Binding ShortTime.Selected}" DisplayMemberPath="Label" MaxWidth="340"
+                          AutomationProperties.Name="Short time" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Long Time" IsEnabled="{Binding CanChange}">
+                <ComboBox ItemsSource="{Binding LongTime.Choices}" SelectedItem="{Binding LongTime.Selected}" DisplayMemberPath="Label" MaxWidth="340"
+                          AutomationProperties.Name="Long time" />
+            </c:SettingsRow>
+            <c:SettingsRow Title="Reset to Defaults" Subtitle="Puts the date, time and first-day formats back to your format language's own.">
+                <Button Content="Reset" Style="{DynamicResource SettingsButton}" Command="{Binding ResetCommand}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <c:SettingsGroup Header="Language">
+            <c:SettingsRow Title="Display Language" Subtitle="{Binding DisplayLanguageText}">
+                <Button Content="Change&#x2026;" Style="{DynamicResource SettingsButton}" Command="{Binding LanguageCommand}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <p:PanelFooter />
+    </StackPanel>
+</UserControl>
