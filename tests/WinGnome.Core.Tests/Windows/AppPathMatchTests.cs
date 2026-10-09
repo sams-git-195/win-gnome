@@ -5,6 +5,7 @@ namespace WinGnome.Core.Tests.Windows;
 public class AppPathMatchTests
 {
     private const string GitHubRoot = @"C:\Users\sam\AppData\Local\GitHubDesktop";
+    private const string DockerRoot = @"C:\Program Files\Docker\Docker";
 
     [Fact]
     public void IsSameInstall_SamePathDifferentCaseAndSlashes_IsTrue()
@@ -35,7 +36,7 @@ public class AppPathMatchTests
     [Fact]
     public void IsSameInstall_AppFolderThatIsNotAVersion_IsFalse()
     {
-        Assert.False(AppPathMatch.IsSameInstall(GitHubRoot + @"\GitHubDesktop.exe", GitHubRoot + @"\app-foo\GitHubDesktop.exe"));
+        Assert.False(AppPathMatch.IsSameInstall(GitHubRoot + @"\GitHubDesktop.exe", GitHubRoot + @"\app-foo\Other.exe"));
     }
 
     [Fact]
@@ -45,9 +46,46 @@ public class AppPathMatchTests
     }
 
     [Fact]
-    public void IsSameInstall_ProcessInASubfolderThatIsNotSquirrel_IsFalse()
+    public void IsSameInstall_SameNamedExeInAChildFolder_IsTrue()
     {
-        Assert.False(AppPathMatch.IsSameInstall(@"C:\Program Files\Foo\Foo.exe", @"C:\Program Files\Foo\bin\Foo.exe"));
+        // Docker Desktop: the shortcut targets the root launcher; the UI runs from "frontend\" one folder down.
+        Assert.True(AppPathMatch.IsSameInstall(DockerRoot + @"\Docker Desktop.exe", DockerRoot + @"\frontend\Docker Desktop.exe"));
+    }
+
+    [Theory]
+    [InlineData(@"C:\Program Files\Docker\Docker\Docker Desktop.exe", "c:/program files/docker/docker/frontend/docker desktop.exe")]
+    [InlineData(@"C:\Program Files\Docker\Docker\Docker Desktop.exe", @"C:\PROGRAM FILES\Docker\Docker\FRONTEND\Docker Desktop.EXE")]
+    public void IsSameInstall_ChildFolderExeIgnoresCaseAndSlashes_IsTrue(string target, string process)
+    {
+        Assert.True(AppPathMatch.IsSameInstall(target, process));
+    }
+
+    [Fact]
+    public void IsSameInstall_ProcessInAGrandchildFolder_IsFalse()
+    {
+        // The launcher-child rule reaches one folder down only; this was "bin\Foo.exe" (one down) before KI-100.
+        Assert.False(AppPathMatch.IsSameInstall(@"C:\Program Files\Foo\Foo.exe", @"C:\Program Files\Foo\bin\nested\Foo.exe"));
+    }
+
+    [Fact]
+    public void IsSameInstall_DifferentExeInAChildFolder_IsFalse()
+    {
+        Assert.False(AppPathMatch.IsSameInstall(DockerRoot + @"\Docker Desktop.exe", DockerRoot + @"\frontend\DockerCli.exe"));
+    }
+
+    [Fact]
+    public void IsSameInstall_SameNamedExeInAChildOfADifferentRoot_IsFalse()
+    {
+        Assert.False(AppPathMatch.IsSameInstall(DockerRoot + @"\Docker Desktop.exe", @"C:\Program Files\Other\frontend\Docker Desktop.exe"));
+    }
+
+    [Theory]
+    [InlineData(@"C:\X.exe", @"C:\frontend\X.exe")]
+    [InlineData("X.exe", @"frontend\X.exe")]
+    public void IsSameInstall_ChildFolderWithoutARealParentFolder_IsFalse(string target, string process)
+    {
+        // The shared folder must be a real directory: a drive root ("C:") or nothing at all never matches.
+        Assert.False(AppPathMatch.IsSameInstall(target, process));
     }
 
     [Theory]
