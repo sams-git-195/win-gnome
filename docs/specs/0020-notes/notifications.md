@@ -21,4 +21,4 @@ from a throwaway id created no settings key. Check with a real toast from a list
 | `NotificationAppList.Build(keys, nameOf)` | Registry keys to sorted app rows (`NotificationKeySnapshot` in, `NotificationAppRow` out); built-in names for Windows' own sources, unknown system, generated and unnamed packaged ids hidden |
 
 Module map: `Features/Settings/Panels/Notifications/` holds `NotificationSettingsStore` (the only class touching the
-keys), `NotificationsPanelViewModel` (with `NotificationSwitch`, the verified-set switch) and the view.
+keys), `NotificationsPanelViewModel` (using `Panels/VerifiedSwitch`, the shared verified-set switch) and the view.

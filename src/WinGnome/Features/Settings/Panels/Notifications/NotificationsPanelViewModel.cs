@@ -5,56 +5,11 @@ using WinGnome.Infrastructure;
 
 namespace WinGnome.Features.Settings.Panels.Notifications;
 
-/// <summary>
-/// A switch whose shown value is only ever what Windows reported after the last write (verified-set): turning it asks
-/// for a write, the switch is busy until that write has finished, and the value then shown is the one read back.
-/// </summary>
-internal sealed class NotificationSwitch(Action<NotificationSwitch, bool> requestChange) : ObservableObject
-{
-    private bool _isOn = true;
-    private int _pending;
-
-    /// <summary>The value Windows reported. Setting it asks for a change; the shown value follows the read-back.</summary>
-    public bool IsOn
-    {
-        get => _isOn;
-        set
-        {
-            if (value != _isOn && _pending == 0)
-            {
-                requestChange(this, value);
-            }
-        }
-    }
-
-    /// <summary>False while a write is in flight.</summary>
-    public bool IsIdle => _pending == 0;
-
-    public void Begin()
-    {
-        _pending++;
-        OnPropertyChanged(nameof(IsIdle));
-    }
-
-    public void End()
-    {
-        _pending = Math.Max(0, _pending - 1);
-        OnPropertyChanged(nameof(IsIdle));
-    }
-
-    /// <summary>Shows the value Windows reported. Always raises a change, so a click Windows undid snaps back.</summary>
-    public void Confirm(bool on)
-    {
-        _isOn = on;
-        OnPropertyChanged(nameof(IsOn));
-    }
-}
-
 /// <summary>The switches shown under an expanded app (a type of its own so the view can pick a template for it).</summary>
 /// <param name="Enabled">The app's own switch; the others are unavailable while it is off.</param>
 /// <param name="Banner">Whether the app's notifications pop up as banners.</param>
 /// <param name="Centre">Whether the app's notifications are kept in the notification centre.</param>
-internal sealed record NotificationAppOptions(NotificationSwitch Enabled, NotificationSwitch Banner, NotificationSwitch Centre);
+internal sealed record NotificationAppOptions(VerifiedSwitch Enabled, VerifiedSwitch Banner, VerifiedSwitch Centre);
 
 /// <summary>One app in the list: its switch and, expanded, its banner and notification-centre switches.</summary>
 internal sealed class NotificationAppViewModel : ObservableObject
@@ -62,13 +17,13 @@ internal sealed class NotificationAppViewModel : ObservableObject
     private readonly NotificationAppOptions _options;
     private bool _isExpanded;
 
-    public NotificationAppViewModel(NotificationAppRow row, Func<NotificationAppViewModel, NotificationAppSetting, Action<NotificationSwitch, bool>> request)
+    public NotificationAppViewModel(NotificationAppRow row, Func<NotificationAppViewModel, NotificationAppSetting, Action<VerifiedSwitch, bool>> request)
     {
         Id = row.Id;
         Name = row.Name;
-        Enabled = new NotificationSwitch(request(this, NotificationAppSetting.Enabled));
-        Banner = new NotificationSwitch(request(this, NotificationAppSetting.ShowBanner));
-        Centre = new NotificationSwitch(request(this, NotificationAppSetting.ShowInActionCenter));
+        Enabled = new VerifiedSwitch(request(this, NotificationAppSetting.Enabled));
+        Banner = new VerifiedSwitch(request(this, NotificationAppSetting.ShowBanner));
+        Centre = new VerifiedSwitch(request(this, NotificationAppSetting.ShowInActionCenter));
         _options = new NotificationAppOptions(Enabled, Banner, Centre);
         ToggleExpandedCommand = new RelayCommand(() => IsExpanded = !IsExpanded);
         Show(row);
@@ -78,11 +33,11 @@ internal sealed class NotificationAppViewModel : ObservableObject
 
     public string Name { get; }
 
-    public NotificationSwitch Enabled { get; }
+    public VerifiedSwitch Enabled { get; }
 
-    public NotificationSwitch Banner { get; }
+    public VerifiedSwitch Banner { get; }
 
-    public NotificationSwitch Centre { get; }
+    public VerifiedSwitch Centre { get; }
 
     public ICommand ToggleExpandedCommand { get; }
 
@@ -129,9 +84,9 @@ internal sealed class NotificationsPanelViewModel : SystemPanelViewModel
         : base(context, PanelIds.Notifications)
     {
         _writer = context.CreateWriter();
-        Master = new NotificationSwitch((sw, on) => Change(sw, "notifications", $"turn notifications {OnOff(on)}",
+        Master = new VerifiedSwitch((sw, on) => Change(sw, "notifications", $"turn notifications {OnOff(on)}",
             () => NotificationSettingsStore.SetMaster(on)));
-        LockScreen = new NotificationSwitch((sw, on) => Change(sw, "lock screen notifications",
+        LockScreen = new VerifiedSwitch((sw, on) => Change(sw, "lock screen notifications",
             $"turn lock screen notifications {OnOff(on)}", () => NotificationSettingsStore.SetLockScreen(on)));
     }
 
@@ -139,11 +94,11 @@ internal sealed class NotificationsPanelViewModel : SystemPanelViewModel
     /// The Do Not Disturb switch, or null (the row is hidden) while no Do Not Disturb service exists. Spec 0017's
     /// service will fill it in Open when it joins <see cref="SystemPanelServices"/> (noted under KI-085).
     /// </summary>
-    public NotificationSwitch? DoNotDisturb { get; private set; }
+    public VerifiedSwitch? DoNotDisturb { get; private set; }
 
-    public NotificationSwitch Master { get; }
+    public VerifiedSwitch Master { get; }
 
-    public NotificationSwitch LockScreen { get; }
+    public VerifiedSwitch LockScreen { get; }
 
     public ObservableCollection<NotificationAppViewModel> Apps { get; } = [];
 
@@ -196,12 +151,12 @@ internal sealed class NotificationsPanelViewModel : SystemPanelViewModel
 
     private string? NameOf(string id) => Context.Services.Apps.FindForWindow(id, null)?.Name;
 
-    private Action<NotificationSwitch, bool> AppRequest(NotificationAppViewModel app, NotificationAppSetting setting) =>
+    private Action<VerifiedSwitch, bool> AppRequest(NotificationAppViewModel app, NotificationAppSetting setting) =>
         (sw, on) => Change(sw, $"notifications from {app.Name}", $"turn {setting} {OnOff(on)} for {app.Name}",
             () => NotificationSettingsStore.SetApp(app.Id, setting, on));
 
     /// <summary>Writes on the writer thread, then reads everything back and shows it. Does nothing in safe mode.</summary>
-    private void Change(NotificationSwitch target, string label, string what, Action write)
+    private void Change(VerifiedSwitch target, string label, string what, Action write)
     {
         if (Context.IsReadOnly)
         {
@@ -226,7 +181,7 @@ internal sealed class NotificationsPanelViewModel : SystemPanelViewModel
             () => ReportWriteFailure(label));
     }
 
-    private void Written(NotificationSwitch target)
+    private void Written(VerifiedSwitch target)
     {
         target.End();
         Reload();
