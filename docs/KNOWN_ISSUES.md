@@ -95,6 +95,9 @@ sending a command. Still undecorated:
   with *Also decorate apps with web-drawn buttons* on, but only verified by Core tests from measured numbers:
   Dia stayed minimised afterwards. The rule infers the minimise zone's left edge (it's client area like what
   lies left of it), so the circles may sit a few pixels off if Dia's minimise button isn't as wide as maximise.
+  Its gate (a visible `ReunionWindowingCaptionControls` child, which is 0 px wide on Dia) admits any Windows App
+  SDK window that reports only `HTMAXBUTTON`, not just Dia; the click guard's maximise re-check is what protects
+  close and minimise clicks there.
 - Windows Terminal and other apps that report plain client area, unless they get a web-button profile.
 - Profiled apps whose layout changes in a new release (the hole check then fails, and they keep their buttons).
 

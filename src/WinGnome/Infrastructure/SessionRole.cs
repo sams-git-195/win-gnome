@@ -80,7 +80,7 @@ internal sealed class SessionRole : IDisposable
             // The mutex exists but we may not open it: an instance at another integrity level (elevated) created
             // it, so another instance holds the role. It can't be waited for either; this instance stays without
             // it until it is restarted or the feature is switched off and on (KI-042).
-            Log.Info($"Another WinGnome instance (running elevated?) {_job}; this one doesn't: {ex.Message}");
+            Log.Warn($"Another WinGnome instance (running elevated?) {_job}; this one doesn't: {ex.Message}");
         }
         catch (Exception ex)
         {

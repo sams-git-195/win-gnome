@@ -69,6 +69,12 @@ internal sealed class TrafficLightButtonAutomationPeer : AutomationPeer, IInvoke
 
     void IInvokeProvider.Invoke()
     {
+        // A hidden overlay (target minimised, or concealed by the click guard) must not act, as a click couldn't.
+        if (!_view.IsVisible)
+        {
+            throw new ElementNotAvailableException();
+        }
+
         if (!_view.IsAvailable(_kind))
         {
             throw new ElementNotEnabledException();

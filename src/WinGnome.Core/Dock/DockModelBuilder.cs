@@ -11,9 +11,8 @@ public static class DockModelBuilder
     /// Builds the dock model. Pinned apps come first in pinned order; unpinned running apps (when
     /// <paramref name="includeUnpinnedRunning"/> is true) follow in order of first appearance in
     /// <paramref name="windows"/>. A window belongs to a pinned app when identities match; failing that when the
-    /// pin's target is the same install as the process of a window with no AUMID of its own
-    /// (<see cref="AppPathMatch.IsSameInstall"/>); and
-    /// failing that, for file-system pins, when the pinned file name equals the window's process file name.
+    /// pin's target is the same install as the window's process (for named-AUMID pins, only windows with no AUMID
+    /// of their own; <see cref="AppPathMatch.IsSameInstall"/>); and failing that, for file-system pins, when the pinned file name equals the window's process file name.
     /// Named-AUMID pins get their target from <paramref name="resolvePath"/>; generated AUMIDs never match by path.
     /// </summary>
     public static IReadOnlyList<DockApp> Build(
@@ -120,16 +119,20 @@ public static class DockModelBuilder
             }
         }
 
-        // Only windows without an AUMID of their own: a browser web app runs the browser's exe but reports its own
-        // AUMID, and must keep its own icon rather than join the browser's pin.
-        if (string.IsNullOrWhiteSpace(window.AppUserModelId))
+        var windowHasAumid = !string.IsNullOrWhiteSpace(window.AppUserModelId);
+        foreach (var slot in slots)
         {
-            foreach (var slot in slots)
+            // A named-AUMID pin takes a window with a different AUMID of its own only by identity: a browser web
+            // app runs the browser's exe but must keep its own icon. Path pins match by install as before.
+            var isNamedAumidPin = slot.ExeName.Length == 0;
+            if (isNamedAumidPin && windowHasAumid)
             {
-                if (AppPathMatch.IsSameInstall(slot.TargetPath, window.ProcessPath))
-                {
-                    return slot;
-                }
+                continue;
+            }
+
+            if (AppPathMatch.IsSameInstall(slot.TargetPath, window.ProcessPath))
+            {
+                return slot;
             }
         }
 

@@ -376,6 +376,17 @@ public class DockModelBuilderTests
     }
 
     [Fact]
+    public void SquirrelUpdateExePathPin_WindowWithItsOwnAumid_TakesWindowFromAppVersionFolder()
+    {
+        var pin = Pin("Discord", @"C:\Users\sam\AppData\Local\Discord\Update.exe");
+        var window = Win(5, "Discord", @"C:\Users\sam\AppData\Local\Discord\app-1.0.9\Discord.exe", aumid: "com.squirrel.Discord.Discord");
+
+        var app = Assert.Single(Build([pin], [window]));
+
+        Assert.Equal(new nint[] { 5 }, app.Windows.ToArray());
+    }
+
+    [Fact]
     public void GeneratedAumidPin_DoesNotTakeWindowsOfItsTarget()
     {
         var apps = Build([Pin("Developer Prompt", GeneratedCmdAumid)], [Win(5, "cmd", CmdPath)], includeUnpinned: false, resolve: CatalogResolve);

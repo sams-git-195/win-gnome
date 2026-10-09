@@ -11,6 +11,7 @@ public sealed class CaptionMaxAnchorProbeTests
     private const int Top = 12;     // HTTOP
     private const int Max = CaptionHitTestProbe.HtMaxButton;
     private const int Min = CaptionHitTestProbe.HtMinButton;
+    private const int Close = CaptionHitTestProbe.HtClose;
 
     /// <summary>A row sampled every 2 px leftwards from x = 1000 (frame right 1001): runs of codes with their sample counts.</summary>
     private static (int[] Xs, int[] Codes) Row(params (int Code, int Count)[] runs)
@@ -96,11 +97,13 @@ public sealed class CaptionMaxAnchorProbeTests
         Assert.Null(CaptionMaxAnchorProbe.FindGroup(xs, codes, 1.25));
     }
 
-    [Fact]
-    public void FindGroup_OtherButtonCodesInTheRow_IsNull()
+    [Theory]
+    [InlineData(Min)]
+    [InlineData(Close)]
+    public void FindGroup_OtherButtonCodesInTheRow_IsNull(int otherCode)
     {
-        // An app reporting a minimise button too is not this pattern (and the button-code probe handles it).
-        var (xs, codes) = Row((Client, 27), (Max, 25), (Client, 30), (Min, 25), (Client, 10));
+        // An app reporting another button too is not this pattern (and the button-code probe handles it).
+        var (xs, codes) = Row((Client, 27), (Max, 25), (Client, 30), (otherCode, 25), (Client, 10));
 
         Assert.Null(CaptionMaxAnchorProbe.FindGroup(xs, codes, 1.25));
     }

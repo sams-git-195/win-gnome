@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using WinGnome.Core.Geometry;
 using WinGnome.Core.Overview;
 using WinGnome.Core.Search;
@@ -38,6 +39,7 @@ internal sealed partial class OverviewWindow : Window
     private const int MaxWindowResults = 8;
     private const int MinGridColumns = 6;
     private const int MaxGridColumns = 8;
+    private static readonly TimeSpan WarmUpTimeout = TimeSpan.FromSeconds(2);
 
     /// <summary>Thumbnail area margins (DIPs): below the search box, at the sides and at the bottom.</summary>
     private const double ContentTop = 112;
@@ -69,6 +71,7 @@ internal sealed partial class OverviewWindow : Window
     private int _warmUpFrames;
     private TimeSpan _warmUpLastFrame;
     private long _warmUpStartedAt;
+    private DispatcherTimer? _warmUpTimeout;
     private bool _activating;
     private bool _allowClose;
     private bool _closed;
@@ -367,6 +370,10 @@ internal sealed partial class OverviewWindow : Window
         Show();
         ShowActivated = true;
         CompositionTarget.Rendering += OnWarmUpRendering;
+
+        // WPF stops ticking while the session is locked or the display is off; don't hold a full-size window then.
+        _warmUpTimeout ??= new DispatcherTimer(WarmUpTimeout, DispatcherPriority.Normal, (_, _) => EndWarmUp(), Dispatcher);
+        _warmUpTimeout.Start();
     }
 
     private void OnWarmUpRendering(object? sender, EventArgs e)
@@ -415,6 +422,7 @@ internal sealed partial class OverviewWindow : Window
 
         _warmingUp = false;
         CompositionTarget.Rendering -= OnWarmUpRendering;
+        _warmUpTimeout?.Stop();
         return true;
     }
 
