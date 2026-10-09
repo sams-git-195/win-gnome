@@ -18,6 +18,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Adwaita Sans (SIL OFL 1.1, assets/fonts/OFL.txt), unmodified from GNOME's adwaita-fonts 51.0 release. -->
+    <Resource Include="Assets\Fonts\AdwaitaSans-Regular.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\WinGnome.Core\WinGnome.Core.csproj" />
   </ItemGroup>
 

@@ -25,8 +25,12 @@
                         AutomationProperties.Name="{Binding State.Tip}"
                         MouseEnter="OnIconMouseEnter" MouseLeave="OnIconMouseLeave"
                         MouseDown="OnIconMouseDown" MouseUp="OnIconMouseUp">
-                    <Image Source="{Binding Image}" Width="{DynamicResource BarIconSize}" Height="{DynamicResource BarIconSize}"
-                           VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
+                    <!-- The slot is the bar's icon size; the bitmap inside it is placed on whole pixels (TrayIconPlacement). -->
+                    <Grid Width="{DynamicResource BarIconSize}" Height="{DynamicResource BarIconSize}" VerticalAlignment="Center">
+                        <Image Source="{Binding Image}" Width="{Binding ImageSize}" Height="{Binding ImageSize}" Margin="{Binding ImageMargin}"
+                               HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="Fill"
+                               RenderOptions.BitmapScalingMode="{Binding ScalingMode}" />
+                    </Grid>
                 </Border>
                 <DataTemplate.Triggers>
                     <Trigger SourceName="Item" Property="IsMouseOver" Value="True">

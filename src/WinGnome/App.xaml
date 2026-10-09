@@ -8,6 +8,7 @@
                 <!-- Palette slot: must stay first. ThemeManager swaps it for Dark.xaml or Light.xaml. -->
                 <ResourceDictionary Source="Theme/Dark.xaml" />
                 <ResourceDictionary Source="Theme/Controls.xaml" />
+                <ResourceDictionary Source="Theme/SymbolicIcons.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>
