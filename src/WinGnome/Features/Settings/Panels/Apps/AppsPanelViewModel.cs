@@ -1,5 +1,3 @@
-using System.IO;
-using System.Runtime.InteropServices;
 using System.Windows.Input;
 using WinGnome.Core.ControlCenter;
 using WinGnome.Infrastructure;
@@ -184,11 +182,34 @@ internal sealed class AppsPanelViewModel : SystemPanelViewModel
         }
 
         item.IsBusy = true;
-        LoadAsync(() => PackagedAppsService.Details(package.FamilyName), details =>
+        var family = package.FamilyName;
+        LoadAsync(() => ReadPackageDetails(family), read =>
         {
             item.IsBusy = false;
-            item.ShowDetails(details);
-        }, channel: "details:" + package.FamilyName);
+            if (read.Failed)
+            {
+                Problem = $"Couldn't read the details of {item.Name}. You can see them in Windows Settings instead.";
+            }
+            else
+            {
+                item.ShowDetails(read.Details);
+            }
+        }, channel: "details:" + family);
+    }
+
+    /// <summary>The package API's answer, caught here so the row's busy state always clears.</summary>
+    private static (PackageDetails? Details, bool Failed) ReadPackageDetails(string familyName)
+    {
+        try
+        {
+            return (PackagedAppsService.Details(familyName), false);
+        }
+        catch (Exception ex)
+        {
+            // Worker boundary: any failure of the package API (COM, WinRT activation) is logged and shown as a problem.
+            Log.Warn($"Apps: could not read the details of package family {familyName}", ex);
+            return (null, true);
+        }
     }
 
     private void Uninstall(InstalledAppItem? item)
@@ -272,8 +293,9 @@ internal sealed class AppsPanelViewModel : SystemPanelViewModel
         {
             return PackagedAppsService.Remove(familyName);
         }
-        catch (Exception ex) when (ex is COMException or InvalidOperationException or UnauthorizedAccessException)
+        catch (Exception ex)
         {
+            // Worker boundary: the result must reach the row (busy state, problem banner) whatever the package API throws.
             Log.Warn($"Apps: removing package family {familyName} failed", ex);
             return PackageRemoval.Failed;
         }
@@ -283,6 +305,8 @@ internal sealed class AppsPanelViewModel : SystemPanelViewModel
     {
         if (!CanEdit || !item.Row.Editable || item.IsBusy)
         {
+            // The switch has already moved: put it back to what Windows holds once the binding has finished updating.
+            Context.Dispatcher.BeginInvoke(item.ShowStored);
             return;
         }
 
@@ -317,8 +341,9 @@ internal sealed class AppsPanelViewModel : SystemPanelViewModel
             {
                 created = StartupAppsService.AddShortcut(app.Name, app.ParsingName);
             }
-            catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException or InvalidCastException)
+            catch (Exception ex)
             {
+                // Caught here rather than by ShellThread, so the refresh below always runs.
                 Log.Warn($"Apps: could not add a start-up shortcut for \"{app.Name}\"", ex);
             }
 
@@ -353,8 +378,9 @@ internal sealed class AppsPanelViewModel : SystemPanelViewModel
             {
                 removed = StartupAppsService.Recycle(path);
             }
-            catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException or InvalidCastException)
+            catch (Exception ex)
             {
+                // Caught here rather than by ShellThread, so the refresh below always runs.
                 Log.Warn($"Apps: could not move {path} to the Recycle Bin", ex);
             }
 

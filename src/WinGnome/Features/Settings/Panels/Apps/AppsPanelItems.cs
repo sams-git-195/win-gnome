@@ -100,7 +100,7 @@ internal sealed class InstalledAppItem : ObservableObject
             InstallDateText.Format(record.InstallDate, culture));
         var iconPath = record.IconPath;
         return new InstalledAppItem(record.DisplayName ?? record.KeyName, subtitle, canEdit,
-            () => iconPath is not null && File.Exists(iconPath) ? icons.GetAppIcon(iconPath, IconPixels) : null, _ => { })
+            () => IsLocal(iconPath) && File.Exists(iconPath) ? icons.GetAppIcon(iconPath!, IconPixels) : null, _ => { })
         {
             Record = record,
             Plan = UninstallPlan.For(record, systemDirectory),
@@ -129,6 +129,13 @@ internal sealed class InstalledAppItem : ObservableObject
         OnPropertyChanged(nameof(UninstallLabel));
         OnPropertyChanged(nameof(CanUninstall));
     }
+
+    /// <summary>
+    /// A fully qualified local path. Icons load on the UI thread as rows are drawn, and File.Exists on a UNC path can
+    /// wait on the network for many seconds, so those rows show no icon.
+    /// </summary>
+    internal static bool IsLocal(string? path) =>
+        path is not null && Path.IsPathFullyQualified(path) && !path.StartsWith(@"\\", StringComparison.Ordinal);
 
     private static string Join(params string?[] parts) => string.Join(" · ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
 }
@@ -176,6 +183,13 @@ internal sealed class StartupAppItem : ObservableObject
 
     public bool CanToggle => _canEdit && Row.Editable && !_isBusy;
 
+    /// <summary>Puts the switch back to the state that was read, after a change that wasn't made.</summary>
+    public void ShowStored()
+    {
+        _isEnabled = Row.Enabled;
+        OnPropertyChanged(nameof(IsEnabled));
+    }
+
     public bool CanRemove => _canEdit && Row.Removable && !_isBusy;
 
     public bool IsBusy
@@ -205,6 +219,6 @@ internal sealed class StartupAppItem : ObservableObject
         }
 
         var path = Environment.ExpandEnvironmentVariables(command.Executable);
-        return Path.IsPathFullyQualified(path) && File.Exists(path) ? path : null;
+        return InstalledAppItem.IsLocal(path) && File.Exists(path) ? path : null;
     }
 }
