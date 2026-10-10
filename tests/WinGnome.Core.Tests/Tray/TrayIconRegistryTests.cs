@@ -74,6 +74,46 @@ public class TrayIconRegistryTests
     }
 
     [Fact]
+    public void Modify_UnknownIcon_WithoutMessageFlag_CreatesEntryWithNoCallback()
+    {
+        var registry = new TrayIconRegistry();
+
+        // The tooltip-only modify of an app whose NIM_ADD reached Explorer alone (front gap, KI-019): apps reuse
+        // their NOTIFYICONDATA, so uCallbackMessage can be set while NIF_MESSAGE is not flagged. The adopted
+        // entry stays click-dead (no callback, no version) until the app re-registers.
+        var change = registry.Apply(
+            Command(NotifyIconMessage.Modify, 7, 100, NotifyIconFields.Tip, callback: 0x8000, tip: "Windows Security"),
+            knownToShell: true);
+
+        Assert.Equal(TrayChangeKind.Added, change.Kind);
+        Assert.True(change.CreatedViaModify);
+        Assert.Equal(0u, registry.Icons[0].CallbackMessage);
+        Assert.Equal(0u, registry.Icons[0].Version);
+    }
+
+    [Fact]
+    public void DuplicateAdd_HealsMissingCallbackAndVersion()
+    {
+        var guid = Guid.NewGuid();
+        var registry = new TrayIconRegistry();
+        registry.Apply(Command(NotifyIconMessage.Modify, 1, 100, NotifyIconFields.ItemGuid | NotifyIconFields.Tip, tip: "old", guid: guid), knownToShell: true);
+
+        // The app answers the heal broadcast the way it answered at start-up: a full ADD (here from a new owner
+        // window, identified by its GUID), then NIM_SETVERSION. Both land on the adopted entry.
+        var add = registry.Apply(Command(NotifyIconMessage.Add, 2, 7,
+            NotifyIconFields.ItemGuid | NotifyIconFields.Message | NotifyIconFields.Icon | NotifyIconFields.Tip,
+            callback: 0x9000, icon: 5, tip: "new", guid: guid), false);
+        registry.Apply(Command(NotifyIconMessage.SetVersion, 2, 7, NotifyIconFields.ItemGuid, version: 4, guid: guid), false);
+
+        Assert.Equal(TrayChangeKind.Updated, add.Kind);
+        Assert.False(add.CreatedViaModify);
+        Assert.Single(registry.Icons);
+        Assert.Equal(0x9000u, registry.Icons[0].CallbackMessage);
+        Assert.Equal(4u, registry.Icons[0].Version);
+        Assert.Equal("new", registry.Icons[0].Tip);
+    }
+
+    [Fact]
     public void Delete_RemovesAndReportsIndex()
     {
         var registry = new TrayIconRegistry();

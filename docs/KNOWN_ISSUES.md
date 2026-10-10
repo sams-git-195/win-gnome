@@ -17,8 +17,8 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity. A resolve
 detail section below the Resolved table when the measured evidence behind the fix is worth keeping (KI-100,
 KI-102).
 
-IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-104 all
-have entries now). The next free ID is **KI-105**; grep the specs for `KI-0` before allocating one.
+IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-105 all
+have entries now). The next free ID is **KI-106**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
@@ -73,6 +73,7 @@ have entries now). The next free ID is **KI-105**; grep the specs for `KI-0` bef
 | [KI-101](#ki-101) | S4 | Settings | About and Displays bypass the shared load gate; a failed About read shows nothing at all | Open |
 | [KI-103](#ki-103) | S4 | Top bar, Dock | Silent work-area writes leave already-maximised windows oversized until the next broadcast | By design |
 | [KI-104](#ki-104) | S4 | Top bar | The custom-logo mask inverts a light mark on a dark background, one stray transparent pixel takes the alpha rule, and the size guards don't bound the decompressed middle | By design |
+| [KI-105](#ki-105) | S4 | Tray | An icon whose registration fell in a front gap stays click-dead until the app re-registers | Open |
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -192,9 +193,15 @@ window), used 0.24 s per idle minute, ~82 MB private memory and 15 threads once 
 
 The front check runs every 250 ms for 2 s after activity and every 1 s at rest (it was 250 ms always).
 If Explorer raises its taskbar with no event announcing it, a tray-icon call in that gap reaches Explorer
-only, and the icon appears in the top bar when the app next updates it.
+only, and the icon appears in the top bar when the app next updates it. Since spec 0022 the *start-up*
+window self-heals: ~2 s after the host starts it broadcasts TaskbarCreated once more, by which time it is
+reliably in front, so icons whose registration reached Explorer alone at sign-in re-register with full
+data (and an icon adopted without a callback in the meantime is logged as such). What remains: mid-session
+raises whose NIM_ADD lands in a ≤1 s gap — the icon is adopted at the app's next update, click-dead until
+it re-registers (KI-105) — and apps that ignore a second TaskbarCreated in quick succession and then end
+up only in Explorer's tray (see the comment in `TrayHost.DestroyHostWindow`).
 *Reason:* no event announces Explorer raising its taskbar, and checking more often costs idle CPU all day (the
-trade-off accepted in spec 0004). Triaged 2026-10-09.
+trade-off accepted in spec 0004). Triaged 2026-10-09; start-up self-heal added 2026-10-10 (spec 0022).
 
 ### KI-021
 **Brightness slider controls only a laptop's built-in display** · S4 · Top bar · Open
@@ -753,6 +760,23 @@ accepted limitations of that rule:
 
 *Workaround:* use a transparent PNG (the normal logo case), or for an opaque file make it a dark mark on a light
 background. Colour logos are out of scope by design (spec 0021 non-goals).
+
+### KI-105
+**An icon whose registration fell in a front gap stays click-dead until the app re-registers** · S4 · Tray · Open
+
+If an app's NIM_ADD + NIM_SETVERSION reach Explorer's tray window while it is in front of the tray host (a
+≤1 s front gap, KI-019), the host first learns of the icon through a later update — typically a tooltip-only
+NIM_MODIFY without NIF_MESSAGE. The adopted entry (`TrayChange.CreatedViaModify`) then has no callback message
+and no version: the icon shows and tooltips, but clicks silently do nothing (the `registered no callback
+message` log line; seen in the field with Windows Security, spec 0022). The start-up heal (spec 0022) covers
+sign-in, where the common gap happens: one delayed TaskbarCreated re-broadcast makes apps re-register with
+full data. It does not cover mid-session gaps — an icon adopted after the heal stays click-dead until the app
+next re-registers (an Explorer restart, an app restart or its own re-add). The host logs every adoption
+("appeared without a callback … clicks do nothing until the app re-registers"); whether the heal still covers
+it depends on when it arrived — before the heal's broadcast, sign-in adoptions are repaired; after it, they
+are not (compare the line's timestamp with the "startup heal" line).
+*Fix direction:* re-broadcasting on every mid-session front regain was rejected in spec 0022: it would storm
+every app with re-registrations for a rare, bounded gap.
 
 ## Resolved
 
