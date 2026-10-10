@@ -1,6 +1,8 @@
 # 0022 — Tray startup heal: one delayed TaskbarCreated re-broadcast
 
-Status: Agreed
+Status: Implemented (Core e7b7308, host wiring 41a93b7) — live checks pending with the integrator: AC 1
+(SecurityHealthSystray click-delivery after a cold start) and AC 2/4–6 need a running app, which this branch
+must not start.
 
 ## Problem
 
