@@ -87,7 +87,12 @@ public enum TrayChangeKind
 /// <param name="Index">Position of the affected icon (for <see cref="TrayChangeKind.Removed"/>: where it was).</param>
 /// <param name="Icon">The icon's new state (for <see cref="TrayChangeKind.Removed"/>: its last state).</param>
 /// <param name="Accepted">The result to report to the app (TRUE/FALSE of Shell_NotifyIcon).</param>
-public readonly record struct TrayChange(TrayChangeKind Kind, int Index, TrayIconState? Icon, bool Accepted)
+/// <param name="CreatedViaModify">
+/// True when a NIM_MODIFY the shell accepted created the entry because the host never saw it added (the add
+/// reached Explorer alone, in a front gap). The entry then carries only what that modify had — typically
+/// neither callback message nor version — so clicks are dead until the app re-registers.
+/// </param>
+public readonly record struct TrayChange(TrayChangeKind Kind, int Index, TrayIconState? Icon, bool Accepted, bool CreatedViaModify = false)
 {
     public static TrayChange Rejected => new(TrayChangeKind.None, -1, null, false);
 }
@@ -126,7 +131,7 @@ public sealed class TrayIconRegistry
 
             case NotifyIconMessage.Modify:
                 return index >= 0 ? Update(index, command)
-                    : knownToShell ? Add(command)
+                    : knownToShell ? Add(command, createdViaModify: true)
                     : TrayChange.Rejected;
 
             case NotifyIconMessage.Delete:
@@ -178,10 +183,10 @@ public sealed class TrayIconRegistry
 
     public int IndexOf(TrayIconId query) => _icons.FindIndex(icon => icon.Id.IsIdentifiedBy(query));
 
-    private TrayChange Add(NotifyIconCommand command)
+    private TrayChange Add(NotifyIconCommand command, bool createdViaModify = false)
     {
         _icons.Add(TrayIconState.Create(command));
-        return new TrayChange(TrayChangeKind.Added, _icons.Count - 1, _icons[^1], true);
+        return new TrayChange(TrayChangeKind.Added, _icons.Count - 1, _icons[^1], true, createdViaModify);
     }
 
     private TrayChange Update(int index, NotifyIconCommand command)
