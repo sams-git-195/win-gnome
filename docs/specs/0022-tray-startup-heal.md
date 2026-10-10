@@ -251,7 +251,9 @@ A **built-in click fallback table** (`WinGnome.Core.Tray/TrayClickFallback.cs`, 
   LeftUp → LeftDoubleClick → LeftUp; one launch must serve the whole sequence.
 
 App layer (`TrayModel.Deliver`): in the `CallbackMessage == 0` branch, for click-class actions only (the
-same `MayTakeForeground` gate as the existing diagnosis log), resolve the owner's process path via the
+same `MayTakeForeground` gate as the existing diagnosis log — note this gate admits the middle button too,
+so a middle-click on a dead table icon also opens the app; a harmless superset of the requested
+left/double/right), resolve the owner's process path via the
 existing `NativeMethods.GetProcessId`/`GetProcessPath` helpers (cached per owner hwnd; both fallback
 caches are cleared in `StopHost` — hwnds are reused, and a stale mapping could at worst launch the one
 hardcoded URI). On a table hit and `ShouldLaunch` (per-icon last-launch timestamps,
