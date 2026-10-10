@@ -39,7 +39,14 @@ internal sealed class RadioClient(RadioKind kind) : IDisposable
                 return RadioReading.None;
             }
 
-            foreach (var radio in radios.Where(r => !_watched.Contains(r)))
+            // Every read returns fresh Radio objects, so the previous ones are released before these are watched.
+            foreach (var old in _watched)
+            {
+                old.StateChanged -= OnStateChanged;
+            }
+
+            _watched.Clear();
+            foreach (var radio in radios)
             {
                 radio.StateChanged += OnStateChanged;
                 _watched.Add(radio);

@@ -80,6 +80,10 @@ internal static partial class NativeMethods
     [DllImport("wlanapi.dll")]
     public static extern unsafe uint WlanSetProfile(nint hClientHandle, in Guid pInterfaceGuid, uint dwFlags, char* strProfileXml, nint strAllUserProfileSecurity, [MarshalAs(UnmanagedType.Bool)] bool bOverwrite, nint pReserved, out uint pdwReasonCode);
 
+    /// <summary>Gets a profile's XML (the key stays encrypted without the plain-text flag); free it with <see cref="WlanFreeMemory"/>.</summary>
+    [DllImport("wlanapi.dll", CharSet = CharSet.Unicode)]
+    public static extern uint WlanGetProfile(nint hClientHandle, in Guid pInterfaceGuid, string strProfileName, nint pReserved, out nint pstrProfileXml, nint pdwFlags, out uint pdwGrantedAccess);
+
     [DllImport("wlanapi.dll", CharSet = CharSet.Unicode)]
     public static extern uint WlanDeleteProfile(nint hClientHandle, in Guid pInterfaceGuid, string strProfileName, nint pReserved);
 

@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
+using System.Text;
+using Windows.Networking.Connectivity;
 using WinGnome.Core.Connectivity;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
@@ -96,8 +98,15 @@ internal sealed class WlanClient : IDisposable
     /// <summary>Raised on a WLAN thread for each event worth reacting to.</summary>
     public event Action<WlanChange>? Changed;
 
-    /// <summary>Opens the handle (if needed) and reads adapter, networks, profiles and the current connection.</summary>
-    public Task<WlanSnapshot> ReadAsync() => Enqueue(Read);
+    /// <summary>
+    /// Opens the handle (if needed) and reads adapter, profiles and the current connection, and, when
+    /// <paramref name="callGated"/>, the network list too. The gated calls (list, current connection) are the ones
+    /// Windows ties to location access, so the caller passes false while access is denied or not yet asked for.
+    /// </summary>
+    public Task<WlanSnapshot> ReadAsync(bool callGated) => Enqueue(() => Read(callGated));
+
+    /// <summary>The saved profile's XML, with its key still encrypted; null when Windows has no such profile.</summary>
+    public Task<string?> GetProfileXmlAsync(string profileName) => Enqueue(() => GetProfileXml(profileName));
 
     /// <summary>Asks the adapter to scan; the result arrives as a <see cref="WlanChangeKind.ListChanged"/> event.</summary>
     public Task<bool> ScanAsync() => Enqueue(() => Succeeded("WlanScan", NativeMethods.WlanScan(_handle, _interface, 0, 0, 0)));
@@ -175,14 +184,21 @@ internal sealed class WlanClient : IDisposable
         }
     }
 
-    private void EnsureOpen()
+    /// <summary>Opens the handle once. False when the WLAN service isn't running (no Wi-Fi to show).</summary>
+    private bool EnsureOpen()
     {
         if (_handle != 0)
         {
-            return;
+            return true;
         }
 
         var result = NativeMethods.WlanOpenHandle(NativeMethods.WLAN_CLIENT_VERSION_VISTA, 0, out _, out var handle);
+        if (result == NativeMethods.ERROR_SERVICE_NOT_ACTIVE)
+        {
+            Log.Info("Wi-Fi: the WLAN service isn't running");
+            return false;
+        }
+
         if (result != 0)
         {
             throw new InvalidOperationException($"WlanOpenHandle failed with Win32 error {result}.");
@@ -194,6 +210,8 @@ internal sealed class WlanClient : IDisposable
         {
             Log.Warn($"Wi-Fi: WlanRegisterNotification failed with Win32 error {registered}; the list refreshes only when asked");
         }
+
+        return true;
     }
 
     private void Close()
@@ -218,19 +236,23 @@ internal sealed class WlanClient : IDisposable
         _handle = 0;
     }
 
-    private WlanSnapshot Read()
+    private WlanSnapshot Read(bool callGated)
     {
-        EnsureOpen();
-        if (!FindInterface(out var interfaceState))
+        if (!EnsureOpen() || !FindInterface(out var interfaceState))
         {
             return WlanSnapshot.NoAdapter;
         }
 
         var profiles = ReadProfiles();
-        var denied = false;
+        var denied = !callGated;
         var networks = new List<WifiAvailableNetwork>();
-        var listResult = NativeMethods.WlanGetAvailableNetworkList(_handle, _interface, 0, 0, out var list);
-        if (listResult == 0)
+        nint list = 0;
+        var listResult = callGated ? NativeMethods.WlanGetAvailableNetworkList(_handle, _interface, 0, 0, out list) : 0u;
+        if (!callGated)
+        {
+            // Skipped on purpose: every refused call can re-raise Windows' location dialog.
+        }
+        else if (listResult == 0)
         {
             try
             {
@@ -253,7 +275,51 @@ internal sealed class WlanClient : IDisposable
         }
 
         var connected = interfaceState == InterfaceStateConnected;
-        return new WlanSnapshot(true, denied, networks, profiles, connected ? ReadCurrentSsid() : null, connected);
+        byte[]? current = null;
+        if (connected)
+        {
+            current = denied ? null : ReadCurrentSsid();
+            current ??= ReadSsidWithoutWlanApi();
+        }
+
+        return new WlanSnapshot(true, denied, networks, profiles, current, connected);
+    }
+
+    /// <summary>
+    /// The connected network's name from the network list manager's connection profile, which may work where the WLAN
+    /// API is refused. Null when it doesn't say.
+    /// </summary>
+    private static byte[]? ReadSsidWithoutWlanApi()
+    {
+        try
+        {
+            var ssid = NetworkInformation.GetInternetConnectionProfile()?.WlanConnectionProfileDetails?.GetConnectedSsid();
+            return string.IsNullOrEmpty(ssid) ? null : Encoding.UTF8.GetBytes(ssid);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Wi-Fi: could not read the connected network's name without the WLAN API", ex);
+            return null;
+        }
+    }
+
+    private string? GetProfileXml(string profileName)
+    {
+        var result = NativeMethods.WlanGetProfile(_handle, _interface, profileName, 0, out var xml, 0, out _);
+        if (result != 0)
+        {
+            Log.Warn($"Wi-Fi: WlanGetProfile \"{profileName}\" failed with Win32 error {result}");
+            return null;
+        }
+
+        try
+        {
+            return Marshal.PtrToStringUni(xml);
+        }
+        finally
+        {
+            NativeMethods.WlanFreeMemory(xml);
+        }
     }
 
     /// <summary>Picks the first Wi-Fi interface. False when there is none or the service isn't running.</summary>
@@ -393,7 +459,8 @@ internal sealed class WlanClient : IDisposable
             fixed (char* xml = document.Buffer)
             {
                 var result = NativeMethods.WlanSetProfile(_handle, _interface, 0, xml, 0, overwrite, 0, out var reason);
-                if (result == (uint)NativeMethods.ERROR_ACCESS_DENIED)
+                // Never for an overwrite: a per-user profile of the same name would sit beside the all-user one it should replace.
+                if (result == (uint)NativeMethods.ERROR_ACCESS_DENIED && !overwrite)
                 {
                     Log.Warn($"Wi-Fi: an all-user profile for {document} was refused; saving it for this user only");
                     result = NativeMethods.WlanSetProfile(_handle, _interface, NativeMethods.WLAN_PROFILE_USER, xml, 0, overwrite, 0, out reason);

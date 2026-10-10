@@ -19,6 +19,8 @@ internal sealed class BluetoothClient : IDisposable
     private const string IsPresent = "System.Devices.Aep.IsPresent";
     private const string ContainerId = "System.Devices.Aep.ContainerId";
 
+    private const int ElementNotFound = unchecked((int)0x80070490);
+
     private static readonly string[] RequestedProperties = [IsPaired, IsConnected, IsPresent, ContainerId];
     private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan UnpairTimeout = TimeSpan.FromSeconds(30);
@@ -76,7 +78,24 @@ internal sealed class BluetoothClient : IDisposable
         var succeeded = true;
         foreach (var id in endpointIds)
         {
-            var info = Await(DeviceInformation.CreateFromIdAsync(id, RequestedProperties, DeviceInformationKind.AssociationEndpoint), UnpairTimeout);
+            // Unpairing the Classic endpoint of a dual-mode device usually takes its LE endpoint with it, so by the
+            // time that one is reached it may no longer exist: that is the outcome we wanted, not a failure.
+            DeviceInformation? info;
+            try
+            {
+                info = Await(DeviceInformation.CreateFromIdAsync(id, RequestedProperties, DeviceInformationKind.AssociationEndpoint), UnpairTimeout);
+            }
+            catch (Exception ex) when (ex is not TimeoutException && ex.HResult == ElementNotFound)
+            {
+                info = null;
+            }
+
+            if (info is null)
+            {
+                Log.Info("Bluetooth: an endpoint was already gone when it was reached; counted as unpaired");
+                continue;
+            }
+
             var result = Await(info.Pairing.UnpairAsync(), UnpairTimeout);
             if (result.Status is not (DeviceUnpairingResultStatus.Unpaired or DeviceUnpairingResultStatus.AlreadyUnpaired))
             {

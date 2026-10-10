@@ -20,9 +20,13 @@
 
         <c:SettingsGroup Header="Visible Networks"
                          Visibility="{Binding ShowsLocationNotice, Converter={x:Static c:Converters.BoolToVisibility}}">
-            <c:SettingsRow Title="Windows needs location access to show nearby networks"
-                           Subtitle="Turn on location access for WinGnome (and for desktop apps) in Windows Settings, then press Refresh. Turning Wi-Fi on or off and disconnecting still work.">
-                <Button Content="Open Location Settings" Style="{DynamicResource SettingsButton}" Command="{Binding OpenLocationSettingsCommand}" />
+            <c:SettingsRow Title="{Binding LocationNoticeTitle}" Subtitle="{Binding LocationNoticeSubtitle}">
+                <StackPanel>
+                    <Button Content="Show nearby networks" Style="{DynamicResource SettingsButton}" Command="{Binding ShowNearbyCommand}"
+                            Visibility="{Binding OfferShowNearby, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                    <Button Content="Open Location Settings" Style="{DynamicResource SettingsButton}" Command="{Binding OpenLocationSettingsCommand}"
+                            Visibility="{Binding OffersLocationSettings, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                </StackPanel>
             </c:SettingsRow>
         </c:SettingsGroup>
 

@@ -58,6 +58,10 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
     private readonly DispatcherTimer _connectTimer;
     private WlanClient? _client;
     private RadioClient? _radio;
+    private WifiLocationProbe? _location;
+    private bool _userAskedNearby;
+    private bool _gatedCallsAllowed;
+    private bool _offerShowNearby;
     private int _open;
     private IReadOnlyList<string> _profiles = [];
     private WifiNetworkRow? _target;
@@ -94,6 +98,11 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
         AirplaneModeCommand = new RelayCommand(() => context.OpenLink("ms-settings:network-airplanemode"));
         HotspotCommand = new RelayCommand(() => context.OpenLink("ms-settings:network-mobilehotspot"));
         HiddenNetworkCommand = new RelayCommand(() => context.OpenLink(WifiLink));
+        ShowNearbyCommand = new RelayCommand(() =>
+        {
+            _userAskedNearby = true;
+            Reload(scanAfter: true);
+        });
     }
 
     public ObservableCollection<WifiNetworkItem> Networks { get; } = [];
@@ -114,6 +123,22 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
     public ICommand HotspotCommand { get; }
 
     public ICommand HiddenNetworkCommand { get; }
+
+    /// <summary>Makes the first location-gated call, which is what raises Windows' consent prompt.</summary>
+    public ICommand ShowNearbyCommand { get; }
+
+    /// <summary>True when access hasn't been asked for yet, so the notice offers "Show nearby networks" instead of a link to Settings.</summary>
+    public bool OfferShowNearby => _offerShowNearby;
+
+    public bool OffersLocationSettings => !_offerShowNearby;
+
+    public string LocationNoticeTitle => _offerShowNearby
+        ? "Windows needs your permission to show nearby networks"
+        : "Windows needs location access to show nearby networks";
+
+    public string LocationNoticeSubtitle => _offerShowNearby
+        ? "Windows will ask whether WinGnome may use your location. Turning Wi-Fi on or off and disconnecting work without it."
+        : "Turn on location access for WinGnome (and for desktop apps) in Windows Settings, then press Refresh. Turning Wi-Fi on or off and disconnecting still work.";
 
     public bool IsLoading
     {
@@ -197,8 +222,11 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
             return;
         }
 
+        _userAskedNearby = false;
         _client = new WlanClient();
         _client.Changed += OnWlanChanged;
+        _location = new WifiLocationProbe();
+        _location.Changed += OnLocationChanged;
         _radio = new RadioClient(RadioKind.WiFi);
         _radio.Changed += OnRadioChanged;
         ReadRadio();
@@ -210,17 +238,23 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
         Interlocked.Increment(ref _open);
         _refreshTimer.Stop();
         _connectTimer.Stop();
-        IReadOnlyList<WifiConnectCommand> cancel = _flow.Cancel(_flow.Attempt);
-        Run(cancel);
-        // Moves the flow on to a fresh attempt number, so a result that arrives after the panel closed is ignored.
-        _flow.Begin(WifiProfileKind.HandOff, isSaved: false, DateTimeOffset.Now);
+        // Windows carries on connecting after the panel closes, so a profile this attempt wrote stays (it can be
+        // forgotten from the list); the attempt's later results are ignored.
+        _flow.Abandon();
+
+        if (_location is { } location)
+        {
+            location.Changed -= OnLocationChanged;
+            location.Dispose();
+            _location = null;
+        }
 
         var client = _client;
         _client = null;
         if (client is not null)
         {
             client.Changed -= OnWlanChanged;
-            // A delete queued above still needs the handle, so the handle closes behind it on the writer's queue.
+            // A write or delete still queued needs the handle, so the handle closes behind it on the writer's queue.
             if (CanEdit)
             {
                 _writer.Run("release the Wi-Fi handle", () =>
@@ -249,6 +283,10 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
         OnPropertyChanged(nameof(ShowsLocationNotice));
         OnPropertyChanged(nameof(ShowsConnectedWithoutName));
         OnPropertyChanged(nameof(ShowsEmptyListNote));
+        OnPropertyChanged(nameof(OfferShowNearby));
+        OnPropertyChanged(nameof(OffersLocationSettings));
+        OnPropertyChanged(nameof(LocationNoticeTitle));
+        OnPropertyChanged(nameof(LocationNoticeSubtitle));
         OnPropertyChanged(nameof(HasRadio));
         OnPropertyChanged(nameof(CanToggleWifi));
         OnPropertyChanged(nameof(WifiSubtitle));
@@ -259,13 +297,19 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
 
     private void Reload(bool scanAfter = false)
     {
-        if (_client is not { } client)
+        if (_client is not { } client || _location is not { } location)
         {
             return;
         }
 
         IsLoading = true;
-        LoadAsync(() => client.ReadAsync().GetAwaiter().GetResult(), snapshot => Show(snapshot, scanAfter), onFailed: () =>
+        var asked = _userAskedNearby;
+        LoadAsync(() =>
+        {
+            // The access state decides whether the gated calls run at all: a refused call can re-raise Windows' dialog.
+            var decision = WifiLocationPolicy.Decide(location.Check(), asked);
+            return (Snapshot: client.ReadAsync(decision.CallGated).GetAwaiter().GetResult(), Decision: decision);
+        }, result => Show(result.Snapshot, result.Decision, scanAfter), onFailed: () =>
         {
             _loaded = true;
             IsLoading = false;
@@ -290,11 +334,13 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
         }, onFailed: () => IsBusy = false, longRunning: true, channel: "radio");
     }
 
-    private void Show(WlanSnapshot snapshot, bool scanAfter)
+    private void Show(WlanSnapshot snapshot, WifiLocationDecision decision, bool scanAfter)
     {
         _loaded = true;
         _hasAdapter = snapshot.HasAdapter;
-        _locationDenied = snapshot.AccessDenied;
+        _locationDenied = snapshot.AccessDenied || decision.ShowNotice;
+        _offerShowNearby = decision.OfferShowNearby && !snapshot.AccessDenied;
+        _gatedCallsAllowed = decision.CallGated && !snapshot.AccessDenied;
         _profiles = snapshot.Profiles;
         var rows = WifiNetworkList.Build(snapshot.Networks, snapshot.Profiles, snapshot.CurrentSsid);
         _connectedWithoutName = snapshot.IsConnected && snapshot.CurrentSsid is null && !rows.Any(r => r.IsConnected);
@@ -307,7 +353,7 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
 
         IsLoading = false;
         NotifyState();
-        if (scanAfter && snapshot.HasAdapter && !snapshot.AccessDenied)
+        if (scanAfter)
         {
             RequestScan();
         }
@@ -322,7 +368,8 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
 
     private void RequestScan()
     {
-        if (_client is not { } client || !_scanThrottle.TryBegin(DateTimeOffset.Now))
+        // No scan while the gated calls are off: it would hit the same location check.
+        if (_client is not { } client || !_gatedCallsAllowed || !_scanThrottle.TryBegin(DateTimeOffset.Now))
         {
             return;
         }
@@ -347,6 +394,21 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
             }
 
             // One re-read for a burst of events.
+            _refreshTimer.Stop();
+            _refreshTimer.Start();
+        });
+    }
+
+    private void OnLocationChanged()
+    {
+        var generation = Volatile.Read(ref _open);
+        Context.Dispatcher.BeginInvoke(() =>
+        {
+            if (generation != Volatile.Read(ref _open))
+            {
+                return;
+            }
+
             _refreshTimer.Stop();
             _refreshTimer.Start();
         });
@@ -411,10 +473,14 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
         Run(commands);
     }
 
-    /// <summary>Does what the flow said, in order. A password prompt ends the loop; the dialog's outcome continues it.</summary>
-    private void Run(IReadOnlyList<WifiConnectCommand> commands, WifiProfileDocument? document = null)
+    /// <summary>
+    /// Does what the flow said, in order. A password prompt ends the loop; the dialog's outcome continues it.
+    /// <paramref name="key"/> is a copy of the typed password that this method (through <see cref="QueueConnect"/>) owns
+    /// and always clears.
+    /// </summary>
+    private void Run(IReadOnlyList<WifiConnectCommand> commands, char[]? key = null)
     {
-        (WifiProfileDocument? Document, bool Overwrite)? pendingSet = null;
+        bool? overwrite = null;
         foreach (var command in commands)
         {
             switch (command.Kind)
@@ -426,34 +492,45 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
                     QueueDelete(_targetProfile);
                     break;
                 case WifiConnectCommandKind.PromptPassword:
-                    document?.Clear();
+                    ClearKey(key);
                     PromptAndContinue(command.Flag);
                     return;
                 case WifiConnectCommandKind.SetProfile:
-                    if (document is null && _target is { } open && !WifiSecurity.NeedsPassword(open.Kind))
+                    if (key is null && _target is { } open && !WifiSecurity.NeedsPassword(open.Kind))
                     {
-                        document = TryBuildDocument([]);
+                        key = [];
                     }
 
-                    if (document is null)
+                    if (key is null || !CanStore(key))
                     {
-                        // No profile to write (the password was refused or the name can't be stored): give the attempt up.
+                        // No key to write, or one that can't be stored: give the attempt up (nothing was written yet).
+                        ClearKey(key);
+                        _connectTimer.Stop();
                         Run(_flow.Cancel(_flow.Attempt));
                         return;
                     }
 
-                    pendingSet = (document, command.Flag);
+                    overwrite = command.Flag;
+                    _targetProfile = ProfileNameFor(command.Flag);
                     break;
                 case WifiConnectCommandKind.Connect:
-                    QueueConnect(pendingSet?.Document, pendingSet?.Overwrite ?? false);
-                    pendingSet = null;
-                    document = null;
+                    QueueConnect(overwrite is null ? null : key, overwrite ?? false);
+                    key = null;
+                    overwrite = null;
                     break;
             }
         }
 
-        // A set without a connect after it never happens, but a built buffer must not outlive the call.
-        document?.Clear();
+        // A key without a connect after it never happens, but the buffer must not outlive the call.
+        ClearKey(key);
+    }
+
+    private static void ClearKey(char[]? key)
+    {
+        if (key is not null)
+        {
+            Array.Clear(key);
+        }
     }
 
     private void PromptAndContinue(bool retry)
@@ -484,8 +561,7 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
                 }
 
                 var commands = _flow.PasswordSubmitted(attempt, DateTimeOffset.Now);
-                var document = commands.Count == 0 ? null : TryBuildDocument(typed);
-                Run(commands, document);
+                Run(commands, commands.Count == 0 ? null : (char[])typed.Clone());
                 return;
             }
             finally
@@ -495,62 +571,133 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
         }
     }
 
-    private WifiProfileDocument? TryBuildDocument(ReadOnlySpan<char> key)
+    /// <summary>True when the network's name and the key can go into a profile (no characters XML can't carry).</summary>
+    private bool CanStore(ReadOnlySpan<char> key)
     {
-        if (_target is not { } target)
+        if (_target is { } target && WifiProfileXml.IsXmlSafe(target.Name) && WifiProfileXml.IsXmlSafe(key))
         {
-            return null;
+            return true;
         }
 
-        try
-        {
-            // A saved profile being replaced keeps its name; a new one gets the SSID text (made unique if need be).
-            var name = target.IsSaved && target.ProfileName is { } saved
-                ? saved
-                : WifiProfileName.Choose(target.Name, target.Ssid, _profiles);
-            _targetProfile = name;
-            return WifiProfileXml.Build(target.Ssid, target.Kind, target.CipherAlgorithm, key, name);
-        }
-        catch (ArgumentException ex)
-        {
-            // The message never names the key.
-            Log.Warn($"Wi-Fi: could not build a profile for \"{target.Name}\": {ex.Message}");
-            Problem = "This network's name or password has characters Windows can't store in a Wi-Fi profile.";
-            return null;
-        }
+        Problem = "This network's name or password has characters Windows can't store in a Wi-Fi profile.";
+        return false;
     }
 
-    private void QueueConnect(WifiProfileDocument? document, bool overwrite)
+    /// <summary>A saved profile being replaced keeps its name; a new one gets the SSID text (made unique if need be).</summary>
+    private string ProfileNameFor(bool overwrite)
+    {
+        var target = _target!;
+        return overwrite && target.ProfileName is { } saved
+            ? saved
+            : WifiProfileName.Choose(target.Name, target.Ssid, _profiles);
+    }
+
+    private void QueueConnect(char[]? key, bool overwrite)
     {
         var client = _client;
         var profile = _targetProfile;
+        var target = _target;
         var attempt = _flow.Attempt;
-        if (client is null || profile is null || !CanEdit || _flow.State != WifiConnectState.Connecting)
+        if (client is null || profile is null || target is null || !CanEdit || _flow.State != WifiConnectState.Connecting)
         {
-            document?.Clear();
+            ClearKey(key);
             return;
         }
 
-        _connectingKey = _target is { } target ? SsidText.ToHex(target.Ssid) : null;
+        _connectingKey = SsidText.ToHex(target.Ssid);
         MarkConnecting();
         _connectTimer.Stop();
         _connectTimer.Start();
+        var writeFailed = false;
         _writer.Run($"connect to the Wi-Fi network \"{profile}\"", () =>
         {
             try
             {
-                if (document is not null && !client.SetProfileAsync(document, overwrite).GetAwaiter().GetResult())
+                if (key is not null)
                 {
-                    return false;
+                    if (!WriteProfile(client, target, profile, key, overwrite))
+                    {
+                        writeFailed = true;
+                        return false;
+                    }
+
+                    // Queued before the connect starts, so it reaches the flow before any outcome of the connect.
+                    Context.Dispatcher.BeginInvoke(() => _flow.ProfileWritten(attempt));
                 }
 
                 return client.ConnectAsync(profile).GetAwaiter().GetResult();
             }
             finally
             {
-                document?.Clear();
+                ClearKey(key);
             }
-        }, () => OnConnectRequestFailed(attempt));
+        }, () =>
+        {
+            if (writeFailed)
+            {
+                OnProfileWriteFailed(attempt);
+            }
+            else
+            {
+                OnConnectRequestFailed(attempt);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Writes the profile on the writer thread. A new network gets a whole profile; a saved one whose key was rejected
+    /// keeps its own XML and only its key is replaced, so its other settings survive.
+    /// </summary>
+    private static bool WriteProfile(WlanClient client, WifiNetworkRow target, string profile, char[] key, bool overwrite)
+    {
+        WifiProfileDocument? document = null;
+        try
+        {
+            if (overwrite)
+            {
+                var existing = client.GetProfileXmlAsync(profile).GetAwaiter().GetResult();
+                if (existing is null)
+                {
+                    return false;
+                }
+
+                document = WifiProfileXml.ReplaceKey(existing, target.Kind, key, profile);
+            }
+            else
+            {
+                document = WifiProfileXml.Build(target.Ssid, target.Kind, target.CipherAlgorithm, key, profile);
+            }
+
+            return client.SetProfileAsync(document, overwrite).GetAwaiter().GetResult();
+        }
+        catch (ArgumentException ex)
+        {
+            // The message never names the key.
+            Log.Warn($"Wi-Fi: could not build the profile \"{profile}\": {ex.Message}");
+            return false;
+        }
+        finally
+        {
+            document?.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Windows refused to save the profile, so this attempt owns nothing and deletes nothing: whatever is saved under
+    /// that name (the profile may already have existed) is not ours.
+    /// </summary>
+    private void OnProfileWriteFailed(int attempt)
+    {
+        if (attempt != _flow.Attempt)
+        {
+            return;
+        }
+
+        _connectTimer.Stop();
+        _connectingKey = null;
+        _flow.ProfileWriteFailed(attempt);
+        ReportWriteFailure($"saving the network \"{_target?.Name}\"");
+        Reload();
     }
 
     private void MarkConnecting()
