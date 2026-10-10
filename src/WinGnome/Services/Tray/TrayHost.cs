@@ -27,7 +27,10 @@ namespace WinGnome.Services.Tray;
 /// <para>
 /// At start the host broadcasts "TaskbarCreated", which makes running apps add their icons again (to us; Explorer
 /// receives them through forwarding and ignores the duplicates). The broadcast carries <see cref="OwnBroadcastMarker"/>
-/// in wParam (Explorer sends 0) so WinGnome's own listeners know Explorer did not actually restart.
+/// in wParam (Explorer sends 0) so WinGnome's own listeners know Explorer did not actually restart. Because the
+/// start-up broadcast can reach apps while Explorer's tray window is still in front (their icons then register with
+/// Explorer only), the host broadcasts once more ~2 s later — the start-up heal — when it is reliably in front;
+/// <see cref="TrayRebroadcastPolicy"/> decides when that is due and skips it when another broadcast made it redundant.
 /// </para>
 /// <para>
 /// Only one WinGnome process hosts the tray at a time (a session-wide mutex); a second instance waits and takes over
@@ -50,12 +53,16 @@ internal sealed class TrayHost : IDisposable
 
     private const nint ZOrderTimer = 1;
     private const nint RebroadcastTimer = 2;
+    private const nint StartupHealTimer = 3;
 
     /// <summary>Icons whose owner window is gone are dropped every 5 s, as Explorer does.</summary>
     private static readonly TimeSpan PruneInterval = TimeSpan.FromSeconds(5);
 
     /// <summary>After Explorer restarts, apps re-add their icons straight to its new (frontmost) tray; ask again.</summary>
     private const uint RebroadcastDelayMs = 2000;
+
+    /// <summary>When the one-shot start-up heal broadcast is due; mirrors <see cref="TrayRebroadcastPolicy.GraceMs"/>.</summary>
+    private const uint StartupHealDelayMs = 2000;
 
     private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(5);
 
@@ -84,6 +91,9 @@ internal sealed class TrayHost : IDisposable
     /// us back in front; shell activity (foreground changes, shell hook messages, AppBar changes) speeds it up.
     /// </summary>
     private readonly TrayFrontCheckSchedule _frontChecks = new();
+
+    /// <summary>When the one-shot start-up heal re-broadcast is due (the start-up broadcast can reach apps while Explorer is still in front).</summary>
+    private readonly TrayRebroadcastPolicy _rebroadcasts = new();
     private WinEventHook? _foregroundHook;
     private nint _instance;
     private nint _explorerTray;
@@ -295,7 +305,21 @@ internal sealed class TrayHost : IDisposable
         BringToFront();
         _lastPruneMs = Environment.TickCount64;
         AskAppsToRegister(hwnd);
+        ArmStartupHeal(hwnd);
         return true;
+    }
+
+    /// <summary>
+    /// The start-up broadcast can reach apps while Explorer's tray window is still frontmost (the front check
+    /// takes up to ~1 s to win, KI-019): their NIM_ADDs then register with Explorer only, and later tooltip
+    /// modifies adopt the icons here without a callback message, leaving them click-dead. Ask everyone once
+    /// more after the grace period, when we are reliably in front. Armed after the start-up broadcast:
+    /// OnHostStarted clears the cooldown that broadcast just started, because it is what the heal repairs.
+    /// </summary>
+    private void ArmStartupHeal(nint hwnd)
+    {
+        _rebroadcasts.OnHostStarted(Environment.TickCount64);
+        NativeMethods.SetTimer(hwnd, StartupHealTimer, StartupHealDelayMs, 0);
     }
 
     private void DestroyHostWindow()
@@ -312,6 +336,7 @@ internal sealed class TrayHost : IDisposable
         NativeMethods.DeregisterShellHookWindow(hwnd);
         NativeMethods.KillTimer(hwnd, ZOrderTimer);
         NativeMethods.KillTimer(hwnd, RebroadcastTimer);
+        NativeMethods.KillTimer(hwnd, StartupHealTimer);
         NativeMethods.RemoveProp(hwnd, HostProperty);
         NativeMethods.DestroyWindow(hwnd);
         NativeMethods.UnregisterClass(WindowClass, _instance);
@@ -380,6 +405,9 @@ internal sealed class TrayHost : IDisposable
     {
         if (_taskbarCreated != 0)
         {
+            // Every broadcast tells the policy: one that goes out while the heal is still pending makes the heal
+            // redundant (it re-registers everyone while we are in front, which is all the heal would do).
+            _rebroadcasts.OnBroadcastSent(Environment.TickCount64);
             NativeMethods.SendNotifyMessage(NativeMethods.HWND_BROADCAST, _taskbarCreated, OwnBroadcastMarker, 0);
         }
     }
@@ -500,6 +528,13 @@ internal sealed class TrayHost : IDisposable
             }
 
             var change = _registry.Apply(command, shellAccepted);
+            if (change.CreatedViaModify && !command.Has(NotifyIconFields.Message))
+            {
+                // Plain Log: this runs on the tray host's own thread, where ThrottledLog must not be used. Fires
+                // at most once per adopted entry: later modifies update it instead of creating it.
+                Log.Info($"Tray icon (owner 0x{command.Owner:X}, id {command.Id}) appeared without a callback (it registered before the host was in front); the startup heal should repair it");
+            }
+
             if (command.Message == NotifyIconMessage.SetVersion && change.Accepted)
             {
                 // Plain Log: this runs on the tray host's own thread, where ThrottledLog must not be used.
@@ -615,6 +650,19 @@ internal sealed class TrayHost : IDisposable
 
     private void OnTimer(nint hwnd, nint timer)
     {
+        if (timer == StartupHealTimer)
+        {
+            NativeMethods.KillTimer(hwnd, StartupHealTimer);
+            if (_rebroadcasts.ShouldSendHeal(Environment.TickCount64))
+            {
+                BringToFront();
+                Log.Info("Tray host re-asks apps to register (startup heal)");
+                AskAppsToRegister(hwnd);
+            }
+
+            return;
+        }
+
         if (timer == RebroadcastTimer)
         {
             NativeMethods.KillTimer(hwnd, RebroadcastTimer);
