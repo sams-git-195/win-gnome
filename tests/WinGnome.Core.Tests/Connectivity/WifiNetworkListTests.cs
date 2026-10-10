@@ -124,3 +124,25 @@ public class WifiNetworkListTests
     [InlineData(250, 4)]
     public void SignalLevel_Thresholds(int quality, int expected) => Assert.Equal(expected, WifiSignal.Level(quality));
 }
+
+public class WifiSignalTests
+{
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(1, 1)]
+    [InlineData(2, 2)]
+    [InlineData(3, 3)]
+    [InlineData(4, 4)]
+    [InlineData(5, 4)]
+    public void LevelFromBars_MapsWindowsBarsToFourLevels(int bars, int expected) =>
+        Assert.Equal(expected, WifiSignal.LevelFromBars(bars));
+
+    [Theory]
+    [InlineData(-1, 0)]
+    [InlineData(9, 4)]
+    public void LevelFromBars_OutOfRange_IsClamped(int bars, int expected) =>
+        Assert.Equal(expected, WifiSignal.LevelFromBars(bars));
+
+    [Fact]
+    public void LevelFromBars_NoReading_IsNull() => Assert.Null(WifiSignal.LevelFromBars(null));
+}

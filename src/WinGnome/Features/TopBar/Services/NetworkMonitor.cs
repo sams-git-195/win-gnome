@@ -1,19 +1,27 @@
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Windows.Threading;
+using WinRtNetworkInformation = Windows.Networking.Connectivity.NetworkInformation;
 using WinGnome.Core.TopBar;
 using WinGnome.Infrastructure;
 
 namespace WinGnome.Features.TopBar.Services;
 
-/// <summary>Tracks whether the machine is online over Wi-Fi, a wire, or not at all.</summary>
+/// <summary>
+/// Tracks whether the machine is online over Wi-Fi, a wire, or not at all, and how strong the Wi-Fi signal is. The
+/// signal comes from <c>ConnectionProfile.GetSignalBars</c>, which unlike the WLAN API does not need location access.
+/// Windows raises no event when only the signal changes, so while on Wi-Fi a slow one-shot timer re-reads it.
+/// </summary>
 internal sealed class NetworkMonitor : IDisposable
 {
     // Address changes arrive in bursts (DHCP, IPv6 privacy addresses, adapters coming up); coalesce them.
     private static readonly TimeSpan Debounce = TimeSpan.FromMilliseconds(500);
 
     private readonly Dispatcher _dispatcher;
+    private static readonly TimeSpan SignalInterval = TimeSpan.FromSeconds(45);
+
     private readonly DispatcherTimer _debounce;
+    private readonly DispatcherTimer _signalTimer;
     private bool _disposed;
     private int _probeCount;
 
@@ -21,12 +29,16 @@ internal sealed class NetworkMonitor : IDisposable
     {
         _dispatcher = dispatcher;
         _debounce = new DispatcherTimer(Debounce, DispatcherPriority.Background, OnDebounceElapsed, dispatcher) { IsEnabled = false };
+        _signalTimer = new DispatcherTimer(SignalInterval, DispatcherPriority.Background, OnSignalElapsed, dispatcher) { IsEnabled = false };
         NetworkChange.NetworkAddressChanged += OnNetworkChanged;
         NetworkChange.NetworkAvailabilityChanged += OnNetworkChanged;
         _ = RefreshAsync();
     }
 
     public NetworkConnection Connection { get; private set; }
+
+    /// <summary>Windows' 0 to 5 signal bars for the Wi-Fi connection, or null when not on Wi-Fi or unreadable.</summary>
+    public int? SignalBars { get; private set; }
 
     /// <summary>Raised on the UI thread when <see cref="Connection"/> changes.</summary>
     public event EventHandler? Changed;
@@ -49,31 +61,68 @@ internal sealed class NetworkMonitor : IDisposable
         _ = RefreshAsync();
     }
 
+    private void OnSignalElapsed(object? sender, EventArgs e)
+    {
+        _signalTimer.Stop();
+        _ = RefreshAsync();
+    }
+
     private async Task RefreshAsync()
     {
         // Enumerating adapters and their IP properties can take tens of milliseconds; keep it off the UI thread.
         // Probes may overlap; only the latest one may publish, or a slow stale probe could overwrite a newer state.
         var probe = ++_probeCount;
-        var connection = await Task.Run(Probe).ConfigureAwait(true);
-        if (_disposed || probe != _probeCount || connection is not { } value || value == Connection)
+        var result = await Task.Run(Probe).ConfigureAwait(true);
+        if (_disposed || probe != _probeCount)
         {
             return;
         }
 
-        Connection = value;
+        // Re-arm only while on Wi-Fi; a failed probe keeps whatever was last known.
+        var connection = result?.Connection ?? Connection;
+        if (connection == NetworkConnection.Wireless)
+        {
+            _signalTimer.Start();
+        }
+
+        if (result is not { } probed || (probed.Connection == Connection && probed.SignalBars == SignalBars))
+        {
+            return;
+        }
+
+        Connection = probed.Connection;
+        SignalBars = probed.SignalBars;
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    private static NetworkConnection? Probe()
+    private readonly record struct ProbeResult(NetworkConnection Connection, int? SignalBars);
+
+    private static ProbeResult? Probe()
     {
         try
         {
             var adapters = NetworkInterface.GetAllNetworkInterfaces().Select(Describe).ToList();
-            return NetworkStatus.Evaluate(adapters);
+            var connection = NetworkStatus.Evaluate(adapters);
+            return new ProbeResult(connection, connection == NetworkConnection.Wireless ? ReadSignalBars() : null);
         }
         catch (NetworkInformationException ex)
         {
             Log.Warn("Could not enumerate network adapters", ex);
+            return null;
+        }
+    }
+
+    private static int? ReadSignalBars()
+    {
+        try
+        {
+            var profile = WinRtNetworkInformation.GetInternetConnectionProfile();
+            return profile is { IsWlanConnectionProfile: true } && profile.GetSignalBars() is { } bars ? (int)bars : null;
+        }
+        catch (Exception ex)
+        {
+            // Feature boundary: WinRT can throw COMException or UnauthorizedAccessException; the icon falls back to the full wedge.
+            Log.Warn("Could not read the Wi-Fi signal bars", ex);
             return null;
         }
     }
@@ -99,5 +148,6 @@ internal sealed class NetworkMonitor : IDisposable
         NetworkChange.NetworkAddressChanged -= OnNetworkChanged;
         NetworkChange.NetworkAvailabilityChanged -= OnNetworkChanged;
         _debounce.Stop();
+        _signalTimer.Stop();
     }
 }

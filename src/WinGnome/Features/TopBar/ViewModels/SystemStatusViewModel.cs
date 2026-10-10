@@ -31,7 +31,7 @@ internal sealed class SystemStatusViewModel : ObservableObject, IDisposable
     }
 
     // ---- Network ----------------------------------------------------------------------------
-    public string NetworkIcon => StatusIcons.ForNetwork(_network.Connection);
+    public string NetworkIcon => StatusIcons.ForNetwork(_network.Connection, _network.SignalBars);
 
     public bool IsWifiConnected => _network.Connection == NetworkConnection.Wireless;
 

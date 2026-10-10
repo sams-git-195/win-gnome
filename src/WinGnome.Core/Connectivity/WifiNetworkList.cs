@@ -58,6 +58,12 @@ public static class WifiSignal
 {
     /// <summary>1 to 25 is one bar, 26 to 50 two, 51 to 75 three, above that four; zero or less is none.</summary>
     public static int Level(int quality) => quality <= 0 ? 0 : Math.Min(4, (quality + 24) / 25);
+
+    /// <summary>
+    /// The same 0 to 4 levels for Windows' own 0 to 5 bars (<c>ConnectionProfile.GetSignalBars</c>), by treating each
+    /// bar as 20 %, so the top bar and the Wi-Fi panel agree on thresholds. Null stays null: no reading, no claim.
+    /// </summary>
+    public static int? LevelFromBars(int? bars) => bars is { } value ? Level(value * 20) : null;
 }
 
 /// <summary>Turns the raw scan results into the rows the panel lists.</summary>
