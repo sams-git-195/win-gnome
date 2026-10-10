@@ -24,6 +24,12 @@ internal static partial class NativeMethods
     // ---- Power / session --------------------------------------------------------------------
     public const uint EWX_LOGOFF = 0x00000000;
     public const uint SHTDN_REASON_FLAG_PLANNED = 0x80000000;
+    public const uint SHTDN_REASON_MAJOR_OPERATINGSYSTEM = 0x00020000;
+    public const uint SHTDN_REASON_MINOR_UPGRADE = 0x00000003;
+    public const uint SHUTDOWN_RESTART = 0x00000004;
+    public const uint SHUTDOWN_POWEROFF = 0x00000008;
+    public const uint SHUTDOWN_INSTALL_UPDATES = 0x00000040;
+    public const string SE_SHUTDOWN_NAME = "SeShutdownPrivilege";
     public const int SC_MONITORPOWER = 0xF170;
     public const int MONITOR_POWER_OFF = 2;
     public static readonly nint HWND_BROADCAST = 0xFFFF;
@@ -48,6 +54,10 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool ExitWindowsEx(uint flags, uint reason);
+
+    /// <summary>Needs SeShutdownPrivilege enabled on the calling token. Returns a Win32 error code (0 on success), not a BOOL.</summary>
+    [LibraryImport("advapi32.dll", EntryPoint = "InitiateShutdownW", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial uint InitiateShutdown(string? machineName, string? message, uint gracePeriod, uint flags, uint reason);
 
     // The parameters and return value are BOOLEAN (one byte), not BOOL.
     [LibraryImport("powrprof.dll", SetLastError = true)]

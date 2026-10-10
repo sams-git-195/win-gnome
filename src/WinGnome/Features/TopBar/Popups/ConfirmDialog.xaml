@@ -29,6 +29,12 @@
                 <TextBlock x:Name="TitleText" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" />
                 <TextBlock x:Name="MessageText" Margin="0,10,0,22" FontSize="13.5" TextWrapping="Wrap" TextAlignment="Center"
                            Foreground="{DynamicResource SecondaryForegroundBrush}" />
+                <!-- Optional extra choice (e.g. "Install pending software updates"); collapsed unless the caller supplies a label. -->
+                <DockPanel x:Name="OptionRow" Margin="0,-6,0,18" Visibility="Collapsed">
+                    <CheckBox x:Name="OptionCheck" DockPanel.Dock="Right" Style="{DynamicResource ToggleSwitch}" VerticalAlignment="Center"
+                              AutomationProperties.LabeledBy="{Binding ElementName=OptionText}" />
+                    <TextBlock x:Name="OptionText" FontSize="13.5" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,12,0" />
+                </DockPanel>
                 <UniformGrid Columns="2">
                     <Button Content="Cancel" IsCancel="True" Style="{StaticResource DialogButton}" Margin="0,0,6,0"
                             Click="OnCancel" />

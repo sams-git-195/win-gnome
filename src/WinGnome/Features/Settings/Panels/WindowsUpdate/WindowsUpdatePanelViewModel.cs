@@ -43,6 +43,12 @@ internal sealed class WindowsUpdatePanelViewModel : SystemPanelViewModel
 
     public IReadOnlyList<string> PendingTitles => _lines?.PendingTitles ?? [];
 
+    public string? Optional => _lines?.Optional;
+
+    public bool HasOptional => _lines?.Optional is not null;
+
+    public IReadOnlyList<string> OptionalTitles => _lines?.OptionalTitles ?? [];
+
     public string Restart => _lines?.Restart ?? "";
 
     public ICommand CheckCommand { get; }
@@ -80,12 +86,13 @@ internal sealed class WindowsUpdatePanelViewModel : SystemPanelViewModel
     {
         try
         {
-            return UpdateStatusService.Read(SearchTimeout);
+            var status = UpdateStatusService.Read(SearchTimeout);
+            return status with { RebootRequired = PendingRestartReader.Read(status.RebootRequired).RestartNeeded };
         }
         catch (Exception ex)
         {
             Log.Warn("Windows Update: could not read the status", ex);
-            return new UpdateStatus(null, null, [], false, ex.HResult);
+            return new UpdateStatus(null, null, [], [], false, ex.HResult);
         }
     }
 }
