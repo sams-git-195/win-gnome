@@ -14,4 +14,10 @@ internal interface IDialogService
 
     /// <summary>Lets the user pick an installed app, hiding the ones in <paramref name="hiddenLaunchIds"/>. Returns null when cancelled.</summary>
     AppEntry? PickApp(IReadOnlyCollection<string> hiddenLaunchIds);
+
+    /// <summary>
+    /// Asks for the password of the Wi-Fi network <paramref name="networkName"/>. Returns the typed characters, which the
+    /// caller owns and must clear, or null when cancelled. <paramref name="note"/> explains why it is asked again.
+    /// </summary>
+    char[]? PromptWifiPassword(string networkName, string? note);
 }

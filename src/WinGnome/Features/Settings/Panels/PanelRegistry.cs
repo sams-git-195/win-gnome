@@ -2,6 +2,7 @@ using WinGnome.Core.ControlCenter;
 using WinGnome.Features.Settings.Panels.About;
 using WinGnome.Features.Settings.Panels.Accessibility;
 using WinGnome.Features.Settings.Panels.Apps;
+using WinGnome.Features.Settings.Panels.Bluetooth;
 using WinGnome.Features.Settings.Panels.Appearance;
 using WinGnome.Features.Settings.Panels.DateAndTime;
 using WinGnome.Features.Settings.Panels.Displays;
@@ -16,6 +17,7 @@ using WinGnome.Features.Settings.Panels.RegionLanguage;
 using WinGnome.Features.Settings.Panels.RemovableMedia;
 using WinGnome.Features.Settings.Panels.Sound;
 using WinGnome.Features.Settings.Panels.WindowsUpdate;
+using WinGnome.Features.Settings.Panels.Wifi;
 
 namespace WinGnome.Features.Settings.Panels;
 
@@ -47,5 +49,7 @@ internal static class PanelRegistry
             [PanelIds.Accessibility] = context => new AccessibilityPanelViewModel(context),
             [PanelIds.RegionLanguage] = context => new RegionLanguagePanelViewModel(context),
             [PanelIds.WindowsUpdate] = context => new WindowsUpdatePanelViewModel(context),
+            [PanelIds.Wifi] = context => new WifiPanelViewModel(context),
+            [PanelIds.Bluetooth] = context => new BluetoothPanelViewModel(context),
         };
 }

@@ -17,8 +17,8 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity. A resolve
 detail section below the Resolved table when the measured evidence behind the fix is worth keeping (KI-100,
 KI-102).
 
-IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-107 all
-have entries now). The next free ID is **KI-108**; grep the specs for `KI-0` before allocating one.
+IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-111 all
+have entries now). The next free ID is **KI-112**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
@@ -76,6 +76,10 @@ have entries now). The next free ID is **KI-108**; grep the specs for `KI-0` bef
 | [KI-105](#ki-105) | S4 | Tray | An icon whose registration fell in a front gap stays click-dead until the app re-registers, a second matching unflagged update arrives, or the built-in fallback knows its owner | Open |
 | [KI-106](#ki-106) | S4 | Tray | Tray callback learning reads unflagged wire fields: a range-gated, twice-confirmed heuristic | By design |
 | [KI-107](#ki-107) | S4 | Settings, Top bar | Install-on-shutdown detection reads the undocumented Update Orchestrator `ShutdownFlyoutOptions` value | By design |
+| [KI-108](#ki-108) | S4 | Settings | The Wi-Fi list and the connected network's name need location access on Windows 11 24H2+; `ERROR_ACCESS_DENIED` may also be policy | By design |
+| [KI-109](#ki-109) | S4 | Settings | Wi-Fi panel v1 leaves out Saved Networks, captive-portal sign-in and handle reopen, uses a link for Airplane Mode, and its write paths aren't verified live | Open |
+| [KI-110](#ki-110) | S4 | Settings | Bluetooth panel v1 doesn't pair, discover, connect or show battery, and its radio and Remove Device paths aren't verified live | Open |
+| [KI-111](#ki-111) | S4 | Settings | Wi-Fi profile leftovers: a crash mid-connect can leave a just-created or overwritten profile saved, and a denied all-user write falls back to a per-user profile | Open |
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -845,6 +849,50 @@ not the switch, because switching it off couldn't stop them.
 - *Not verified live:* whether `SHUTDOWN_INSTALL_UPDATES` installs an Orchestrator-staged update on Windows 11
   rather than just restarting. Check it the next time Start offers "Update and restart" (switch on, Restart, confirm
   the update shows as installed afterwards) and record the result here.
+
+### KI-108
+**The Wi-Fi list and the connected network's name need location access on Windows 11 24H2+; `ERROR_ACCESS_DENIED` may also be policy** · S4 · Settings · By design
+
+Windows gates `WlanGetAvailableNetworkList` and the current-connection query on location access for desktop apps. Before any
+gated call the panel reads `AppCapability("wiFiControl").CheckAccess()` (Core `WifiLocationPolicy` decides): allowed or unknown
+state calls as usual; a denied state (by user or system) skips the list, the current-connection query and scans entirely, so a
+refused call can't re-raise Windows' "Location has been turned off" dialog or keep the location icon lit, and shows the notice
+with *Open Location Settings*; a not-yet-asked state shows the notice with *Show nearby networks*, whose click makes the first
+gated call (what raises Windows' consent prompt, attributed to WinGnome). The state is re-read when Windows reports a change
+while the panel is open. The connected network's name is then tried through `WlanConnectionProfileDetails` (it may need
+location too, in which case the row says "Connected" without a name). A call that still returns `ERROR_ACCESS_DENIED` (policy
+can cause it too) shows the same notice, so the wording is hedged. On the development machine the state reads
+`UserPromptRequired`; with an earlier build the unguarded call had produced Windows' own "Location has been turned off" dialog.
+Whether `wiFiControl` is the capability that tracks the gate for unpackaged apps is unverified beyond that read. Turning Wi-Fi
+on or off, Airplane Mode and *Forget* still work without location.
+
+### KI-109
+**Wi-Fi panel v1 leaves out Saved Networks, captive-portal sign-in and handle reopen, uses a link for Airplane Mode, and its write paths aren't verified live** · S4 · Settings · Open
+
+Not built from spec 0019: the *Saved Networks…* dialog (each saved row has *Forget*), captive-portal detection and *Sign In*
+(`INetworkListManager`), reopening the WLAN handle after a WlanSvc restart or resume (reopen the panel), a native Airplane Mode
+switch (undocumented `IRadioManager`; the row links to Windows Settings). The Wi-Fi switch uses `Windows.Devices.Radios` because
+`WlanSetInterface` couldn't be checked without toggling the radio. Connect, disconnect, forget, the switch and the WPA3 profile
+schema (written in the v1 namespace) have not been exercised on a live network; the Core rules are tested.
+
+### KI-110
+**Bluetooth panel v1 doesn't pair, discover, connect or show battery, and its radio and Remove Device paths aren't verified live** · S4 · Settings · Open
+
+The panel lists paired devices and removes pairings (`UnpairAsync`); *Add Device…* and *Connect in Windows Settings* open Windows
+Settings. Discovery, WinGnome's pairing dialogs, device icons and battery levels (undocumented property on the device node) are
+deferred. The Bluetooth switch, the paired watchers and Remove Device were not exercised against real devices.
+
+### KI-111
+**Wi-Fi profile leftovers: a crash mid-connect can leave a just-created or overwritten profile saved, and a denied all-user write falls back to a per-user profile** · S4 · Settings · Open
+
+A failed attempt deletes the profile it created or overwrote, but only once Windows confirmed the write (a refused write owns
+nothing, so a profile that already existed under that name is never deleted) and never a saved profile used as is. A crash or
+kill between writing the profile and the result leaves it saved, and so does closing the panel (or switching panels) while
+Windows is still connecting: the attempt is abandoned, not cancelled, because Windows carries on; the profile can be forgotten
+from the list. Profiles are written as all-user profiles and, when Windows denies that for a *new* profile, as per-user
+profiles, which other accounts on the PC don't see; an overwrite never falls back (it would leave a same-name duplicate) and
+shows the problem banner. Overwriting a saved profile after an authentication failure replaces only its key (the rest of the
+saved XML is kept), so the old, already rejected key is lost.
 
 ## Resolved
 

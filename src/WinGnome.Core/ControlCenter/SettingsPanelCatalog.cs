@@ -11,9 +11,9 @@ public static class SettingsPanelCatalog
     /// <summary>All panels in sidebar order, grouped by <see cref="PanelGroup"/>.</summary>
     public static IReadOnlyList<SettingsPanel> All { get; } =
     [
-        Link(PanelIds.Wifi, "Wi-Fi", "", PanelGroup.Connectivity, "ms-settings:network-wifi", "wireless", "wlan", "hotspot", "network"),
+        Native(PanelIds.Wifi, "Wi-Fi", "", PanelGroup.Connectivity, "ms-settings:network-wifi", "wireless", "wlan", "wifi", "hotspot", "network", "airplane", "airplane mode", "flight mode"),
         Link(PanelIds.Network, "Network", "", PanelGroup.Connectivity, "ms-settings:network-status", "ethernet", "vpn", "proxy", "internet"),
-        Link(PanelIds.Bluetooth, "Bluetooth", "", PanelGroup.Connectivity, "ms-settings:bluetooth", "pair", "devices", "headphones"),
+        Native(PanelIds.Bluetooth, "Bluetooth", "", PanelGroup.Connectivity, "ms-settings:bluetooth", "pair", "devices", "paired devices", "headphones", "speaker"),
 
         Native(PanelIds.Displays, "Displays", "", PanelGroup.Devices, "ms-settings:display", "monitor", "screen", "resolution", "refresh rate", "primary", "arrangement", "scale"),
         Native(PanelIds.Sound, "Sound", "", PanelGroup.Devices, "ms-settings:sound", "volume", "speakers", "output", "input", "microphone", "audio"),

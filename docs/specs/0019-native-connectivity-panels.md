@@ -1,6 +1,34 @@
 # 0019 — Native Wi-Fi, Network and Bluetooth panels, and the Settings redirect
 
 Status: Agreed — user decisions 2026-10-09; advisor review (Fable) applied 2026-10-09. Delivered in three parts; part (a) after spec 0016 WP2.
+Implemented 2026-10-10 on branch `feature/0019-wifi-bluetooth`: part (b) Wi-Fi and the Bluetooth panel of part (c). **Deferred:** part (a)
+(Win+I redirect, depends on spec 0016) and the Network panel (wired, VPN, proxy) of part (c); `Network` stays a link.
+Live write checks (Wi-Fi and Bluetooth switches, connect, forget, remove device) are pending (KI-108 to KI-111).
+
+### Implementation notes (parts b and c, as built)
+Deviations from the design below, all deliberate to keep v1 small and safe:
+- **Radios**: spike item 2 (`WlanSetInterface` as a standard user) can't be checked without toggling the radio, so the fallback
+  decision was taken: **both** Wi-Fi and Bluetooth use `Windows.Devices.Radios` through `RadioClient`; the Wi-Fi panel therefore
+  loads WinRT. The Wi-Fi list itself is still the Native Wifi API.
+- **Airplane Mode** is the link row to `ms-settings:network-airplanemode` (no `IRadioManager`).
+- **Wi-Fi not built**: the *Saved Networks…* dialog (*Forget* is on each saved row), captive-portal detection and *Sign In*
+  (`INetworkListManager`), reopening the WLAN handle after a WlanSvc restart or resume (the panel shows the problem banner; reopen
+  the panel), the 802.1X hand-off for *saved* enterprise networks (they only show as "Enterprise").
+- **Bluetooth not built**: discovery and pairing dialogs (*Add Device…* opens `ms-settings:bluetooth`), battery levels, device
+  category icons, `DeviceWatcherLifecycle` and `PairingPrompt` in Core; only the two paired watchers exist (stopped in the
+  background, then released). A paired device that isn't connected offers *Connect in Windows Settings*.
+- **Profile ownership**: `WifiConnectFlow` owns a profile only after `ProfileWritten` (Windows confirmed `WlanSetProfile`);
+  `ProfileWriteFailed` fails the attempt and deletes nothing. Closing or leaving the panel mid-attempt is `Abandon()`: no
+  delete (Windows keeps connecting), results ignored. An overwrite after an authentication failure reads the saved XML with
+  `WlanGetProfile` and replaces only the `sharedKey` (`WifiProfileXml.ReplaceKey`), never falls back to a per-user profile,
+  and a saved enterprise network connects from the panel (only unsaved ones hand off).
+- **Location**: `AppCapability("wiFiControl").CheckAccess()` decides (Core `WifiLocationPolicy`) whether the list, current
+  connection and scans may be called at all; see KI-108.
+- Reason codes: the values in `WlanReasons` were checked against `wlanapi.h`/`l2cmn.h` of SDK 10.0.26100 (AC 0x20000, MSM 0x30000,
+  MSMSEC 0x40000, 802.1X 0x50000, profile 0x80000).
+- Spike item 1 (read-only, this machine): `WlanGetAvailableNetworkList` returned `ERROR_ACCESS_DENIED` because location services are
+  switched off by the device administrator, and Windows showed its "Location has been turned off" dialog naming WinGnome; the panel
+  showed the location notice as designed.
 
 ## Problem
 Spec 0015 left the Connectivity group (Wi-Fi, Network, Bluetooth) as links to Windows Settings, so the most-used
@@ -138,14 +166,14 @@ panel is open.
 - **Airplane mode: no documented API.** `Windows.Devices.Radios` switches radios one by one but doesn't set
   Windows' airplane state. If spike item 3 is clean, use the undocumented `IRadioManager` (`RadioManagementAPI.dll`,
   `Get/SetSystemRadioState`) isolated in `AirplaneModeApi` like `PowerModeApi`: resolved at panel open, failure →
-  link row. Otherwise v1 ships the link to `ms-settings:network-airplanemode`. **KI-081** (S4).
+  link row. Otherwise v1 ships the link to `ms-settings:network-airplanemode`. **KI-109** (S4).
 - **Location (24H2+)**: per Microsoft's "Changes to API behavior for Wi-Fi access and location", desktop apps calling
   `WlanGetAvailableNetworkList`/`WlanGetNetworkBssList`/`WlanQueryInterface(current_connection)` need location
   permission. The first such call from WinGnome is what makes Windows raise its consent prompt (once); WinGnome does
   nothing else to request it (no `Geolocator`). Afterwards a denial returns `ERROR_ACCESS_DENIED`. That code can also
   come from policy or other access checks, so the panel maps it to the location notice with hedged wording ("Windows
   needs location access…" plus *Open Location Settings*) and logs the call and code. The connected network's SSID is
-  gated the same way: on denial the connected row omits the name. **KI-082** (S4).
+  gated the same way: on denial the connected row omits the name. **KI-108** (S4).
 - **Connectivity (captive / limited)**: `INetworkListManager.GetConnectivity` and per-network connectivity
   (documented COM, `NLM_CONNECTIVITY_IPV4_INTERNET` vs `…_LOCALNETWORK`, and the `NA_InternetConnectivityV4/V6`
   property's `NLM_INTERNET_CONNECTIVITY_WEBHIJACK` flag for "Sign in required"), declared in
@@ -188,7 +216,7 @@ panel is open.
   node**, not the association endpoint, so `BluetoothBattery` maps the AEP's `ContainerId` to device nodes
   (`DeviceInformation.FindAllAsync` with `DeviceInformationKind.Device` and an AQS on
   `System.Devices.ContainerId`, requesting that key) and takes the first present value. Undocumented, isolated,
-  missing → no battery shown. **KI-083** (S4).
+  missing → no battery shown. **KI-110** (S4).
 - **Win+I: through spec 0016's shared input host.** Explorer owns Win+I, so `RegisterHotKey` normally fails while
   Explorer runs. Win+I is one more entry in 0016's Core `ShortcutRouter`: `ShortcutConfig` gains a single flag
   **`RedirectWinI`**; when set, the router swallows I (down and its matching up) with Win held and no
@@ -339,7 +367,7 @@ panel is open.
   force-kill. Profile writes are all-user profiles (as Windows Settings creates), falling back to a per-user profile
   when the all-user write is denied; never elevation. The only cleanup is `WifiConnectFlow`'s deletion of a profile
   it created or overwrote for a failed attempt; a crash in between leaves that profile saved (harmless and
-  forgettable; **KI-084**). Overwriting a saved profile after an authentication failure loses the old (already
+  forgettable; **KI-111**). Closing the panel while connecting abandons the attempt without deleting (KI-111). Overwriting a saved profile after an authentication failure loses the old (already
   rejected) key; that is the intended outcome.
 - Proxy: a wrong manual proxy can break browsing. The dialog validates before *Apply*, always keeps
   `PROXY_TYPE_DIRECT` as fallback, reads back after the write (mismatch → banner), and the README notes
@@ -440,13 +468,13 @@ All parts:
 - *Show password* necessarily puts the key in a WPF `TextBox` (a managed string) while shown; it is cleared on hide
   and on close. Accepted residual risk.
 - Per-user fallback profiles are invisible to other accounts on the PC (unlike Windows Settings' all-user profiles);
-  logged and listed in KI-084.
+  logged and listed in KI-111.
 - VPN via `rasphone.exe` shows Windows' classic dialer window for entries that prompt; that is the price of never
   handling VPN secrets. A VPN type `rasphone` can't dial falls back to `ms-settings:network-vpn`.
-- KNOWN_ISSUES entries: **KI-081** (S4) airplane mode via undocumented `IRadioManager` (or link-only in v1);
-  **KI-082** (S4) Wi-Fi list and connected SSID need location access on 24H2+, WinGnome's first list call raises
+- KNOWN_ISSUES entries: **KI-109** (S4) airplane mode via undocumented `IRadioManager` (or link-only in v1);
+  **KI-108** (S4) Wi-Fi list and connected SSID need location access on 24H2+, WinGnome's first list call raises
   Windows' prompt and then appears in Windows' location activity list, `ERROR_ACCESS_DENIED` may also be policy;
-  **KI-083** (S4) undocumented Bluetooth battery key on the device node; **KI-084** (S4) Wi-Fi profile leftovers and
+  **KI-110** (S4) undocumented Bluetooth battery key on the device node; **KI-111** (S4) Wi-Fi profile leftovers and
   scope: a crash mid-connect can leave a just-created or overwritten profile saved, a denied all-user write falls back
   to a per-user profile, and *Forget* of another user's all-user profile may be refused.
 - Part (a) cannot start its integration WP until spec 0016 WP1a and WP2 have landed; if 0016 slips, part (a) slips

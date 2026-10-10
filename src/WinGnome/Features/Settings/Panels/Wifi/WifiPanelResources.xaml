@@ -1,0 +1,7 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:wifi="clr-namespace:WinGnome.Features.Settings.Panels.Wifi">
+    <DataTemplate DataType="{x:Type wifi:WifiPanelViewModel}">
+        <wifi:WifiPanel />
+    </DataTemplate>
+</ResourceDictionary>
