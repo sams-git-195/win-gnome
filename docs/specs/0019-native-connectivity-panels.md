@@ -1,6 +1,27 @@
 # 0019 — Native Wi-Fi, Network and Bluetooth panels, and the Settings redirect
 
 Status: Agreed — user decisions 2026-10-09; advisor review (Fable) applied 2026-10-09. Delivered in three parts; part (a) after spec 0016 WP2.
+Implemented 2026-10-10 on branch `feature/0019-wifi-bluetooth`: part (b) Wi-Fi and the Bluetooth panel of part (c). **Deferred:** part (a)
+(Win+I redirect, depends on spec 0016) and the Network panel (wired, VPN, proxy) of part (c); `Network` stays a link.
+Live write checks (Wi-Fi and Bluetooth switches, connect, forget, remove device) are pending (KI-108 to KI-111).
+
+### Implementation notes (parts b and c, as built)
+Deviations from the design below, all deliberate to keep v1 small and safe:
+- **Radios**: spike item 2 (`WlanSetInterface` as a standard user) can't be checked without toggling the radio, so the fallback
+  decision was taken: **both** Wi-Fi and Bluetooth use `Windows.Devices.Radios` through `RadioClient`; the Wi-Fi panel therefore
+  loads WinRT. The Wi-Fi list itself is still the Native Wifi API.
+- **Airplane Mode** is the link row to `ms-settings:network-airplanemode` (no `IRadioManager`).
+- **Wi-Fi not built**: the *Saved Networks…* dialog (*Forget* is on each saved row), captive-portal detection and *Sign In*
+  (`INetworkListManager`), reopening the WLAN handle after a WlanSvc restart or resume (the panel shows the problem banner; reopen
+  the panel), the 802.1X hand-off for *saved* enterprise networks (they only show as "Enterprise").
+- **Bluetooth not built**: discovery and pairing dialogs (*Add Device…* opens `ms-settings:bluetooth`), battery levels, device
+  category icons, `DeviceWatcherLifecycle` and `PairingPrompt` in Core; only the two paired watchers exist (stopped in the
+  background, then released). A paired device that isn't connected offers *Connect in Windows Settings*.
+- Reason codes: the values in `WlanReasons` were checked against `wlanapi.h`/`l2cmn.h` of SDK 10.0.26100 (AC 0x20000, MSM 0x30000,
+  MSMSEC 0x40000, 802.1X 0x50000, profile 0x80000).
+- Spike item 1 (read-only, this machine): `WlanGetAvailableNetworkList` returned `ERROR_ACCESS_DENIED` because location services are
+  switched off by the device administrator, and Windows showed its "Location has been turned off" dialog naming WinGnome; the panel
+  showed the location notice as designed.
 
 ## Problem
 Spec 0015 left the Connectivity group (Wi-Fi, Network, Bluetooth) as links to Windows Settings, so the most-used

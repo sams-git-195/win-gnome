@@ -18,7 +18,7 @@ detail section below the Resolved table when the measured evidence behind the fi
 KI-102).
 
 IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-106 all
-have entries now). The next free ID is **KI-107**; grep the specs for `KI-0` before allocating one.
+have entries now). The next free ID is **KI-112**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
@@ -75,6 +75,10 @@ have entries now). The next free ID is **KI-107**; grep the specs for `KI-0` bef
 | [KI-104](#ki-104) | S4 | Top bar | The custom-logo mask inverts a light mark on a dark background, one stray transparent pixel takes the alpha rule, and the size guards don't bound the decompressed middle | By design |
 | [KI-105](#ki-105) | S4 | Tray | An icon whose registration fell in a front gap stays click-dead until the app re-registers, a second matching unflagged update arrives, or the built-in fallback knows its owner | Open |
 | [KI-106](#ki-106) | S4 | Tray | Tray callback learning reads unflagged wire fields: a range-gated, twice-confirmed heuristic | By design |
+| [KI-108](#ki-108) | S4 | Settings | The Wi-Fi list and the connected network's name need location access on Windows 11 24H2+; `ERROR_ACCESS_DENIED` may also be policy | By design |
+| [KI-109](#ki-109) | S4 | Settings | Wi-Fi panel v1 leaves out Saved Networks, captive-portal sign-in and handle reopen, uses a link for Airplane Mode, and its write paths aren't verified live | Open |
+| [KI-110](#ki-110) | S4 | Settings | Bluetooth panel v1 doesn't pair, discover, connect or show battery, and its radio and Remove Device paths aren't verified live | Open |
+| [KI-111](#ki-111) | S4 | Settings | Wi-Fi profile leftovers: a crash mid-connect can leave a just-created or overwritten profile saved, and a denied all-user write falls back to a per-user profile | Open |
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -1053,3 +1057,37 @@ field occurrence measurable; B4's notification names landed. Two field observati
 same way: Explorer reset **both** work areas to full bounds in response to a scripted taskbar `ShowWindow` (the
 wipe trigger is real and reproducible), and the instance rebuilt both correctly, logging one "after
 ABN_POSCHANGED" trigger line — the first field sighting of B4's notification names.
+
+### KI-108
+**The Wi-Fi list and the connected network's name need location access on Windows 11 24H2+; `ERROR_ACCESS_DENIED` may also be policy** · S4 · Settings · By design
+
+Windows gates `WlanGetAvailableNetworkList` and the current-connection query on location access for desktop apps. WinGnome's
+first list call is what makes Windows raise its consent prompt (attributed to WinGnome); afterwards a denial returns
+`ERROR_ACCESS_DENIED` (logged as `Wi-Fi: WlanGetAvailableNetworkList was refused`). The panel then replaces the list with a notice
+and *Open Location Settings*, and shows "Connected" without a name. The same code can come from policy, so the wording is hedged.
+On the development machine the device administrator had location services off, and Windows showed its own "Location has been
+turned off" dialog naming WinGnome. Turning Wi-Fi on or off, Airplane Mode and *Forget* still work without location.
+
+### KI-109
+**Wi-Fi panel v1 leaves out Saved Networks, captive-portal sign-in and handle reopen, uses a link for Airplane Mode, and its write paths aren't verified live** · S4 · Settings · Open
+
+Not built from spec 0019: the *Saved Networks…* dialog (each saved row has *Forget*), captive-portal detection and *Sign In*
+(`INetworkListManager`), reopening the WLAN handle after a WlanSvc restart or resume (reopen the panel), a native Airplane Mode
+switch (undocumented `IRadioManager`; the row links to Windows Settings). The Wi-Fi switch uses `Windows.Devices.Radios` because
+`WlanSetInterface` couldn't be checked without toggling the radio. Connect, disconnect, forget, the switch and the WPA3 profile
+schema (written in the v1 namespace) have not been exercised on a live network; the Core rules are tested.
+
+### KI-110
+**Bluetooth panel v1 doesn't pair, discover, connect or show battery, and its radio and Remove Device paths aren't verified live** · S4 · Settings · Open
+
+The panel lists paired devices and removes pairings (`UnpairAsync`); *Add Device…* and *Connect in Windows Settings* open Windows
+Settings. Discovery, WinGnome's pairing dialogs, device icons and battery levels (undocumented property on the device node) are
+deferred. The Bluetooth switch, the paired watchers and Remove Device were not exercised against real devices.
+
+### KI-111
+**Wi-Fi profile leftovers: a crash mid-connect can leave a just-created or overwritten profile saved, and a denied all-user write falls back to a per-user profile** · S4 · Settings · Open
+
+A failed attempt deletes the profile it created or overwrote (never a saved profile used as is), but a crash or kill between
+writing the profile and the result leaves it saved; it can be forgotten from the list. Profiles are written as all-user profiles
+and, when Windows denies that, as per-user profiles, which other accounts on the PC don't see. Overwriting a saved profile after an
+authentication failure loses the old, already rejected key.
