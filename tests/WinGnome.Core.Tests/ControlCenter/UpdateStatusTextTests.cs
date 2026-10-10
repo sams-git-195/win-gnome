@@ -65,7 +65,7 @@ public class UpdateStatusTextTests
     [Fact]
     public void Build_NothingWaiting()
     {
-        var lines = UpdateStatusText.Build(new UpdateStatus(Now.AddHours(-2), Now.AddDays(-3), [], false, null), Now, British);
+        var lines = UpdateStatusText.Build(new UpdateStatus(Now.AddHours(-2), Now.AddDays(-3), [], [], false, null), Now, British);
 
         Assert.Equal("Today at 14:30", lines.LastChecked);
         Assert.Equal("3 days ago", lines.LastInstalled);
@@ -78,7 +78,7 @@ public class UpdateStatusTextTests
     [Fact]
     public void Build_OneUpdate_UsesSingular()
     {
-        var lines = UpdateStatusText.Build(new UpdateStatus(null, null, ["2026-10 Cumulative Update"], false, null), Now, British);
+        var lines = UpdateStatusText.Build(new UpdateStatus(null, null, ["2026-10 Cumulative Update"], [], false, null), Now, British);
 
         Assert.Equal("1 update waiting", lines.Pending);
         Assert.Equal(["2026-10 Cumulative Update"], lines.PendingTitles);
@@ -87,16 +87,61 @@ public class UpdateStatusTextTests
     [Fact]
     public void Build_ManyUpdates_UsesCount()
     {
-        var lines = UpdateStatusText.Build(new UpdateStatus(null, null, ["a", "b", "c"], true, null), Now, British);
+        var lines = UpdateStatusText.Build(new UpdateStatus(null, null, ["a", "b", "c"], [], true, null), Now, British);
 
         Assert.Equal("3 updates waiting", lines.Pending);
         Assert.Equal("A restart is needed to finish updating", lines.Restart);
     }
 
     [Fact]
+    public void Build_NothingOptional_HasNoOptionalLine()
+    {
+        var lines = UpdateStatusText.Build(new UpdateStatus(null, null, [], [], false, null), Now, British);
+
+        Assert.Null(lines.Optional);
+        Assert.Empty(lines.OptionalTitles);
+    }
+
+    [Fact]
+    public void Build_OnlyOptional_NothingWaitingButOptionalListed()
+    {
+        var lines = UpdateStatusText.Build(new UpdateStatus(null, null, [], ["Driver A", "Driver B"], false, null), Now, British);
+
+        Assert.Equal("No updates waiting", lines.Pending);
+        Assert.Equal("2 optional updates available", lines.Optional);
+        Assert.Equal(["Driver A", "Driver B"], lines.OptionalTitles);
+    }
+
+    [Fact]
+    public void Build_OneOptional_UsesSingular()
+    {
+        var lines = UpdateStatusText.Build(new UpdateStatus(null, null, [], ["Driver A"], false, null), Now, British);
+
+        Assert.Equal("1 optional update available", lines.Optional);
+    }
+
+    [Fact]
+    public void Build_Mixed_CountsEachKindSeparately()
+    {
+        var lines = UpdateStatusText.Build(new UpdateStatus(null, null, ["Cumulative"], ["D1", "D2", "D3"], false, null), Now, British);
+
+        Assert.Equal("1 update waiting", lines.Pending);
+        Assert.Equal(["Cumulative"], lines.PendingTitles);
+        Assert.Equal("3 optional updates available", lines.Optional);
+    }
+
+    [Fact]
+    public void Build_Error_HasNoOptionalLine()
+    {
+        var lines = UpdateStatusText.Build(new UpdateStatus(null, null, [], ["Driver A"], false, unchecked((int)0x80070422)), Now, British);
+
+        Assert.Null(lines.Optional);
+    }
+
+    [Fact]
     public void Build_NeverCheckedOrInstalled()
     {
-        var lines = UpdateStatusText.Build(new UpdateStatus(null, null, [], false, null), Now, British);
+        var lines = UpdateStatusText.Build(new UpdateStatus(null, null, [], [], false, null), Now, British);
 
         Assert.Equal("Never", lines.LastChecked);
         Assert.Equal("Never", lines.LastInstalled);
@@ -105,7 +150,7 @@ public class UpdateStatusTextTests
     [Fact]
     public void Build_Error_PendingIsUnknownAndMessageSet()
     {
-        var lines = UpdateStatusText.Build(new UpdateStatus(null, null, [], false, unchecked((int)0x80070422)), Now, British);
+        var lines = UpdateStatusText.Build(new UpdateStatus(null, null, [], [], false, unchecked((int)0x80070422)), Now, British);
 
         Assert.Equal("Unknown", lines.Pending);
         Assert.Equal("The Windows Update service is turned off (0x80070422).", lines.Error);
