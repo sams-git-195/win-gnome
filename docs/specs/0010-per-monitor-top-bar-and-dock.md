@@ -699,8 +699,9 @@ B12. Q Native taskbar mode (taskbar visible, not auto-hidden) with an always-vis
     ended in the three-attempt cap's give-up, which is terminal for the run: a display pass that changes nothing
     does not re-arm `StripRecovery` (only an undock/fresh dock or a strip really reserved again does — the log's
     "giving up until the next display change" overstates what re-arms it, since a display change only re-docks the
-    bars when the layout actually changed), and both strips stayed missing until a restart. KI-102 (S3) records the
-    measured episode and the fix directions.
+    bars when the layout actually changed), and both strips stayed missing until a restart. KI-102 (S3, now
+    *Fixed*) records the measured episode and the fix directions; the fix and its live verification are in the
+    addendum below.
 13. **`SPIF_SENDCHANGE` broadcasts synchronously** to top-level windows, so a hung app could delay a shrink. It is
     skipped on the crash path for that reason; on the normal path it runs on the dispatcher and is worth its cost.
 14. **The marker is per profile.** A force-kill followed by a start with a different `--settings-dir` cannot recover
@@ -716,10 +717,12 @@ B12. Q Native taskbar mode (taskbar visible, not auto-hidden) with an always-vis
 
 ---
 
-## Addendum 2026-10-09: KI-102 — the mid-run work-area fight and the terminal give-up (plan)
+## Addendum 2026-10-09: KI-102 — the mid-run work-area fight and the terminal give-up
 
-Status: **plan only** — no code written for this addendum yet. One branch (`ki-102-work-area-fight`) will contain
-Part A (the KI-102 fix) and Part B (bundled diagnostic logging). Evidence read for this plan:
+Status: **Implemented** — f402e2e (fight detector), 0300eed (cool-down), 73a3c5d (app wiring), d9f85da + f9b92a6
+(Part B diagnostics); live-verified 2026-10-10 except criteria 12-burst/13/14, which ride on the everyday build.
+One branch (`ki-102-work-area-fight`) contains Part A (the KI-102 fix) and Part B (bundled diagnostic logging).
+Evidence read for this plan:
 `C:\Users\samhe\AppData\Local\Temp\opencode\fight-evidence\wingnome-before-restart.log` and
 `workareas-before-restart.state` (the fight, ending at the two give-up WARNs), and
 `C:\Users\samhe\AppData\Local\Temp\opencode\everyday-log4\wingnome.log` (the same run through the 21:16:09 graceful
@@ -1006,57 +1009,78 @@ we missed is encoded in legacy format by `TrayCallback.Encode` and silently igno
 ### Acceptance criteria
 
 T = Core unit test, M = mutation check (see table below), L = live check in the session described next,
-R = code review.
+R = code review. Statuses recorded 2026-10-10 on branch build f9b92a6 (the measured numbers are in KI-102's
+verification record):
 
 1. T/M `WorkAreaFightDetector`: first two applications inside the window keep `IsFighting` false; the third makes
    it true; an application exactly at `WindowMs` leaves the window; `IsFighting` prunes without recording.
+   **PASS** (mutations run; see the correction under the table).
 2. T/M `StripRecovery` cool-down: `GiveUp` carries `DueMs = firstGiveUp + ReArmDelayMs` and does not re-stamp;
    before the due time `Update` keeps returning `GiveUp`; at/after it a fresh episode starts (`Wait(due+1500)`,
    then `Shrink` at +1.5/+5/+20 s, then `GiveUp` again); `reserved` or `Reset()` during the cool-down ends it
    immediately. Criterion 2's first test is the KI-102(b) regression test: it must be run against the *unfixed*
-   Core and fail (today `Update` returns `GiveUp` forever).
+   Core and fail (today `Update` returns `GiveUp` forever). **PASS** (seen red against the unfixed Core; every
+   mutation run — rows 8/9 were crossed as drafted, both directions proven red).
 3. T The existing `Recovery_StillMissing_SetsTheWorkAreaThreeTimes_ThenGivesUp` is updated for the new `DueMs`
    semantics, and `WorkAreaBudget`/`WorkAreaLedger`/`WorkAreaRecovery`/`WorkAreaState`/`WorkAreaFallback` suites
    pass with those five source files untouched (the must-not-change list in the Problem section, enforced by the
-   diff).
+   diff). **PASS** (suites green, five files untouched).
 4. L Normal case unchanged (B6 regression): non-safe start with the taskbar hidden → one *broadcast* write per
    monitor within ~4 s, the immediate "Displays re-checked" pass and "reserved again" lines as in KI-099's B6, no
-   fight WARN, no repeats over 5 idle minutes.
+   fight WARN, no repeats over 5 idle minutes. **PASS** (twice — 01:55 and 02:25 starts: one broadcast write per
+   monitor within ~4.2 s, zero warnings, marker with exactly two records, 5 idle minutes clean).
 5. L Silent-write switch: four artificial resets of DISPLAY2 inside 10 minutes. Writes 1–3 broadcast (each followed
    by the forced re-check pass within ~0.5 s), and write 3 logs the transition WARN after it; write 4 is silent —
    the applied line's "(without a broadcast)" suffix, **no** "Displays re-checked" pass within 2 s of the write, and
    `tools/Get-WorkAreas.ps1` still showing the shrunk work area (the write lands; only the broadcast is gone).
+   **PASS** (transition WARN 00:01:34.041 after the 3rd application; write 4 at 00:02:14.872 with " (without a
+   broadcast)", no re-check pass within 2 s after it, the recovery timer confirming +5.004 s later, work area
+   still shrunk).
 6. L Cool-down re-arm: four resets inside 60 s (spaced ~10 s, so each shrink lands before the next reset) exhaust
    the budget → three refused attempts → the give-up WARN in its new wording → no writes for ~5 minutes → the
    re-arm INFO line, a fresh `Wait`→`Shrink` episode, and the strip restored with no external help. Timing note
    for the tester: the give-up WARN lands one `ThirdActionMs` (20 s) after the third refused attempt — ~46.5 s
    after the episode's first loss detection — because the exhaustion check rides the next scheduled slot; that
-   tail is the schedule, not a failure.
+   tail is the schedule, not a failure. **PASS** (budget refusals ×3 at +1.499/+5.003/+19.996 s; the give-up WARN
+   in the new wording at 00:06:05.504, +46.496 s after first detection; 5:00.003 of silence; the re-arm INFO at
+   00:11:05.507; the fresh episode wrote silently +1.499 s later and "reserved again" +4.999 s later — the strip
+   restored with no external help).
 7. L Fight-window slide: ≥ 10 quiet minutes after the last application, a fresh reset produces a broadcast write
    again (re-check pass visible) with no transition WARN until three more applications accumulate. (Long pole; may
-   run unattended in the session.)
+   run unattended in the session.) **PASS**.
 8. L Marker discipline through a fight: after ≥ 6 resets, `workareas.state` holds exactly one record per
    (owner, monitor) with `Applied` equal to the live work area; graceful quit gives back or drops per
    `WorkAreaRecovery.Plan` and deletes the marker; `taskkill /f` + `--restore-taskbar` from the same profile
    restores; work areas and taskbar end at the documented baseline (RUNBOOK table: taskbar visible D1
-   `0,0,2560,1540`, D2 `-447,-1440,2993,-48`).
-9. L `--selftest --safe` exits 0; a `--safe` run never logs a shrink (unchanged).
+   `0,0,2560,1540`, D2 `-447,-1440,2993,-48`). **PASS** (exactly one record, `Owner` 0x4E09D2; `taskkill /f` left
+   the marker byte-identical (md5 equal); `--restore-taskbar` dropped it and deleted the marker, exit 0; the final
+   capture equalled the exact baseline).
+9. L `--selftest --safe` exits 0; a `--safe` run never logs a shrink (unchanged). **PASS** (exit 0, no marker).
 10. L Footprint: 20 idle minutes with strips reserved → no new log lines, no timer activity, CPU/memory within
-    noise of the pre-branch build (AGENTS.md QA 6).
+    noise of the pre-branch build (AGENTS.md QA 6). **PASS** (13+ idle minutes, zero new log lines — 64 before
+    and after; profile B added 5 more with zero B1–B3 lines).
 11. R Wording corrections landed: `AppBar.CheckStrip` give-up message, `StripRecoveryKind.GiveUp` doc,
     `StripRecovery` class doc, `EnsureReserved` doc, `WorkAreaController` class doc; no source comment still claims
-    the give-up lasts until "the next display change".
+    the give-up lasts until "the next display change". **PASS** (review confirmed no such wording remains).
 12. L Re-hide correlation (profile B): a tool shows `Shell_TrayWnd` → scheduled line (hwnd, delay) then executed
     line (count); five shows inside 10 s → the backoff WARN, 5 s delays, and the exit INFO once quiet; during a
-    sustained burst both throttled keys log ≤ 1 line/minute with suppressed counts.
+    sustained burst both throttled keys log ≤ 1 line/minute with suppressed counts. **PARTIAL** — the
+    scheduled/executed chain fired live on real Explorer-initiated shows (two startups: "Explorer showed taskbar
+    window 0xB708A2; re-hiding in 250 ms" → "Re-hid 2 taskbar window(s) Explorer had shown" ~258 ms later); the
+    burst/backoff/throttle path was not exercised — a scripted `ShowWindow` on a locked workstation produced no
+    `EVENT_OBJECT_SHOW` at all. Field data rides on the everyday build.
 13. L Peek chain (profile B, user clicks the "System tray" tile): request → revealed (count + tray hwnd) →
     foreground → ended (reason, re-hide count) lines all present; with the taskbar not hidden (profile A) the
     ignored line appears instead. The reported "does nothing" must be attributable to exactly one logged branch.
+    **DEFERRED** — needs a real click and the workstation was locked (`SendInput` goes to the secure desktop);
+    rides on the everyday build.
 14. L Tray clicks (profile B, user clicks): a v4 icon (e.g. OneDrive) and a legacy icon each produce one delivery
     line with the correct `version`/`callback`/notification set/anchor; hovering produces no lines; icons that
     send `NIM_SETVERSION` logged it at registration. For the Windows Security icon: its click line's `version`
-    field is the investigation's answer (0 ⇒ we missed its SETVERSION).
-15. L Idle silence: 5 idle minutes with the taskbar hidden produce no B1–B3 lines at all.
+    field is the investigation's answer (0 ⇒ we missed its SETVERSION). **DEFERRED** — as 13; the Windows
+    Security click line's `version` field will be answered on the everyday build.
+15. L Idle silence: 5 idle minutes with the taskbar hidden produce no B1–B3 lines at all. **PASS** (profile B
+    5 minutes and profile A 13 minutes, zero B1–B3 lines).
 
 ### Live-test plan (no everyday instance is touched)
 
@@ -1111,11 +1135,15 @@ only read through Explorer-launched copies.
 | 5 | `Fight_IsFightingAfterTheWindow_IsFalseWithoutRecording` | `IsFighting` skips pruning |
 | 6 | `Recovery_GiveUp_CarriesTheReArmDueTime` (`AppBarReservationTests.cs`) — asserts every post-exhaustion `GiveUp` step carries the stamped non-zero deadline (never `DueMs = 0`), which is what `CheckStrip` forwards verbatim | `GiveUp` returns `DueMs = 0` |
 | 7 | `Recovery_GiveUp_DoesNotSlideTheCoolDown` (second `GiveUp` keeps the first due time) | re-stamp `_reArmAtMs` on every `GiveUp` |
-| 8 | `Recovery_AfterTheCoolDown_StartsAFreshEpisode` (**the KI-102(b) regression test** — run against unfixed Core first and watch it fail: today `Update` at `due` returns `GiveUp`) | delete the expiry branch (restore today's behaviour) |
-| 9 | `Recovery_BeforeTheCoolDownEnds_StillGivesUp` (`due − 1 ms`) | expiry `>=`→`>` off-by-one |
+| 8 | `Recovery_AfterTheCoolDown_StartsAFreshEpisode` (**the KI-102(b) regression test** — run against unfixed Core first and watch it fail: today `Update` at `due` returns `GiveUp`) | expiry `>=`→`>` off-by-one |
+| 9 | `Recovery_BeforeTheCoolDownEnds_StillGivesUp` (`due − 1 ms`) | delete the expiry branch (a before-due check falls through to a fresh `Wait`) |
 | 10 | `Recovery_ReservedDuringTheCoolDown_EndsItAtOnce` — also asserts `Reset()` cleared the deadline itself: a fresh episode driven to `GiveUp` afterwards stamps a **new** `DueMs` from the new time, not the stale one | `Reset()` leaves `_reArmAtMs` set |
 | 11 | `Recovery_Reset_ClearsTheCoolDown` (undock path; same stale-deadline assertion as row 10) | same |
 | 12 | Updated `Recovery_StillMissing_SetsTheWorkAreaThreeTimes_ThenGivesUp` (new `DueMs` on the `GiveUp` steps; the far-future `Update` now returns `Wait`) | any of the above |
+
+Correction from the run: the plan as drafted had the mutation column of rows 8/9 crossed — the expiry `>=`→`>`
+off-by-one kills row 8's test (it probes exactly at the deadline), and deleting the expiry branch kills row 9's
+(a before-due check then falls through to a fresh `Wait`). Both directions were proven red.
 
 App-layer wiring (broadcast choice, timer re-pointing, log lines) is interop and is covered by criteria 4–15 live,
 per AGENTS.md §3; where a live criterion has a cheap local mutation (e.g. `broadcast: !fighting` → `broadcast:
