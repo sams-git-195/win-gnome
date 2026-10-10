@@ -52,7 +52,7 @@ disabled (no printers). Pointer uses a custom colour (cursor-size row is disable
 
 ## 2. State of `main` (build clean; `publish\WinGnome.exe` is still the e85e68e build until it is republished)
 
-`main` is at the KI-102 merge **(this merge)**, on top of **e85e68e**. Merged 2026-10-10:
+`main` is at the KI-102 merge **c788f1c**, on top of **e85e68e**. Merged 2026-10-10:
 
 - **KI-102 work-area fight fix + diagnostic logging** (f402e2e, 0300eed, 73a3c5d, d9f85da, f9b92a6; design in
   spec 0010's addendum): Core's `WorkAreaFightDetector` makes direct work-area sets from the fourth application
