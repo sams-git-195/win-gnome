@@ -112,17 +112,30 @@ internal sealed class NetworkMonitor : IDisposable
         }
     }
 
+    private static int _signalReadFailing;
+
     private static int? ReadSignalBars()
     {
         try
         {
             var profile = WinRtNetworkInformation.GetInternetConnectionProfile();
-            return profile is { IsWlanConnectionProfile: true } && profile.GetSignalBars() is { } bars ? (int)bars : null;
+            var bars = profile is { IsWlanConnectionProfile: true } && profile.GetSignalBars() is { } value ? (int)value : (int?)null;
+            if (Interlocked.Exchange(ref _signalReadFailing, 0) == 1)
+            {
+                Log.Info("Reading the Wi-Fi signal bars works again");
+            }
+
+            return bars;
         }
         catch (Exception ex)
         {
-            // Feature boundary: WinRT can throw COMException or UnauthorizedAccessException; the icon falls back to the full wedge.
-            Log.Warn("Could not read the Wi-Fi signal bars", ex);
+            // Feature boundary: WinRT can throw COMException or UnauthorizedAccessException; the icon falls back to the
+            // full wedge. The read repeats every 45 s, so only the first failure of a run is logged.
+            if (Interlocked.Exchange(ref _signalReadFailing, 1) == 0)
+            {
+                Log.Warn("Could not read the Wi-Fi signal bars", ex);
+            }
+
             return null;
         }
     }

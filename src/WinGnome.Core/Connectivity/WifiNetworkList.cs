@@ -61,9 +61,10 @@ public static class WifiSignal
 
     /// <summary>
     /// The same 0 to 4 levels for Windows' own 0 to 5 bars (<c>ConnectionProfile.GetSignalBars</c>), by treating each
-    /// bar as 20 %, so the top bar and the Wi-Fi panel agree on thresholds. Null stays null: no reading, no claim.
+    /// bar as 20 %, so the top bar and the Wi-Fi panel agree on thresholds. A connected network never shows zero
+    /// (that would look like the offline icon), so it is at least one. Null stays null: no reading, no claim.
     /// </summary>
-    public static int? LevelFromBars(int? bars) => bars is { } value ? Level(value * 20) : null;
+    public static int? LevelFromBars(int? bars) => bars is { } value ? Math.Max(1, Level(value * 20)) : null;
 }
 
 /// <summary>Turns the raw scan results into the rows the panel lists.</summary>

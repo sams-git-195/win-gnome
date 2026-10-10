@@ -8,7 +8,7 @@ namespace WinGnome.Features.TopBar;
 internal static class StatusIcons
 {
     /// <summary>
-    /// Wi-Fi shows <c>NetworkWireless0</c> to <c>NetworkWireless3</c> for a known weaker signal and the full
+    /// Wi-Fi shows <c>NetworkWireless1</c> to <c>NetworkWireless3</c> for a known weaker signal and the full
     /// <c>NetworkWireless</c> wedge for the top level or when no signal could be read.
     /// </summary>
     public static string ForNetwork(NetworkConnection connection, int? signalBars = null) => connection switch

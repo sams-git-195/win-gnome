@@ -128,7 +128,7 @@ public class WifiNetworkListTests
 public class WifiSignalTests
 {
     [Theory]
-    [InlineData(0, 0)]
+    [InlineData(0, 1)]
     [InlineData(1, 1)]
     [InlineData(2, 2)]
     [InlineData(3, 3)]
@@ -138,7 +138,7 @@ public class WifiSignalTests
         Assert.Equal(expected, WifiSignal.LevelFromBars(bars));
 
     [Theory]
-    [InlineData(-1, 0)]
+    [InlineData(-1, 1)]
     [InlineData(9, 4)]
     public void LevelFromBars_OutOfRange_IsClamped(int bars, int expected) =>
         Assert.Equal(expected, WifiSignal.LevelFromBars(bars));
