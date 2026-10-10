@@ -14,10 +14,11 @@ for when to add, update and close entries.
 
 Status is one of *Open*, *In progress*, *By design* (a limitation we've chosen to accept, with the reason),
 or *Fixed* (with the commit). When in doubt, pick the higher severity. A resolved entry may carry a `### KI-…`
-detail section below the Resolved table when the measured evidence behind the fix is worth keeping (KI-100).
+detail section below the Resolved table when the measured evidence behind the fix is worth keeping (KI-100,
+KI-102).
 
-IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-103 all
-have entries now). The next free ID is **KI-104**; grep the specs for `KI-0` before allocating one.
+IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-104 all
+have entries now). The next free ID is **KI-105**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
@@ -70,8 +71,8 @@ have entries now). The next free ID is **KI-104**; grep the specs for `KI-0` bef
 | [KI-098](#ki-098) | S4 | Top bar, Dock | `MonitorKeyOf` can map a recycled HMONITOR to the wrong monitor for up to 250 ms | Open |
 | [KI-099](#ki-099) | S3 | Top bar, Dock | WinGnome sets monitor work areas directly when Explorer doesn't apply a strip it granted | Open |
 | [KI-101](#ki-101) | S4 | Settings | About and Displays bypass the shared load gate; a failed About read shows nothing at all | Open |
-| [KI-102](#ki-102) | S3 | Top bar, Dock | Explorer keeps recomputing work areas without the strips after an everyday display pass, and the fallback's give-up lasts the run | Open |
-| [KI-103](#ki-103) | S4 | Top bar | The custom-logo mask inverts a light mark on a dark background, one stray transparent pixel takes the alpha rule, and the size guards don't bound the decompressed middle | By design |
+| [KI-103](#ki-103) | S4 | Top bar, Dock | Silent work-area writes leave already-maximised windows oversized until the next broadcast | By design |
+| [KI-104](#ki-104) | S4 | Top bar | The custom-logo mask inverts a light mark on a dark background, one stray transparent pixel takes the alpha rule, and the size guards don't bound the decompressed middle | By design |
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -641,9 +642,11 @@ area itself with the documented `SystemParametersInfo(SPI_SETWORKAREA)`, never `
 persisted to the user's profile. Limits, all deliberate:
 - Only the bar's own edge moves, and always from a **fresh** `GetMonitorInfo` read taken inside the same lock as the
   write, so the taskbar's strip and other AppBars' strips survive and two bars on one edge stack.
-- Bounded twice: at most three actions per bar per missing-strip episode (1.5 s, 5 s, 20 s apart, then it gives up
-  until the bar is docked afresh) and three applications per monitor per 60 s. A refusal is logged, so a third-party
-  tool that also sets work areas cannot be fought in a loop.
+- Bounded three times: at most three actions per bar per missing-strip episode (1.5 s, 5 s, 20 s apart, then a
+  five-minute cool-down after which the checks resume; a re-dock or the strip being reserved ends it at once) and
+  three applications per monitor per 60 s. Since the KI-102 fix a third bound applies: its fight detector makes
+  direct sets from the fourth application on a monitor within 10 minutes silent (without the broadcast). A refusal
+  is logged, so a third-party tool that also sets work areas cannot be fought in a loop.
 - Recorded before it is changed, in `workareas.state` in the settings directory (written aside and moved into place,
   so a crash cannot truncate it): **no record, no shrink**. At most one record per bar and monitor: a re-shrink
   replaces the pair's record and moves to the end of the list (the unwind order), so something that keeps resetting
@@ -711,74 +714,22 @@ displays."), so its gap is the duplicated machinery, not a silent failure. Found
 path. The fix is to convert both to `LoadAsync`, which brings the banner, `onFailed` and the gate for free and deletes
 their local counters.
 
-### KI-102
-**Explorer keeps recomputing work areas without the strips after an everyday display pass, and the fallback's give-up lasts the run** · S3 · Top bar, Dock · Open
-
-Measured on the user's everyday instance, 2026-10-09 (build e85e68e with KI-099's fallback, Windows 11 build 26200;
-DISPLAY1 primary 2560×1600 at 125 %, DISPLAY2 3440×1440 at 100 % at (−447,−1440); the user walked away ~20:35).
-Both top bars lost their strips mid-run, the fallback re-set them again and again over ~7 minutes, then hit the
-three-attempt cap and gave up: both work areas stayed full for the rest of the run and maximised windows covered the
-bars on every monitor. S3 rather than S2 because the bars themselves keep working, the pre-fallback build ended in
-the same state (an incomplete fix, not a regression — one that now costs ~20 SPI writes and broadcasts), and a
-workaround exists.
-
-Timeline (log lines quoted verbatim from the run):
-- 20:35:22 start; the usual KI-099 B6 sequence — the display pass at 20:35:24.990 finds both work areas full, one
-  "work area set directly" per monitor (20:35:26.791, 20:35:27.096), both "reserved again" at 20:35:27.097, the
-  forced pass at 20:35:33.490 still reserved. Then 15 minutes of silence, zero warnings.
-- 20:50:41.006 a **display pass** — not a shell notification — reports both work areas full again:
-  "Displays re-checked: removed 0, changed 0, added 0" with unchanged bounds and DPI on both monitors, so no
-  topology and no mode change. The timing (~15 minutes after the user walked away) is consistent with the displays
-  powering down and/or coming back, but the log does not prove which: treat a display power event as the likely
-  trigger, not a fact.
-- 20:50:42–20:57:22 a fight: 18 further "work area set directly" lines, nine per monitor (20 across the run). The
-  first pair follows the display pass; every later re-shrink is triggered by "after a shell notification the work
-  area of monitor … doesn't leave out the strip …", lands within ~1.5 s and is confirmed by "the strip … is
-  reserved again" within ~2 s — and is reset again seconds to minutes later.
-- 20:57:24–20:57:49 the per-monitor budget refuses six times: "Not setting \\.\DISPLAY1's work area directly:
-  3 applications in the last 60 s already" (and the same for DISPLAY2), each followed by the bar's "… which could
-  not be set directly" line.
-- 20:57:53 both bars hit the cap: "Explorer still hasn't reserved the strip … after 3 attempts; giving up until
-  the next display change". After that, silence: both strips missing and both work areas full until the instance
-  was restarted at 21:16, so the give-up is terminal for the run.
-- The marker at give-up held exactly two records — one per monitor, `Owner` the two bar HWNDs (0xF05FC,
-  0x1550530), `Original` the full bounds, `Applied` the shrunk rectangles: the per-(owner, monitor) replacement
-  rule held through nine re-shrinks on DISPLAY1.
-- Graceful quit 21:16:09 dropped both without writing anything ("Dropped 2 work area record(s) that no longer
-  describe a live work area …"): correct, the live work areas were already the full bounds, and the taskbar and
-  both work areas returned to the exact baseline. The restart at 21:16:40 reproduced the original late-strip bug
-  and the fallback fixed it again within ~4 s, so a restart is a reliable recovery.
-
-What the safety design got right: the two budgets (three applications per monitor per 60 s, three attempts per
-episode) stopped the fight after ~7 minutes instead of letting it run forever, with every refusal logged; and the
-marker never grew past one record per bar and monitor.
-
-What is wrong:
-- (a) Explorer recomputes work areas **without a strip it granted to a still-registered AppBar** — the same state
-  as KI-099's deferred layout pass, but reachable mid-run from an everyday event — and each of our
-  `SPI_SETWORKAREA` writes (with `SPIF_SENDCHANGE`) appears to provoke another such recompute, so the fallback
-  feeds the fight it is trying to win.
-- (b) The give-up is terminal for the run. `StripRecovery.Reset()` is called only on undock and when the strip is
-  reserved again, so a later display pass that changes nothing does not re-arm the recovery: the log's "giving up
-  until the next display change" is inaccurate as written — a display change re-arms it only when it causes a
-  re-dock.
-
-*Workaround:* restart WinGnome, or switch the top bar off and on — re-docking re-arms the recovery.
-
-*Fix directions (directions, not decisions):*
-- Run spec 0010's TbExp experiment: its option 1 (hide the taskbar windows only after Explorer has applied
-  auto-hide) attacks the state Explorer is in rather than the symptom.
-- Test whether the shrink WITHOUT `SPIF_SENDCHANGE` sticks — our own broadcast may be what provokes Explorer's
-  recompute (the recovery's checks all ride existing triggers, so they would still run, just later).
-- Consider re-registering the AppBar or nudging the `AppBarJanitor` after a shrink, so Explorer's own recompute
-  includes our strip instead of contradicting it. (Re-registering during the start-up deferral looked harmful and
-  in the steady state after an external reset it restored strips at once; this situation is neither and needs a
-  test.)
-- Consider re-arming `StripRecovery` on a display pass, or after a long cool-down, so a display wake recovers
-  without a restart.
-- Consider giving up sooner: the fight cost 20 writes and broadcasts and ended in the same state as not trying.
-
 ### KI-103
+**Silent work-area writes leave already-maximised windows oversized until the next broadcast** · S4 · Top bar, Dock · By design
+
+During a fight — from the fourth direct set on a monitor within 10 minutes — WinGnome writes the work area without
+`SPIF_SENDCHANGE` (KI-102's fight detector) to starve the loop in which Explorer's broadcast-provoked recomputes
+dropped the strips it had granted. The work area itself is correct, and *newly* maximised windows read it live and
+stop short of the bar; but windows maximised **before** a silent write keep spanning the bar's strip until *some*
+work-area broadcast reaches them — ours after 10 quiet minutes, Explorer's, or a re-maximise. Bounded (the window
+slides clear) and logged: the transition WARN names the monitor, and every silent applied line carries
+" (without a broadcast)".
+*Reason:* the alternative — broadcasting every write — provably fed the KI-102 fight (18 direct sets over
+~7 minutes, ending with the work areas full for the rest of the run, when **every** maximised window covers the
+whole monitor *and* the bar). Trade-off analysis: spec 0010's addendum, direction 1; the degradation was accepted
+there and is the fix's only visible cost.
+
+### KI-104
 **The custom-logo mask inverts a light mark on a dark background, one stray transparent pixel takes the alpha rule, and the size guards don't bound the decompressed middle** · S4 · Top bar · By design
 
 Spec 0021 renders a custom logo as a solid silhouette in the bar's text colour: the image's shape becomes a mask
@@ -822,6 +773,7 @@ background. Colour logos are out of scope by design (spec 0021 non-goals).
 | KI-054 | S3 | Dock | Full-trust packaged apps such as Windows Terminal couldn't be run as administrator | b09a222 (`PKEY_AppUserModel_HostEnvironment` in `AppCatalog`) |
 | KI-065 | S4 | Settings | Quick settings rows and the gear opened Windows Settings pages instead of the matching native panel | f5dcf13 (`TopBarActions` via `ShowSettings`; `--settings-panel` forwarded to a running instance; Win+I waits for shell-mode hotkeys, spec 0013) |
 | KI-100 | S3 | Dock | A pinned Docker Desktop showed a second, unpinned icon while running | c842f5d (launcher-child rule in `AppPathMatch.IsSameInstall`; see below) |
+| KI-102 | S3 | Top bar, Dock | Explorer keeps recomputing work areas without the strips after an everyday display pass, and the fallback's give-up lasts the run | f402e2e, 0300eed, 73a3c5d (fight detector, cool-down, silent writes; diagnostics in d9f85da; see below) |
 
 ### KI-100
 **A pinned Docker Desktop showed a second, unpinned icon while running** · S3 · Dock · Fixed in c842f5d
@@ -860,3 +812,164 @@ exe in a child folder of a share would also pair — accepted because Start-menu
 *Fix direction (not done, out of scope):* `AppCatalog.FindForWindow` falls back to the Squirrel stub only, so an
 **unpinned** Docker dashboard still gets its name and icon from the `frontend\` exe rather than the catalogue
 entry. Extending that fallback to the launcher-child layout would be a small, separate change.
+
+### KI-102
+**Explorer keeps recomputing work areas without the strips after an everyday display pass, and the fallback's give-up lasts the run** · S3 · Top bar, Dock · Fixed in f402e2e, 0300eed, 73a3c5d (fight detector, cool-down, silent writes; diagnostics in d9f85da)
+
+Measured on the user's everyday instance, 2026-10-09 (build e85e68e with KI-099's fallback, Windows 11 build 26200;
+DISPLAY1 primary 2560×1600 at 125 %, DISPLAY2 3440×1440 at 100 % at (−447,−1440); the user walked away ~20:35).
+Both top bars lost their strips mid-run, the fallback re-set them again and again over ~7 minutes, then hit the
+three-attempt cap and gave up: both work areas stayed full for the rest of the run and maximised windows covered the
+bars on every monitor. S3 rather than S2 because the bars themselves keep working, the pre-fallback build ended in
+the same state (an incomplete fix, not a regression — one that now costs ~20 SPI writes and broadcasts), and a
+workaround exists.
+
+Timeline (log lines quoted verbatim from the run):
+- 20:35:22 start; the usual KI-099 B6 sequence — the display pass at 20:35:24.990 finds both work areas full, one
+  "work area set directly" per monitor (20:35:26.791, 20:35:27.096), both "reserved again" at 20:35:27.097, the
+  forced pass at 20:35:33.490 still reserved. Then 15 minutes of silence, zero warnings.
+- 20:50:41.006 a **display pass** — not a shell notification — reports both work areas full again:
+  "Displays re-checked: removed 0, changed 0, added 0" with unchanged bounds and DPI on both monitors, so no
+  topology and no mode change. The timing (~15 minutes after the user walked away) is consistent with the displays
+  powering down and/or coming back, but the log does not prove which: treat a display power event as the likely
+  trigger, not a fact.
+- 20:50:42–20:57:22 a fight: 18 further "work area set directly" lines, nine per monitor (20 across the run). The
+  first pair follows the display pass; every later re-shrink is triggered by "after a shell notification the work
+  area of monitor … doesn't leave out the strip …", lands within ~1.5 s and is confirmed by "the strip … is
+  reserved again" within ~2 s — and is reset again seconds to minutes later.
+- 20:57:24–20:57:49 the per-monitor budget refuses six times: "Not setting \\.\DISPLAY1's work area directly:
+  3 applications in the last 60 s already" (and the same for DISPLAY2), each followed by the bar's "… which could
+  not be set directly" line.
+- 20:57:53 both bars hit the cap: "Explorer still hasn't reserved the strip … after 3 attempts; giving up until
+  the next display change". After that, silence: both strips missing and both work areas full until the instance
+  was restarted at 21:16, so the give-up is terminal for the run.
+- The marker at give-up held exactly two records — one per monitor, `Owner` the two bar HWNDs (0xF05FC,
+  0x1550530), `Original` the full bounds, `Applied` the shrunk rectangles: the per-(owner, monitor) replacement
+  rule held through nine re-shrinks on DISPLAY1.
+- Graceful quit 21:16:09 dropped both without writing anything ("Dropped 2 work area record(s) that no longer
+  describe a live work area …"): correct, the live work areas were already the full bounds, and the taskbar and
+  both work areas returned to the exact baseline. The restart at 21:16:40 reproduced the original late-strip bug
+  and the fallback fixed it again within ~5–6 s (measured 5.1 s and 5.9 s after the start line — the "~4 s" first
+  reported was a hair optimistic), so a restart is a reliable recovery.
+
+What the safety design got right: the two budgets (three applications per monitor per 60 s, three attempts per
+episode) stopped the fight after ~7 minutes instead of letting it run forever, with every refusal logged; and the
+marker never grew past one record per bar and monitor.
+
+What is wrong:
+- (a) Explorer recomputes work areas **without a strip it granted to a still-registered AppBar** — the same state
+  as KI-099's deferred layout pass, but reachable mid-run from an everyday event — and each of our
+  `SPI_SETWORKAREA` writes (with `SPIF_SENDCHANGE`) appears to provoke another such recompute, so the fallback
+  feeds the fight it is trying to win.
+- (b) The give-up is terminal for the run. `StripRecovery.Reset()` is called only on undock and when the strip is
+  reserved again, so a later display pass that changes nothing does not re-arm the recovery: the log's "giving up
+  until the next display change" is inaccurate as written — a display change re-arms it only when it causes a
+  re-dock.
+
+*Workaround (builds before the fix):* restart WinGnome, or switch the top bar off and on — re-docking re-arms the
+recovery.
+
+*Fix directions (as triaged; what shipped is recorded below):*
+- Run spec 0010's TbExp experiment: its option 1 (hide the taskbar windows only after Explorer has applied
+  auto-hide) attacks the state Explorer is in rather than the symptom.
+- Test whether the shrink WITHOUT `SPIF_SENDCHANGE` sticks — our own broadcast may be what provokes Explorer's
+  recompute (the recovery's checks all ride existing triggers, so they would still run, just later).
+- Consider re-registering the AppBar or nudging the `AppBarJanitor` after a shrink, so Explorer's own recompute
+  includes our strip instead of contradicting it. (Re-registering during the start-up deferral looked harmful and
+  in the steady state after an external reset it restored strips at once; this situation is neither and needs a
+  test.)
+- Consider re-arming `StripRecovery` on a display pass, or after a long cool-down, so a display wake recovers
+  without a restart.
+- Consider giving up sooner: the fight cost 20 writes and broadcasts and ended in the same state as not trying.
+
+*Fixed (2026-10-10, branch `ki-102-work-area-fight`; the spec 0010 addendum is the design record — it shipped
+direction 1 as a fight-gated hybrid, direction 3 as a cool-down, and direction 4's corrected WARN; direction 2 was
+rejected and direction 5 (TbExp) deliberately not prejudiced):*
+- **f402e2e — Core `WorkAreaFightDetector`** (new, `Shell/WorkAreaFightDetector.cs`): a per-monitor sliding window
+  over direct-set *applications* (`ApplicationLimit = 3`, `WindowMs = 600_000`, in-memory only — a restart starts
+  unfought, which is what B6's single broadcast write needs). `IsFighting` prunes the window without recording;
+  `Record` appends.
+- **0300eed — `StripRecovery`'s cool-down (defect (b)):** the give-up is no longer terminal.
+  `ReArmDelayMs = 300_000`; the first `GiveUp` after exhaustion stamps the deadline and later pre-expiry `GiveUp`s
+  return the *same* one (never slides, so a forced-pass storm can re-point the bar's timer but never push the
+  cool-down later); at or after it a check starts a fresh, fully bounded `Wait` episode; `Reset()` (undock, strip
+  reserved) clears it. `GiveUp` steps carry `DueMs`. 12 new/updated Core tests; the regression test
+  `Recovery_AfterTheCoolDown_StartsAFreshEpisode` was seen red against the unfixed Core, and every planned
+  mutation was run (one correction: the plan table's mutation column was crossed between rows 8/9 — the
+  expiry `>=`→`>` off-by-one kills row 8's test and deleting the expiry branch kills row 9's; both directions
+  proven red).
+- **73a3c5d — app wiring (defect (a)):** `WorkAreaController` keeps a per-monitor `Fighters` dictionary beside the
+  budgets; `TryShrink` consults it before the write and does `SetWorkArea(shrunk, broadcast: !fighting)`, recording
+  only on success — the first three applications on a monitor inside 10 minutes broadcast as before, from the
+  fourth the write is **silent**, starving the broadcast→recompute loop that sustained the fight. One transition
+  WARN ("…setting it without a broadcast from the next write on…") names the monitor; the applied line gains
+  " (without a broadcast)" when silent, so every write's mode is greppable. Restore paths unchanged (still
+  broadcast; the crash path's `ReleaseAll` still broadcast-free). `Interop/AppBar.cs`: the give-up branch re-points
+  the existing one-shot recovery timer at `step.DueMs` verbatim, the give-up WARN is corrected ("not acting again
+  for 5 minutes (a re-dock or Explorer applying the strip ends the cool-down at once)"), and the re-arm logs
+  "cool-down over; checking the strip … again"; B4: strip-check triggers now name the notification
+  (`ABN_POSCHANGED` / `ABN_STATECHANGE`) instead of "a shell notification".
+- **d9f85da + f9b92a6 — Part B diagnostics** (bundled, all event-driven): B1 taskbar re-hide scheduled/executed
+  lines with counts, B2 the full peek chain, B3 one INFO per tray click-class delivery with the recorded NIM
+  version (the Windows Security investigation's evidence), `ThrottledLog` moved to `Infrastructure` with an `Info`
+  twin.
+- Worst-case rates in a sustained fight: ≤ ~31 writes/h per fighting bar (≤ 3 per 346.5-s cool-down cycle),
+  ≤ ~64/h/monitor with two reserving bars, broadcasts ≤ 18/h/monitor; `WorkAreaBudget`'s 3/min/monitor stays the
+  hard bound. The silent-write trade-off is KI-103.
+
+*Verified live (2026-10-10, branch build f9b92a6, Windows 11 build 26200; DISPLAY1 primary 2560×1600 at 125 %,
+DISPLAY2 3440×1440 at 100 % above it at (−447,−1440); scratch profiles, the everyday instance quit for the whole
+session; criteria per the spec 0010 addendum):*
+- **Start-up with the taskbar visible** (profile A: bars on both monitors; dock, window buttons and tray off):
+  Explorer applied both strips promptly and there was **no** fallback write — the fight machinery stays inert in
+  the normal case.
+- **Criterion 5 (silent-write switch) PASS:** artificial `SPI_SETWORKAREA` resets of DISPLAY2. Resets 1–3 →
+  broadcast writes, each confirmed by a forced re-check pass within ~2 ms–2 s; the transition WARN landed at
+  00:01:34.041 after the third application; reset 4 → the write at 00:02:14.872 **with** " (without a broadcast)",
+  no re-check pass within 2 s after it (the recovery timer confirmed it +5.004 s later), and `Get-WorkAreas` still
+  showed the shrunk work area — the silent write lands.
+- **Criterion 6 (cool-down re-arm) PASS:** four resets 10 s apart; the first three → silent writes, each
+  "reserved again" +5 s later; the fourth → budget refusals ("Not setting \\.\DISPLAY2's work area directly:
+  3 applications in the last 60 s already" ×3 at +1.499/+5.003/+19.996 s), the give-up WARN in its **new** wording
+  at 00:06:05.504 (+46.496 s after first detection — the schedule's 20-s tail, not a failure); then 5:00.003 of
+  silence; the re-arm INFO at 00:11:05.507 ("cool-down over; checking the strip … again"); the fresh episode wrote
+  (silent) +1.499 s later and "reserved again" +4.999 s later — the strip restored with **no external help**.
+- **Criterion 4 (B6 regression) PASS, twice** (01:55 and 02:25 starts, profile B: taskbar hidden, tray on):
+  exactly one "work area set directly" per monitor within ~4.2 s, both broadcast (no suffix), "reserved again" ×2
+  immediately, zero warnings, the marker holding exactly two records (`Original` the full bounds, `Applied` the
+  shrunk rectangles, owners the two bar HWNDs), then 5 idle minutes with zero new lines. KI-099's B6 behaviour is
+  unchanged by the fix.
+- **Criterion 8 (marker discipline, force-kill) PASS:** `workareas.state` held exactly **one** record through the
+  fight phase (`Owner` 0x4E09D2 = the DISPLAY2 bar's HWND, `Original` the full bounds, `Applied` the shrunk
+  rectangle; never a DISPLAY1 record); `taskkill /f` → the marker survived byte-identical (md5 equal); Explorer
+  released the dead bar's strips itself within ~24 s; `--restore-taskbar` logged "Recovering 1 work area(s) a
+  previous run set directly" then "Dropped 1 work area record(s) that no longer describe a live work area …;
+  nothing was written back" (correct — Explorer had already given them back), deleted the marker, exit 0; the
+  final capture equalled the exact baseline.
+- **Criteria 10/15 (footprint, idle silence) PASS:** 13+ idle minutes in profile A with zero new log lines (64
+  before and after); 5 idle minutes in profile B with zero B1–B3 lines.
+- **Graceful shutdowns (three separate runs) PASS:** "work area given back" per monitor (or "Dropped …" when
+  already given back), "Taskbar restored", exit code 0, markers deleted, work areas back to the exact baseline
+  (0,0,2560,1540 / −447,−1440,2993,−48), `Shell_TrayWnd` visible.
+- **Criteria 9/11 PASS:** `--selftest --safe` exits 0 with no marker; the review confirmed no source wording still
+  claims the give-up lasts "until the next display change".
+- **Criterion 12 PARTIAL:** B1's chain fired live on real Explorer-initiated shows — two startups logged "Explorer
+  showed taskbar window 0xB708A2; re-hiding in 250 ms" then "Re-hid 2 taskbar window(s) Explorer had shown"
+  ~258 ms later, so the scheduled/executed chain works in the field — but the burst/backoff/throttle path was not
+  exercised: the scripted `ShowWindow` trigger produced no `EVENT_OBJECT_SHOW` at all on a locked workstation
+  (harness/lock limitation). **Criteria 13 (peek chain) and 14 (tray delivery, incl. the Windows Security version
+  field): NOT RUN** — they need real clicks and `SendInput` goes to the secure desktop while the workstation is
+  locked. All three ride on the everyday build after republish: the lines appear naturally when the user clicks,
+  and flash correlation accumulates field data the same way.
+
+*Recurrence:* the old build fought **again** on the user's everyday profile the same evening (23:49–23:50; the
+copied everyday log shows writes at 23:50:13/14 and 23:50:48/49 with budget refusals at 23:50:23/28 in between) —
+the recurrence that motivated this fix's urgency.
+
+*Honesty note:* the provocation hypothesis — that our own `SPIF_SENDCHANGE` broadcasts trigger Explorer's mid-run
+recomputes — remains **unconfirmed**; silence cannot prevent a fight's *first* reset, only stop us from sustaining
+it. The fix bounds the damage either way, and the transition WARN + " (without a broadcast)" lines make the next
+field occurrence measurable; B4's notification names landed. Two field observations from the session point the
+same way: Explorer reset **both** work areas to full bounds in response to a scripted taskbar `ShowWindow` (the
+wipe trigger is real and reproducible), and the instance rebuilt both correctly, logging one "after
+ABN_POSCHANGED" trigger line — the first field sighting of B4's notification names.

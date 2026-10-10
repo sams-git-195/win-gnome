@@ -127,26 +127,42 @@ internal static partial class TaskbarController
     /// <summary>
     /// Hides the taskbar windows again (Explorer re-shows them on some events). Only call while a successful
     /// <see cref="Hide"/> is in effect (<see cref="HasMarker"/>): its marker is what lets a crash or
-    /// <c>--restore-taskbar</c> undo this.
+    /// <c>--restore-taskbar</c> undo this. Returns how many windows were actually hidden.
     /// </summary>
-    public static void HideWindows()
+    public static int HideWindows()
     {
+        var hidden = 0;
         foreach (var hwnd in FindTaskbarWindows())
         {
             if (NativeMethods.IsWindowVisible(hwnd))
             {
                 NativeMethods.ShowWindow(hwnd, NativeMethods.SW_HIDE);
+                hidden++;
             }
         }
+
+        return hidden;
     }
 
-    /// <summary>Shows the taskbar windows without changing the auto-hide setting.</summary>
-    public static void ShowWindows()
+    /// <summary>
+    /// Shows the taskbar windows without changing the auto-hide setting. Returns how many were made visible
+    /// (windows that were already visible are re-shown but not counted, so the peek's "showed N" line means what
+    /// <see cref="HideWindows"/>'s count means: N windows changed).
+    /// </summary>
+    public static int ShowWindows()
     {
+        var shown = 0;
         foreach (var hwnd in FindTaskbarWindows())
         {
+            var wasVisible = NativeMethods.IsWindowVisible(hwnd);
             NativeMethods.ShowWindow(hwnd, NativeMethods.SW_SHOWNA);
+            if (!wasVisible)
+            {
+                shown++;
+            }
         }
+
+        return shown;
     }
 
     /// <summary>

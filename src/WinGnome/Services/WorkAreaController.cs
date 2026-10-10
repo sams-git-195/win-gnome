@@ -16,10 +16,12 @@ namespace WinGnome.Services;
 /// </summary>
 /// <remarks>
 /// Static and plain Win32, with one lock spanning read-compute-write, so the crash path can use it from any thread and
-/// two bars on one monitor can stack instead of overwriting each other. Everything is bounded: <see cref="WorkAreaBudget"/>
-/// per monitor, <see cref="StripRecovery"/> per bar. A change is recorded in <c>workareas.state</c> before it is made
-/// ("no record, no shrink", like the taskbar marker), so a force-kill can be recovered on the next start. Safe mode
-/// never shrinks; it does recover, which is a repair of our own earlier change.
+/// two bars on one monitor can stack instead of overwriting each other. Everything is bounded three ways:
+/// <see cref="WorkAreaBudget"/> per monitor, <see cref="StripRecovery"/> per bar (with its cool-down), and
+/// <see cref="WorkAreaFightDetector"/> per monitor, which drops the broadcast from the fourth application in ten
+/// minutes on so a fight with Explorer is starved instead of fed (KI-102). A change is recorded in
+/// <c>workareas.state</c> before it is made ("no record, no shrink", like the taskbar marker), so a force-kill can be
+/// recovered on the next start. Safe mode never shrinks; it does recover, which is a repair of our own earlier change.
 /// </remarks>
 internal static class WorkAreaController
 {
@@ -28,6 +30,7 @@ internal static class WorkAreaController
     private static readonly object Gate = new();
     private static readonly List<WorkAreaRecord> Records = [];
     private static readonly Dictionary<string, WorkAreaBudget> Budgets = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, WorkAreaFightDetector> Fighters = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<long> Released = [];
 
     private static string? _directory;
@@ -44,6 +47,7 @@ internal static class WorkAreaController
             Records.Clear();
             Released.Clear();
             Budgets.Clear();
+            Fighters.Clear();
         }
     }
 
@@ -96,11 +100,17 @@ internal static class WorkAreaController
                     return false; // Already reserved (the common case): one GetMonitorInfo and nothing written.
                 }
 
-                if (!Budget(key).TrySpend(Environment.TickCount64))
+                // One clock read for the whole call: the budget, the fight detector and the write must agree on "now".
+                var now = Environment.TickCount64;
+                if (!Budget(key).TrySpend(now))
                 {
                     Log.Warn($"Not setting {key}'s work area directly: {WorkAreaBudget.MaxApplications} applications in the last {WorkAreaBudget.WindowMs / 1000} s already");
                     return false;
                 }
+
+                // In a fight our own WM_SETTINGCHANGE appears to be what provokes Explorer's next reset (KI-102),
+                // so from the fourth application in the window on the write goes out silently.
+                var fighting = Fight(key).IsFighting(now);
 
                 var record = new WorkAreaRecord(owner, key, bounds, workArea, shrunk);
 
@@ -121,17 +131,25 @@ internal static class WorkAreaController
                     return false;
                 }
 
-                if (!SetWorkArea(shrunk, broadcast: true))
+                if (!SetWorkArea(shrunk, broadcast: !fighting))
                 {
                     // Read before anything else runs: the marker write below would clobber the thread's last error.
                     var error = Marshal.GetLastWin32Error();
                     ReplaceRecords(before);
                     WriteMarker();
+                    // The detector does not unwind with the records: a failed write broadcast nothing and is not
+                    // recorded; any over-counting would only make later writes more silent, and the window bounds it.
                     Log.Warn($"SPI_SETWORKAREA failed for {key} (error {error})");
                     return false;
                 }
 
-                Log.Info($"{key}: work area set directly for the {edge} strip {Format(strip)}: {Format(workArea)} -> {Format(shrunk)}");
+                if (Fight(key).Record(now) && !fighting)
+                {
+                    // The write that trips the detector has itself just broadcast; silence starts with the next one.
+                    Log.Warn($"{key}: Explorer keeps resetting this work area ({WorkAreaFightDetector.ApplicationLimit} direct sets in {WorkAreaFightDetector.WindowMs / 60000} minutes); setting it without a broadcast from the next write on — our own WM_SETTINGCHANGE may be what provokes the resets (KI-102)");
+                }
+
+                Log.Info($"{key}: work area set directly for the {edge} strip {Format(strip)}: {Format(workArea)} -> {Format(shrunk)}{(fighting ? " (without a broadcast)" : "")}");
                 return true;
             }
         }
@@ -310,6 +328,11 @@ internal static class WorkAreaController
             {
                 Budgets.Remove(key);
             }
+
+            foreach (var key in Fighters.Keys.Where(key => layout.Find(key) is null).ToList())
+            {
+                Fighters.Remove(key);
+            }
         }
     }
 
@@ -365,6 +388,17 @@ internal static class WorkAreaController
         }
 
         return budget;
+    }
+
+    private static WorkAreaFightDetector Fight(string key)
+    {
+        if (!Fighters.TryGetValue(key, out var fight))
+        {
+            fight = new WorkAreaFightDetector();
+            Fighters[key] = fight;
+        }
+
+        return fight;
     }
 
     /// <summary>Atomically rewrites the marker, or deletes it when no record is left.</summary>

@@ -47,6 +47,7 @@ internal static class LogoMask
             int sourceHeight;
             using (var probe = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
+                // Not disposable itself; disposing the stream is what releases the file.
                 var decoder = BitmapDecoder.Create(probe, BitmapCreateOptions.IgnoreColorProfile, BitmapCacheOption.OnDemand);
                 if (decoder.Frames.Count == 0)
                 {

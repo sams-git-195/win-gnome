@@ -270,7 +270,7 @@ Core-tested criteria ship with the mutation checks named in Design; each is seen
 17. Docs updated: README logo-menu bullet and top-bar settings; the `TopBarPage.xaml` "Logo menu" row subtitle
     reworded generically ("A logo at the far left…" — "A Windows logo…" goes stale once a custom mark is chosen);
     PLAN.md Core API table (`LogoSelection`, `LogoMaskRule` in the TopBar row) and module map (`LogoGlyph`,
-    `LogoMarks.xaml`); KNOWN_ISSUES entry **KI-103** (S4) written, covering the three points listed in Risks.
+    `LogoMarks.xaml`); KNOWN_ISSUES entry **KI-104** (S4) written, covering the three points listed in Risks.
     (Review.)
 
 ## Risks and open questions
@@ -281,7 +281,7 @@ Core-tested criteria ship with the mutation checks named in Design; each is seen
 - **Opaque images with a light mark on a dark background** invert badly under the luminance rule (the background
   becomes the silhouette). Alternatives considered: a hard threshold (aliases badly on antialiased edges) and
   "darkest-colour-is-ink" heuristics (unpredictable). Decision: inverted luminance, documented as
-  dark-mark-on-light. **KI-103** (S4, next free ID per KNOWN_ISSUES.md; entry written at implementation time)
+  dark-mark-on-light. **KI-104** (S4; allocated at merge — main's KI-102 fix took KI-103 first)
   records this plus two neighbours: (a) the degenerate alpha case — a JPEG-like opaque image with a *single*
   stray transparent pixel switches to the alpha rule and yields a near-full-square mask; (b) the size guards bound
   the *compressed* file (10 MB) and the *decoded transient* (256 px cap), not a huge file's decompressed size in

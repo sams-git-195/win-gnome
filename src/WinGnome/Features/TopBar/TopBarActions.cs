@@ -72,6 +72,7 @@ internal sealed class TopBarActions(ShellContext context)
                 break;
             case TopBarAction.ShowSystemTray:
                 // Explorer's own tray (its overflow and system icons) lives in the hidden native taskbar.
+                Log.Info("Quick settings 'System tray': requesting a taskbar peek");
                 context.Commands.PeekTaskbar();
                 break;
             case TopBarAction.Screenshot:
