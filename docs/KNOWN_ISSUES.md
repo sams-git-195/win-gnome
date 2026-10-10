@@ -889,6 +889,14 @@ re-hide with `ShowWindow` stays as the backup. `SetWindowRgn` on another process
 use of window regions is undocumented and may change; the setting can be turned off. Like the existing `ShowWindow` hide,
 the call is cross-process, so a hung Explorer could block the UI thread inside it.
 
+*Field report 2026-10-10 18:56 (user):* the tray peek works (taskbar shown, re-hidden when the foreground moved
+away), but just afterwards the **top monitor's** taskbar appeared a few times. The log shows the peek ending at
+18:56:39 with regions re-applied, then a burst of Explorer re-shows (7 suppressed) around 18:57:26 handled by
+the 50 ms re-hide; by 18:59 both windows were back to empty regions. Likely cause to investigate next: the
+peek suspends the guard and removes the regions on all taskbars, so Explorer's post-peek auto-hide slide on the
+secondary draws before the region is re-applied. Candidate fix: during a peek remove the region only from the
+window being peeked (the primary), and keep the secondary's region applied throughout.
+
 ## Resolved
 
 | ID | Severity | Area | Summary | Fixed in |
