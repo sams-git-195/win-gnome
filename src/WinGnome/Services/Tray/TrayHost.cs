@@ -531,8 +531,24 @@ internal sealed class TrayHost : IDisposable
             if (change.CreatedViaModify && !command.Has(NotifyIconFields.Message))
             {
                 // Plain Log: this runs on the tray host's own thread, where ThrottledLog must not be used. Fires
-                // at most once per adopted entry: later modifies update it instead of creating it.
+                // at most once per adopted entry: later modifies update it instead of creating it. Callback
+                // learning (spec 0022 addendum) may repair the entry ~2 s later; the learned line follows this.
                 Log.Info($"Tray icon (owner 0x{command.Owner:X}, id {command.Id}) appeared without a callback (it registered before the host was in front); clicks do nothing until the app re-registers");
+            }
+
+            if (change.LearnedCallback)
+            {
+                // Plain Log: tray thread. At most once per confirmed pair — adopting clears the candidate.
+                Log.Info($"Tray icon (owner 0x{command.Owner:X}, id {command.Id}) learned its callback 0x{change.Icon!.CallbackMessage:X} (version {change.Icon.Version}) from unflagged updates; clicks now deliver");
+            }
+            else if (change.ObservedCallback is { } observed)
+            {
+                // Plain Log: tray thread. Fires once per stored or replaced candidate — bounded by the distinct
+                // raw values the app cycles through (in practice one: apps reuse a single NOTIFYICONDATA
+                // struct), so no throttle is needed. Always the first observation of its candidate: a matching
+                // second one adopts (the learned line above) and a differing one replaces (count restarts).
+                // This is also the field evidence for whether apps populate the raw fields at all.
+                Log.Info($"Tray icon (owner 0x{command.Owner:X}, id {command.Id}): unflagged update carries callback 0x{observed.Callback:X} version {observed.Version} (observation 1)");
             }
 
             if (command.Message == NotifyIconMessage.SetVersion && change.Accepted)
