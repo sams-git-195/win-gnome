@@ -18,7 +18,7 @@ internal sealed class TopBarServices : IDisposable
         Clock = new ClockViewModel(context.Dispatcher, settings);
         Workspaces = new WorkspacesViewModel(context.Dispatcher);
         Status = new SystemStatusViewModel(context.Dispatcher, settings.ShowBatteryPercentage);
-        Tray = new TrayModel(context.Dispatcher, context.Commands.Quit);
+        Tray = new TrayModel(context.Dispatcher, context.Commands.Quit, uri => context.Launcher.Launch(uri));
         Tray.SetEnabled(settings.ShowTrayIcons);
         Popups = new PopupHost(context.Windows);
         Logo = new LogoProvider(context.Dispatcher);
