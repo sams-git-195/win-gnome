@@ -12,6 +12,10 @@
     -->
     <!-- Wi-Fi connected: solid signal wedge. -->
     <StreamGeometry x:Key="NetworkWireless" po:Freeze="True">F1 M8,14 L0.22,6.22 A11,11 0 0 1 15.78,6.22 Z</StreamGeometry>
+    <!-- Wi-Fi connected, signal at level 1 to 3 of 4 (a connected network is never drawn empty, which is the offline icon): the hollow wedge with the lit part filled (even-odd, so the lit wedge sits inside the hole). -->
+    <StreamGeometry x:Key="NetworkWireless1" po:Freeze="True">F0 M8,14 L0.22,6.22 A11,11 0 0 1 15.78,6.22 Z M8,11.17 L3.21,6.38 A9,9 0 0 1 12.79,6.38 Z M8,11.17 L6.56,9.73 A4.5,4.5 0 0 1 9.44,9.73 Z</StreamGeometry>
+    <StreamGeometry x:Key="NetworkWireless2" po:Freeze="True">F0 M8,14 L0.22,6.22 A11,11 0 0 1 15.78,6.22 Z M8,11.17 L3.21,6.38 A9,9 0 0 1 12.79,6.38 Z M8,11.17 L5.04,8.21 A6.5,6.5 0 0 1 10.96,8.21 Z</StreamGeometry>
+    <StreamGeometry x:Key="NetworkWireless3" po:Freeze="True">F0 M8,14 L0.22,6.22 A11,11 0 0 1 15.78,6.22 Z M8,11.17 L3.21,6.38 A9,9 0 0 1 12.79,6.38 Z M8,11.17 L3.94,7.11 A8,8 0 0 1 12.06,7.11 Z</StreamGeometry>
     <!-- No network: the wedge, hollow. -->
     <StreamGeometry x:Key="NetworkOffline" po:Freeze="True">F0 M8,14 L0.22,6.22 A11,11 0 0 1 15.78,6.22 Z M8,11.17 L3.21,6.38 A9,9 0 0 1 12.79,6.38 Z</StreamGeometry>
     <!-- Wired: three linked boxes. -->

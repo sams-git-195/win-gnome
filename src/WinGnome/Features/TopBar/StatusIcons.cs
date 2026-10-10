@@ -1,4 +1,5 @@
 using System.Globalization;
+using WinGnome.Core.Connectivity;
 using WinGnome.Core.TopBar;
 
 namespace WinGnome.Features.TopBar;
@@ -6,10 +7,18 @@ namespace WinGnome.Features.TopBar;
 /// <summary>Keys of the symbolic icons (<c>Theme/SymbolicIcons.xaml</c>) that show the network, volume and battery state.</summary>
 internal static class StatusIcons
 {
-    public static string ForNetwork(NetworkConnection connection) => connection switch
+    /// <summary>
+    /// Wi-Fi shows <c>NetworkWireless1</c> to <c>NetworkWireless3</c> for a known weaker signal and the full
+    /// <c>NetworkWireless</c> wedge for the top level or when no signal could be read.
+    /// </summary>
+    public static string ForNetwork(NetworkConnection connection, int? signalBars = null) => connection switch
     {
         NetworkConnection.Wired => "NetworkWired",
-        NetworkConnection.Wireless => "NetworkWireless",
+        NetworkConnection.Wireless => WifiSignal.LevelFromBars(signalBars) switch
+        {
+            { } level and < 4 => "NetworkWireless" + level.ToString(CultureInfo.InvariantCulture),
+            _ => "NetworkWireless",
+        },
         _ => "NetworkOffline",
     };
 

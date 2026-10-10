@@ -46,7 +46,6 @@ have entries now). The next free ID is **KI-112**; grep the specs for `KI-0` bef
 | [KI-042](#ki-042) | S4 | Window buttons | WinGnome builds from before the window-buttons role still decorate alongside newer ones | Open |
 | [KI-050](#ki-050) | S4 | Settings | Another WinGnome instance draws its circles over this one's header bars | Open |
 | [KI-052](#ki-052) | S4 | Dock | Explorer windows other than folder windows don't join the File Explorer pin | Open |
-| [KI-055](#ki-055) | S4 | Top bar | The Wi-Fi icon doesn't show signal strength | Open |
 | [KI-056](#ki-056) | S4 | Launching | Elevation details: an undocumented host value, and a late UAC answer can close a reopened overview | Open |
 | [KI-060](#ki-060) | S4 | Settings | Choosing the default sound device uses the undocumented `IPolicyConfig` | Open |
 | [KI-061](#ki-061) | S4 | Settings | The power mode uses undocumented powrprof functions | Open |
@@ -335,15 +334,6 @@ under File Explorer. `WindowTracker.Inspect` already has the class name, so the 
 classes to admit haven't been listed from a live session (`OperationStatusWindow` is a guess), and admitting an
 unlisted class risks pulling shell windows into the pin. *Fix direction:* list the classes seen live (for example `OperationStatusWindow`) and add
 them to the rule, keeping the desktop, taskbar and other shell windows out.
-
-### KI-055
-**The Wi-Fi icon doesn't show signal strength** · S4 · Top bar · Open
-
-`NetworkMonitor` only knows whether the connection is wired, wireless or absent, so the bar shows one
-"connected" Wi-Fi wedge (spec 0012) where GNOME shows 0–4 bars. Signal strength changes without a network-change
-event, so adding it means either polling (WLAN API or `ConnectionProfile.GetSignalBars`) or refreshing it only on
-network changes and when quick settings opens. Draw the 0–3 bar icons in `Theme/SymbolicIcons.xaml` (GNOME dims
-the unlit part of the wedge) when a source is added.
 
 ### KI-056
 **Elevation details: an undocumented host value, and a late UAC answer can close a reopened overview** · S4 · Launching · Open
@@ -904,6 +894,7 @@ saved XML is kept), so the old, already rejected key is lost.
 | KI-051 | S3 | Accessibility | The round window buttons weren't exposed to screen readers or the keyboard | fea478b |
 | KI-053 | S4 | Dock | An elevated launch played the launch animation even when the UAC prompt was cancelled | b09a222 (feedback posted back only after `ShellExecuteEx` succeeds) |
 | KI-054 | S3 | Dock | Full-trust packaged apps such as Windows Terminal couldn't be run as administrator | b09a222 (`PKEY_AppUserModel_HostEnvironment` in `AppCatalog`) |
+| KI-055 | S4 | Top bar | The Wi-Fi icon didn't show signal strength | f519cb5 (`ConnectionProfile.GetSignalBars`, no location consent needed; read on network changes plus a 45 s one-shot timer armed only while on Wi-Fi) |
 | KI-065 | S4 | Settings | Quick settings rows and the gear opened Windows Settings pages instead of the matching native panel | f5dcf13 (`TopBarActions` via `ShowSettings`; `--settings-panel` forwarded to a running instance; Win+I waits for shell-mode hotkeys, spec 0013) |
 | KI-100 | S3 | Dock | A pinned Docker Desktop showed a second, unpinned icon while running | c842f5d (launcher-child rule in `AppPathMatch.IsSameInstall`; see below) |
 | KI-102 | S3 | Top bar, Dock | Explorer keeps recomputing work areas without the strips after an everyday display pass, and the fallback's give-up lasts the run | f402e2e, 0300eed, 73a3c5d (fight detector, cool-down, silent writes; diagnostics in d9f85da; see below) |
