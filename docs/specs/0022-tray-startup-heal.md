@@ -1,8 +1,9 @@
 # 0022 — Tray startup heal: one delayed TaskbarCreated re-broadcast
 
-Status: Implemented (Core e7b7308, host wiring 41a93b7) — live checks pending with the integrator: AC 1
-(SecurityHealthSystray click-delivery after a cold start) and AC 2/4–6 need a running app, which this branch
-must not start.
+Status: Implemented (Core e7b7308, host wiring 41a93b7). The 2026-10-10 live check showed the heal works
+but SecurityHealthSystray never re-registers on TaskbarCreated — see the extension addendum below
+(Implemented: 429ccf9 Core learning, 887e3f0 host logging; its live acceptance is pending with the
+integrator). AC 2/4–6 below still need a running app, which this branch must not start.
 
 ## Problem
 
@@ -120,3 +121,92 @@ new always-on surface. Idle cost unchanged.
   already exists for the startup broadcast and the Explorer-restart rebroadcast.
 - If Explorer restarts *just after* the heal fires, its rebroadcast follows within ~2 s: two registration
   storms close together. Bounded, defended by the SMTO burst handling, and strictly rarer than the disease.
+
+---
+
+## Extension 2026-10-10: learning the callback from unflagged updates
+
+Status: Implemented (Core learning + tests 429ccf9, host logging 887e3f0) — live acceptance below needs a
+running app, which this branch must not start; the integrator runs it.
+
+### Problem
+
+The live check of the heal on the shipping build (2026-10-10) **failed for SecurityHealthSystray**. The
+heal itself works — it fired at +2.002 s and two apps re-registered with full data within 13 ms — but
+Windows Security never re-registers on `TaskbarCreated`: not for the first broadcast, not for the heal.
+It answers each broadcast with a tooltip-only `NIM_MODIFY` (no `NIF_MESSAGE`), which creates and keeps a
+callback-less entry:
+
+> `12:22:58.757 INFO Tray icon (owner 0x10378, id 100) appeared without a callback (it registered before the host was in front); clicks do nothing until the app re-registers`
+
+and every click on it stays dead:
+
+> `Tray LeftDown on "Windows Security - No actions needed." (owner 0x10378, id 100) did nothing: the icon registered no callback message`
+
+The re-registration the original design waits for never comes, so the heal cannot repair this icon.
+
+### Design
+
+Apps nearly always reuse ONE `NOTIFYICONDATA` struct for every `Shell_NotifyIcon` call, so the raw
+`uCallbackMessage`/`uVersion` fields ride along on tooltip-only modifies even when `NIF_MESSAGE` isn't
+flagged — `ParseNotifyIcon` already exposes them (`NotifyIconCommand.CallbackMessage`/`.Version`). The
+registry learns from them (`TrayIconRegistry.Learn`, state internal to the registry):
+
+1. A `NIM_MODIFY` whose entry exists (or is created via the `knownToShell` adoption path) with
+   `CallbackMessage == 0` in the resulting state, **without** `NIF_MESSAGE`, and with a *plausible* raw
+   pair — callback in `[0x0400 (WM_USER), 0xBFFF (top of WM_APP)]`, version in `{0, 3, 4}` — is a
+   **candidate observation**, stored per icon.
+2. A **second** observation of the **same** pair **adopts** it: `CallbackMessage` and `Version` are set
+   together from the confirmed pair and the returned `TrayChange` carries `LearnedCallback = true`
+   (optional positional flag, like `CreatedViaModify`). A *differing* plausible pair **replaces** the
+   candidate. An implausible pair (0, out of range) neither stores nor clears.
+3. **Flagged data always wins**: a modify/add with `NIF_MESSAGE`, or a `NIM_SETVERSION`, sets the
+   authoritative values (existing behaviour) and clears any pending candidate. Learning never overwrites
+   a non-zero callback.
+4. Removing an icon (delete or owner-gone sweep) clears its candidate. Candidates are **in-memory only**,
+   never persisted.
+5. Version 0 in a confirmed pair is fine: it means legacy callback encoding, which `TrayCallback`
+   already speaks.
+
+Diagnostics (`TrayHost.OnNotifyIcon`, plain `Log` — tray thread): adoption logs
+`… learned its callback 0x… (version …) from unflagged updates; clicks now deliver`; storing or replacing
+a candidate logs `…: unflagged update carries callback 0x… version … (observation 1)` — the field
+evidence for whether apps populate the raw fields at all. `TrayChange.ObservedCallback`
+(`(uint Callback, uint Version)?`) is the channel. The observation line is always "observation 1": a
+store/replace is by construction the first observation of its candidate (a matching second one adopts
+instead, a differing one restarts the count). The existing "appeared without a callback" line stays; a
+learned line may follow it ~2 s later. `TrayModel.Deliver`, the heal mechanism, forwarding, `TrayAnchor`
+and work-area code are untouched: a learned callback flows through the existing delivery path unchanged.
+
+### Safety
+
+- **Two-observation rule**: a single unflagged raw value could be an uninitialised-struct leftover; the
+  same value must arrive twice from the app's own live struct. In practice apps answer every
+  `TaskbarCreated` broadcast with a modify, so the host's startup broadcast and its +2 s heal broadcast
+  deliver both observations — healing within ~2 s while making false positives vanishingly rare.
+- **Range gates**: below `WM_USER` is refused absolutely (a junk `WM_CLOSE` 0x0010 must never be
+  adopted); `0xC000`+ is the `RegisterWindowMessage` range and refused; versions other than {0, 3, 4}
+  (e.g. balloon `uTimeout` values sharing the union field) are refused.
+- **Worst case of a false positive**: the app's own window is posted a plausible message number taken
+  from the app's own struct field. Unknown message ids fall through to `DefWindowProc`; the value cannot
+  name another process's window (it is sent only to the icon's recorded owner).
+- Flagged data always overrides the guess, learning never touches a non-zero callback, and nothing is
+  persisted — a restart re-learns from live wire data only. No system state, no recovery surface.
+
+### Acceptance criteria (live, integrator)
+
+1. Cold start with SecurityHealthSystray running: the log shows the adoption line for `(owner 0x10378,
+   id 100)`, then — after the heal broadcast, within ~2 s of it — the observation lines
+   (`unflagged update carries callback 0x… version 4`) and the learned line
+   (`learned its callback 0x… (version 4) … clicks now deliver`) for the same icon.
+2. A click on the Windows Security icon then produces a real delivery line
+   (`Tray LeftDown … version 4, callback 0x…: sending [0x…]`) instead of the `registered no callback
+   message` no-op, and the Windows Security flyout opens.
+3. Icons that re-register with flagged data (the two apps the heal already repaired) are untouched by
+   learning: no observation or learned lines for them beyond at most one candidate that never adopts.
+
+### Residual gap
+
+Apps that neither re-register on `TaskbarCreated` nor send at least two unflagged updates reusing their
+struct stay click-dead, and a mid-session adoption heals only once its second observation arrives (any
+later update the app sends). KI-105 narrowed accordingly; the heuristic itself is KI-106.
