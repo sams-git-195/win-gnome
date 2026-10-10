@@ -50,7 +50,7 @@ disabled (no printers). Pointer uses a custom colour (cursor-size row is disable
 
 ---
 
-## 2. State of `main` (build clean, 3241 tests green; `publish\WinGnome.exe` is built from b1b3053 and RUNNING)
+## 2. State of `main` (build clean, 3480 tests green; `publish\WinGnome.exe` rebuilt from main 2026-10-10 evening)
 
 `main` is at **b1b3053** (pushed; origin in sync). Merged 2026-10-10, in order:
 
@@ -78,7 +78,23 @@ disabled (no printers). Pointer uses a custom colour (cursor-size row is disable
   per icon). Live-verified: left/right/double click each opened Windows Security, one launch per gesture,
   control icons unaffected. KI-105 (residual gaps), KI-106 (learning heuristic limits). Next free ID: KI-107.
 
-QA at the final merge: `dotnet build -c Release -warnaserror` clean; **3241 tests green**; `--selftest --safe`
+Merged later on 2026-10-10 (Claude Opus 5.5 as PM, Sonnet authors, Opus reviews):
+
+- **Taskbar flash fix** (merge 1653651): the fixed 5 s re-hide back-off (which left the taskbar visible at start-up,
+  provoked by our own work-area broadcasts) is now Core `TaskbarRehidePolicy`: 250 ms, then 750 ms from 5 shows in
+  10 s, 3 s from 12; one show counted per scheduled re-hide (multi-monitor). Not yet field-confirmed: grep the
+  everyday log for "re-hiding it less often" after the next sign-in.
+- **Windows Update fixes** (merge a5e8d00): optional driver/browse-only updates listed separately instead of counted
+  as waiting (Core `UpdateClassification`); restart detection adds the CBS/Auto Update registry keys
+  (`PendingRestartSignals`); Restart/Power Off show "Install pending software updates" when the undocumented
+  Orchestrator `ShutdownFlyoutOptions` is non-zero, using `InitiateShutdown(SHUTDOWN_INSTALL_UPDATES)` (KI-107; the
+  install path is unverified live — check it the next time Start offers "Update and restart").
+- **Spec 0019 Wi-Fi + Bluetooth panels** (merge 66bff78): Native Wifi API panel (list, connect incl. passwords,
+  disconnect, forget; location-consent gated via `AppCapability("wiFiControl")`, no automatic gated call while
+  consent is unasked) and Bluetooth panel (switch, paired devices, Remove Device). Network panel and part (a) stay
+  deferred. All write paths unverified live — manual QA list in KI-109/KI-110. KI-108..111; next free KI-112.
+
+Earlier QA at b1b3053: `dotnet build -c Release -warnaserror` clean; **3241 tests green**; `--selftest --safe`
 exits 0 with no marker. `publish\WinGnome.exe` (b1b3053) is **running as the user's everyday instance** (started
 15:17 through `explorer.exe`); the previous exe (KI-102-only build) is backed up at
 `C:\Users\samhe\AppData\Local\Temp\opencode\publish-backup-20261010\`. Start at launch: the HKCU Run entry
