@@ -70,9 +70,7 @@ public class SettingsPanelCatalogTests
     }
 
     [Theory]
-    [InlineData(PanelIds.Wifi, "ms-settings:network-wifi")]
     [InlineData(PanelIds.Network, "ms-settings:network-status")]
-    [InlineData(PanelIds.Bluetooth, "ms-settings:bluetooth")]
     [InlineData(PanelIds.Colour, "colorcpl.exe")]
     [InlineData(PanelIds.DefaultApps, "ms-settings:defaultapps")]
     [InlineData(PanelIds.OnlineAccounts, "ms-settings:emailandaccounts")]
@@ -263,8 +261,6 @@ public class SettingsPanelCatalogTests
     }
 
     [Theory]
-    [InlineData(PanelIds.Wifi, "ms-settings:network-wifi")]
-    [InlineData(PanelIds.Bluetooth, "ms-settings:bluetooth")]
     [InlineData(PanelIds.Network, "ms-settings:network-status")]
     [InlineData(PanelIds.Colour, "colorcpl.exe")]
     [InlineData(PanelIds.DefaultApps, "ms-settings:defaultapps")]
@@ -288,6 +284,8 @@ public class SettingsPanelCatalogTests
     [InlineData(PanelIds.Privacy)]
     [InlineData(PanelIds.RemovableMedia)]
     [InlineData(PanelIds.WindowsUpdate)]
+    [InlineData(PanelIds.Wifi)]
+    [InlineData(PanelIds.Bluetooth)]
     [InlineData(PanelIds.General)]
     [InlineData("no-such-panel")]
     public void DirectLinkFor_NativePageOrUnknown_ReturnsNull(string panelId)
