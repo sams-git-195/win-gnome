@@ -25,8 +25,17 @@ internal sealed class TrayModel : IDisposable
 {
     private readonly Dispatcher _dispatcher;
     private readonly Action _onCloseRequested;
+    private readonly Func<string, bool>? _launchUri;
     private readonly DispatcherTimer _hoverTimer;
     private readonly List<TrayIconEntry> _entries = [];
+
+    // Click-fallback caches (spec 0022 addendum 2), UI-thread-only like the entries. Owner paths are
+    // resolved at most once per owner hwnd per host run; Windows reuses hwnds, so a stale key could in
+    // theory map a new owner to an old process's path — accepted: the fallback only ever launches one
+    // hardcoded URI for field-confirmed dead Windows components. Both caches are cleared in StopHost,
+    // which bounds them by the distinct owners and icons seen while hosting.
+    private readonly Dictionary<nint, string?> _fallbackPaths = [];
+    private readonly Dictionary<TrayIconId, long> _lastFallbackLaunch = [];
     private TrayHost? _host;
     private PixelRect _hostBounds;
     private TrayIconEntry? _hovered;
@@ -34,10 +43,16 @@ internal sealed class TrayModel : IDisposable
     private PixelRect _hoveredBarBounds;
 
     /// <param name="onCloseRequested">Quits WinGnome when the tray host receives a polite close request.</param>
-    public TrayModel(Dispatcher dispatcher, Action onCloseRequested)
+    /// <param name="launchUri">
+    /// Opens a fallback URI (<see cref="TrayClickFallback"/>) for an icon that is click-dead beyond repair:
+    /// its owner neither re-registers nor carries usable wire callbacks. Null (tests, selftest) leaves the
+    /// fallback off and dead clicks log as before.
+    /// </param>
+    public TrayModel(Dispatcher dispatcher, Action onCloseRequested, Func<string, bool>? launchUri = null)
     {
         _dispatcher = dispatcher;
         _onCloseRequested = onCloseRequested;
+        _launchUri = launchUri;
         _hoverTimer = new DispatcherTimer(DispatcherPriority.Normal, dispatcher) { Interval = TimeSpan.FromMilliseconds(SystemParameters.MouseHoverTime.TotalMilliseconds) };
         _hoverTimer.Tick += OnHoverTimer;
     }
@@ -164,7 +179,7 @@ internal sealed class TrayModel : IDisposable
         var click = TrayCallback.MayTakeForeground(action);
         if (state.CallbackMessage == 0)
         {
-            if (click)
+            if (click && !TryClickFallback(state, action))
             {
                 Log.Info($"Tray {action} on {Tip(state)} (owner 0x{state.Id.Owner:X}, id {state.Id.Id}) did nothing: the icon registered no callback message");
             }
@@ -219,6 +234,44 @@ internal sealed class TrayModel : IDisposable
                 return;
             }
         }
+    }
+
+    /// <summary>
+    /// The targeted fallback for click-dead icons (spec 0022 addendum 2): resolves the owner's process path
+    /// (cached per hwnd) and, when <see cref="TrayClickFallback"/> knows the component, launches its URI —
+    /// rate-limited so one physical double-click (down, up, double-click, up) opens the app exactly once.
+    /// True when the click was handled (launched or deduplicated); false keeps the "did nothing" diagnosis.
+    /// UI thread only; the cached path lookup means at most one small Win32 query per owner.
+    /// </summary>
+    private bool TryClickFallback(TrayIconState state, TrayPointerAction action)
+    {
+        if (_launchUri is null)
+        {
+            return false;
+        }
+
+        if (!_fallbackPaths.TryGetValue(state.Id.Owner, out var path))
+        {
+            // A null miss is cached too: a dead owner's process never becomes resolvable later.
+            path = NativeMethods.GetProcessPath(NativeMethods.GetProcessId(state.Id.Owner));
+            _fallbackPaths[state.Id.Owner] = path;
+        }
+
+        if (path is null || TrayClickFallback.LaunchUriFor(path) is not { } uri)
+        {
+            return false;
+        }
+
+        var now = Environment.TickCount64;
+        if (!TrayClickFallback.ShouldLaunch(now, _lastFallbackLaunch.TryGetValue(state.Id, out var last) ? last : null))
+        {
+            return true; // the rest of one click sequence: the launch already happened.
+        }
+
+        _lastFallbackLaunch[state.Id] = now;
+        Log.Info($"Tray {action} on {Tip(state)}: no callback; opening the registered app instead ({uri})");
+        _launchUri(uri); // a failed launch is logged by the launcher itself.
+        return true;
     }
 
     /// <summary>The icon's quoted tooltip, capped: it is arbitrary app-supplied text (potential PII) and must not fill the log.</summary>
@@ -299,6 +352,12 @@ internal sealed class TrayModel : IDisposable
     {
         _hoverTimer.Stop();
         _hovered = null;
+
+        // The icon list is gone, so the fallback caches go with it: owner hwnds are reused by Windows and
+        // a restarted host must never consult a stale owner mapping or launch timestamp.
+        _fallbackPaths.Clear();
+        _lastFallbackLaunch.Clear();
+
         var host = _host;
         _host = null;
         host?.Dispose();
