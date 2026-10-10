@@ -17,8 +17,8 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity. A resolve
 detail section below the Resolved table when the measured evidence behind the fix is worth keeping (KI-100,
 KI-102).
 
-IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-106 all
-have entries now). The next free ID is **KI-107**; grep the specs for `KI-0` before allocating one.
+IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-107 all
+have entries now). The next free ID is **KI-108**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
@@ -75,6 +75,7 @@ have entries now). The next free ID is **KI-107**; grep the specs for `KI-0` bef
 | [KI-104](#ki-104) | S4 | Top bar | The custom-logo mask inverts a light mark on a dark background, one stray transparent pixel takes the alpha rule, and the size guards don't bound the decompressed middle | By design |
 | [KI-105](#ki-105) | S4 | Tray | An icon whose registration fell in a front gap stays click-dead until the app re-registers, a second matching unflagged update arrives, or the built-in fallback knows its owner | Open |
 | [KI-106](#ki-106) | S4 | Tray | Tray callback learning reads unflagged wire fields: a range-gated, twice-confirmed heuristic | By design |
+| [KI-107](#ki-107) | S4 | Settings, Top bar | Install-on-shutdown detection reads the undocumented Update Orchestrator `ShutdownFlyoutOptions` value | By design |
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -823,6 +824,22 @@ alternatives:* persisting learned callbacks across runs was rejected (spec 0022 
 (owner, id) → callback map would deliver clicks to whatever window later reuses that HWND; single-
 observation adoption was rejected because one unflagged value can be an uninitialised-struct leftover, and
 the second observation costs at most ~2 s (the heal broadcast) in the common sign-in case.
+
+### KI-107
+**Install-on-shutdown detection reads the undocumented Update Orchestrator `ShutdownFlyoutOptions` value** · S4 · Settings, Top bar · By design
+
+The Restart and Power Off confirmations offer "Install pending software updates" when `PendingRestartSignals.InstallOnShutdownAvailable`
+is true. Besides the documented signals (the WUA reboot flag and the `Auto Update\RebootRequired` and
+`Component Based Servicing\RebootPending` keys), that reads the DWORD
+`HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\ShutdownFlyoutOptions`, which is what makes Start's own
+power menu offer "Update and restart". Microsoft doesn't document it, so it can change meaning or vanish in a Windows update.
+
+- **Read-only, HKLM never written**; a missing or unreadable value (logged) counts as zero.
+- *Worst case:* the box is missing when updates are pending (the user can still use Start's menu), or shown
+  when nothing is pending, in which case `InitiateShutdown` with `SHUTDOWN_INSTALL_UPDATES` installs nothing and
+  just restarts or powers off.
+- The install path itself (`InitiateShutdown`) is documented; only the "is there something to install" hint is not.
+  If it fails, `PowerActions` logs the error and falls back to `shutdown.exe` without installing.
 
 ## Resolved
 
