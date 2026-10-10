@@ -73,7 +73,7 @@ have entries now). The next free ID is **KI-107**; grep the specs for `KI-0` bef
 | [KI-101](#ki-101) | S4 | Settings | About and Displays bypass the shared load gate; a failed About read shows nothing at all | Open |
 | [KI-103](#ki-103) | S4 | Top bar, Dock | Silent work-area writes leave already-maximised windows oversized until the next broadcast | By design |
 | [KI-104](#ki-104) | S4 | Top bar | The custom-logo mask inverts a light mark on a dark background, one stray transparent pixel takes the alpha rule, and the size guards don't bound the decompressed middle | By design |
-| [KI-105](#ki-105) | S4 | Tray | An icon whose registration fell in a front gap stays click-dead until the app re-registers or a second matching unflagged update arrives | Open |
+| [KI-105](#ki-105) | S4 | Tray | An icon whose registration fell in a front gap stays click-dead until the app re-registers, a second matching unflagged update arrives, or the built-in fallback knows its owner | Open |
 | [KI-106](#ki-106) | S4 | Tray | Tray callback learning reads unflagged wire fields: a range-gated, twice-confirmed heuristic | By design |
 
 ### KI-003
@@ -763,7 +763,7 @@ accepted limitations of that rule:
 background. Colour logos are out of scope by design (spec 0021 non-goals).
 
 ### KI-105
-**An icon whose registration fell in a front gap stays click-dead until the app re-registers or a second matching unflagged update arrives** · S4 · Tray · Open
+**An icon whose registration fell in a front gap stays click-dead until the app re-registers, a second matching unflagged update arrives, or the built-in fallback knows its owner** · S4 · Tray · Open
 
 If an app's NIM_ADD + NIM_SETVERSION reach Explorer's tray window while it is in front of the tray host (a
 ≤1 s front gap, KI-019), the host first learns of the icon through a later update — typically a tooltip-only
@@ -771,26 +771,33 @@ NIM_MODIFY without NIF_MESSAGE. The adopted entry (`TrayChange.CreatedViaModify`
 and no version: the icon shows and tooltips, but clicks silently do nothing (the `registered no callback
 message` log line; seen in the field with Windows Security, spec 0022).
 
-Two mechanisms now repair this, and together they cover the sign-in gap for every app that *either*
-re-registers on TaskbarCreated *or* sends at least two unflagged updates reusing its NOTIFYICONDATA struct
-(which is how apps answer each broadcast — SecurityHealthSystray, that re-registers never, is repaired by
-the second alone):
+Three mechanisms now repair or work around this:
 
 - the start-up heal (spec 0022): one delayed TaskbarCreated re-broadcast makes re-registering apps
   re-announce with full flagged data;
 - callback learning (spec 0022 addendum): the registry adopts a plausible raw (callback, version) pair
   carried by unflagged updates once the same pair has been observed twice — in practice the start-up
   broadcast and the +2 s heal broadcast deliver both observations, so a click-dead entry heals within
-  ~2 s (`learned its callback 0x… from unflagged updates` log line). The heuristic itself is KI-106.
+  ~2 s (`learned its callback 0x… from unflagged updates` log line). The heuristic itself is KI-106;
+- a built-in click fallback (spec 0022 addendum 2, `TrayClickFallback`): for field-confirmed Windows
+  components that defeat *both* general mechanisms, a click on the dead icon launches the URI the icon's
+  own click would open (rate-limited to one launch per 750 ms per icon). One entry so far:
+  SecurityHealthSystray.exe → `windowsdefender://`. Live runs (2026-10-10) proved SecurityHealthSystray
+  ignores every TaskbarCreated broadcast *and* zero-fills the raw callback fields on its single unflagged
+  modify (it does not reuse its NOTIFYICONDATA struct), so neither the heal nor learning can ever repair
+  it — the fallback opens Windows Security on any click, but the icon's own context menu and balloon
+  actions stay unavailable: they live behind a callback message that never exists.
 
-What remains open: apps that do **neither** (no re-registration and fewer than two unflagged updates after
-adoption — e.g. an app that only modifies its tooltip once and then goes quiet), and **mid-session** gaps:
-an icon adopted after the heal has fired stays click-dead until the app next re-registers or sends a second
-matching unflagged update, whenever that happens (an Explorer restart, an app restart, its own periodic
-tooltip refresh). The host logs every adoption ("appeared without a callback …"); whether a repair follows
-depends on the app's own update traffic.
+What remains open: apps that do **none of the three** — no re-registration, fewer than two matching
+unflagged updates after adoption, and no table entry (e.g. an app that only modifies its tooltip once and
+then goes quiet) — and **mid-session** gaps: an icon adopted after the heal has fired stays click-dead
+until the app next re-registers or sends a second matching unflagged update, whenever that happens (an
+Explorer restart, an app restart, its own periodic tooltip refresh). The host logs every adoption
+("appeared without a callback …"); whether a repair follows depends on the app's own update traffic.
 *Fix direction:* re-broadcasting on every mid-session front regain was rejected in spec 0022: it would storm
-every app with re-registrations for a rare, bounded gap.
+every app with re-registrations for a rare, bounded gap. Extending the fallback table stays deliberately
+manual: one entry per field-confirmed dead icon, no generic "activate the owner process" heuristic (a
+clicked tray icon and its process's main window are not reliably the same thing).
 
 ### KI-106
 **Tray callback learning reads unflagged wire fields: a range-gated, twice-confirmed heuristic** · S4 · Tray · By design

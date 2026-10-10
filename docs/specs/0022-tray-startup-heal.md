@@ -210,3 +210,81 @@ and work-area code are untouched: a learned callback flows through the existing 
 Apps that neither re-register on `TaskbarCreated` nor send at least two unflagged updates reusing their
 struct stay click-dead, and a mid-session adoption heals only once its second observation arrives (any
 later update the app sends). KI-105 narrowed accordingly; the heuristic itself is KI-106.
+
+---
+
+## Extension 2 (2026-10-10): the targeted fallback for SecurityHealthSystray
+
+Status: Implemented (Core table + tests a3a9c8d, TrayModel wiring 3defc51) — live acceptance below needs a
+running app, which this branch must not start; the integrator runs it.
+
+### Problem
+
+Two live runs of the heal+learning build on the user's machine show SecurityHealthSystray (owner 0x10378,
+icon id 100) defeating **both** general mechanisms:
+
+- It **ignores every `TaskbarCreated` broadcast** — the host's startup one and the +2 s heal — and never
+  re-registers, unlike two other apps that re-registered with full data within 13 ms of the heal (the heal
+  works in general and stays).
+- It sent **exactly one** tooltip-only `NIM_MODIFY` (the adoption at host start), and its raw wire
+  callback/version fields were implausible/zero — no `unflagged update carries` observation line was ever
+  logged for it. It does not reuse its `NOTIFYICONDATA` struct, so learning has nothing to learn (learning
+  stays for other apps; it is harmless and proven inert here).
+
+Clicks therefore remain dead:
+
+> `Tray LeftDown/LeftUp/RightDown/RightUp/LeftDoubleClick on "Windows Security…" did nothing: the icon registered no callback message`
+
+The user's bug report expects clicking, double-clicking and right-clicking the icon to open Windows
+Security — what the icon's own click does (SecHealthUI, via the `windowsdefender://` protocol).
+
+### Design
+
+A **built-in click fallback table** (`WinGnome.Core.Tray/TrayClickFallback.cs`, pure and tested):
+
+- `LaunchUriFor(processFileName)` — case-insensitive exact file-name match (a full path is accepted; the
+  file-name part is compared) against `{ "securityhealthsystray.exe" → "windowsdefender://" }`; null
+  otherwise. Precedent for hardcoding Windows' own components: `NotificationAppList.SystemNames`. Scope
+  discipline: ONE entry; the table is data, extensible per field-confirmed dead icon; no generic
+  "activate the app" heuristic.
+- `ShouldLaunch(nowMs, lastLaunchMs)` with `LaunchGapMs = 750` — one physical double-click delivers
+  LeftUp → LeftDoubleClick → LeftUp; one launch must serve the whole sequence.
+
+App layer (`TrayModel.Deliver`): in the `CallbackMessage == 0` branch, for click-class actions only (the
+same `MayTakeForeground` gate as the existing diagnosis log), resolve the owner's process path via the
+existing `NativeMethods.GetProcessId`/`GetProcessPath` helpers (cached per owner hwnd; both fallback
+caches are cleared in `StopHost` — hwnds are reused, and a stale mapping could at worst launch the one
+hardcoded URI). On a table hit and `ShouldLaunch` (per-icon last-launch timestamps,
+`Environment.TickCount64`), launch the URI through an optional `Func<string, bool>` injected into
+`TrayModel` — `TopBarServices` passes `uri => context.Launcher.Launch(uri)`, the same launcher path
+`TopBarActions` uses for `ms-settings:` — and log:
+
+> `Tray {action} on "{tip}": no callback; opening the registered app instead (windowsdefender://)`
+
+On a miss (unknown process, no launcher — tests/selftest), the existing "did nothing: the icon registered
+no callback message" log stays **exactly** as it was; deduplicated events inside one click sequence stay
+silent. `TrayModel.Deliver`'s real delivery path, the heal, learning, forwarding and anchor code are
+untouched.
+
+Right-click opens the app too: the icon's own context menu lives behind its callback message, which this
+app never delivers to us — the user asked for exactly this behaviour.
+
+### What remains impossible
+
+The icon's real context menu and any balloon actions: they are delivered *to the app's callback*, which
+never exists for this icon. The fallback opens the app; it cannot emulate its menu.
+
+### Acceptance criteria (live, integrator)
+
+1. Cold start, SecurityHealthSystray adopted click-dead as before ("appeared without a callback" line, no
+   observation line): a click, double-click or right-click on the Windows Security icon launches
+   `windowsdefender://` — the Windows Security app opens — and the delivery log shows
+   `no callback; opening the registered app instead (windowsdefender://)`.
+2. One physical double-click opens the app exactly once (the 750 ms gap absorbs Up/DoubleClick/Up).
+3. Every other dead icon (process not in the table) still logs the unchanged `did nothing: the icon
+   registered no callback message` line; icons with callbacks are entirely unaffected.
+
+### Residual gap (unchanged in kind)
+
+Any *other* app that neither re-registers nor carries usable wire fields stays click-dead until it is
+confirmed in the field and added to the table (KI-105).
