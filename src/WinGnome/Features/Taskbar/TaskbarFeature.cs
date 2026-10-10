@@ -141,7 +141,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
     /// <summary>
     /// The re-hide delay ramps with how often Explorer re-shows the taskbar (see <see cref="TaskbarRehidePolicy"/>).
     /// One show is counted per scheduled re-hide; a genuine runaway still reaches the slow level, because at the
-    /// normal rate it produces a re-hide every 250 ms.
+    /// normal rate it produces a re-hide every 50 ms.
     /// </summary>
     private TimeSpan NextRehideDelay()
     {

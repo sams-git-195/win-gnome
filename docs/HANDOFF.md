@@ -81,7 +81,7 @@ disabled (no printers). Pointer uses a custom colour (cursor-size row is disable
 Merged later on 2026-10-10 (Claude Opus 5.5 as PM, Sonnet authors, Opus reviews):
 
 - **Taskbar flash fix** (merge 1653651): the fixed 5 s re-hide back-off (which left the taskbar visible at start-up,
-  provoked by our own work-area broadcasts) is now Core `TaskbarRehidePolicy`: 250 ms, then 750 ms from 5 shows in
+  provoked by our own work-area broadcasts) is now Core `TaskbarRehidePolicy`: 50 ms (was 250 ms; a 0.3 s flash was still visible), then 750 ms from 5 shows in
   10 s, 3 s from 12; one show counted per scheduled re-hide (multi-monitor). Not yet field-confirmed: grep the
   everyday log for "re-hiding it less often" after the next sign-in.
 - **Windows Update fixes** (merge a5e8d00): optional driver/browse-only updates listed separately instead of counted
@@ -157,7 +157,7 @@ foreground window matching the tray hwnd; if it ever fails again, the B2 log lin
   instance quit; agree a window first and restart it through `explorer.exe` afterwards.
 - **Taskbar flashes (user-reported bug, now instrumented):** the B1 lines correlate flashes with Explorer's own
   shows — field data shows bursts at sign-in and around tray/appbar churn (e.g. 11 suppressed shows in one
-  minute at 09:28:57, backoff windows where re-hiding slowed to 5 s — those were the most visible flashes; now a 250 ms / 750 ms / 3 s ramp, `TaskbarRehidePolicy`). When
+  minute at 09:28:57, backoff windows where re-hiding slowed to 5 s — those were the most visible flashes; now a 50 ms / 750 ms / 3 s ramp, `TaskbarRehidePolicy`). When
   the user next sees one, grep the everyday log for "Explorer showed taskbar window" at that timestamp; if
   flashes bother them, the tunables are the constants in `TaskbarRehidePolicy`.
 - **Logo edge cases (manual items from the QA session):** opaque JPEG (dark mark on light → silhouette), the

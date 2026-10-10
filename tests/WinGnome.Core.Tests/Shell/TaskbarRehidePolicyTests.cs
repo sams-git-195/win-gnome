@@ -18,8 +18,8 @@ public class TaskbarRehidePolicyTests
     }
 
     [Theory]
-    [InlineData(1, 250, TaskbarRehideLevel.Normal)]
-    [InlineData(4, 250, TaskbarRehideLevel.Normal)]
+    [InlineData(1, 50, TaskbarRehideLevel.Normal)]
+    [InlineData(4, 50, TaskbarRehideLevel.Normal)]
     [InlineData(5, 750, TaskbarRehideLevel.Burst)]
     [InlineData(11, 750, TaskbarRehideLevel.Burst)]
     [InlineData(12, 3000, TaskbarRehideLevel.Runaway)]
@@ -37,7 +37,7 @@ public class TaskbarRehidePolicyTests
     {
         var decision = new TaskbarRehidePolicy().OnShow(T0);
 
-        Assert.Equal(new TaskbarRehideDecision(TimeSpan.FromMilliseconds(250), TaskbarRehideLevel.Normal, TaskbarRehideLevel.Normal), decision);
+        Assert.Equal(new TaskbarRehideDecision(TimeSpan.FromMilliseconds(50), TaskbarRehideLevel.Normal, TaskbarRehideLevel.Normal), decision);
         Assert.False(decision.Escalated);
         Assert.False(decision.Recovered);
     }
@@ -45,7 +45,7 @@ public class TaskbarRehidePolicyTests
     [Theory]
     [InlineData(-1, 750)]
     [InlineData(0, 750)]
-    [InlineData(1, 250)]
+    [InlineData(1, 50)]
     public void OnShow_OldestShowAroundTheWindowEdge_CountsOnlyWhenNotStrictlyOlder(int ticksPastWindow, int expectedMs)
     {
         var policy = new TaskbarRehidePolicy();
@@ -106,7 +106,7 @@ public class TaskbarRehidePolicyTests
 
         Assert.Equal(TaskbarRehideLevel.Burst, decision.PreviousLevel);
         Assert.Equal(TaskbarRehideLevel.Normal, decision.Level);
-        Assert.Equal(TimeSpan.FromMilliseconds(250), decision.Delay);
+        Assert.Equal(TimeSpan.FromMilliseconds(50), decision.Delay);
         Assert.True(decision.Recovered);
         Assert.False(decision.Escalated);
     }

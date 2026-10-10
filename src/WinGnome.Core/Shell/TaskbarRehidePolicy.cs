@@ -33,7 +33,7 @@ public readonly record struct TaskbarRehideDecision(
 /// </summary>
 public sealed class TaskbarRehidePolicy
 {
-    public static readonly TimeSpan NormalDelay = TimeSpan.FromMilliseconds(250);
+    public static readonly TimeSpan NormalDelay = TimeSpan.FromMilliseconds(50);
     public static readonly TimeSpan BurstDelay = TimeSpan.FromMilliseconds(750);
     public static readonly TimeSpan RunawayDelay = TimeSpan.FromSeconds(3);
 
