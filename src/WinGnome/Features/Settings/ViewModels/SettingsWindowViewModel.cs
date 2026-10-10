@@ -32,7 +32,7 @@ internal sealed class SettingsWindowViewModel : ObservableObject, IDisposable
         settings.Changed += OnSettingsChanged;
 
         var services = new SystemPanelServices(context.Apps, context.Icons, context.Launcher, dialogs);
-        var panels = new SystemPanelContext(settings, context.Dispatcher, context.IsSafeMode, OpenLink, settings.Directory, services);
+        var panels = new SystemPanelContext(settings, context.Dispatcher, context.IsSafeMode, OpenLink, settings.Directory, services, context.Options);
         var pages = new Dictionary<string, SettingsPageViewModel>(StringComparer.Ordinal)
         {
             [PanelIds.General] = new GeneralPageViewModel(settings, context.IsSafeMode, context.ManagesStartupEntry, ShowTaskbarTweaks),

@@ -16,5 +16,6 @@
         <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/Accessibility/AccessibilityPanelResources.xaml" />
         <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/RegionLanguage/RegionLanguagePanelResources.xaml" />
         <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/WindowsUpdate/WindowsUpdatePanelResources.xaml" />
+        <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/Wifi/WifiPanelResources.xaml" />
     </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>

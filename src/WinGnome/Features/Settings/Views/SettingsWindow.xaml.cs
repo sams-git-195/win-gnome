@@ -7,6 +7,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using WinGnome.Controls.TrafficLights;
+using WinGnome.Features.Settings.Panels.Wifi;
 using WinGnome.Features.Settings.Tweaks;
 using WinGnome.Features.Settings.ViewModels;
 using WinGnome.Infrastructure;
@@ -108,6 +109,12 @@ internal sealed partial class SettingsWindow : Window, IDialogService
         using var picker = new AppPickerViewModel(_context.Apps, _context.Icons, hiddenLaunchIds);
         var dialog = new AppPickerWindow(picker, _context.Settings, _context.Theme.IsDark) { Owner = this };
         return dialog.ShowDialog() == true ? picker.Chosen : null;
+    }
+
+    char[]? IDialogService.PromptWifiPassword(string networkName, string? note)
+    {
+        var dialog = new WifiPasswordDialog(networkName, note, _context.Theme.IsDark) { Owner = this };
+        return dialog.ShowDialog() == true ? dialog.Result : null;
     }
 
     private bool PageViewIsShowing() =>

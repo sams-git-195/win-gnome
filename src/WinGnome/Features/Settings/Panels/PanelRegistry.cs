@@ -16,6 +16,7 @@ using WinGnome.Features.Settings.Panels.RegionLanguage;
 using WinGnome.Features.Settings.Panels.RemovableMedia;
 using WinGnome.Features.Settings.Panels.Sound;
 using WinGnome.Features.Settings.Panels.WindowsUpdate;
+using WinGnome.Features.Settings.Panels.Wifi;
 
 namespace WinGnome.Features.Settings.Panels;
 
@@ -47,5 +48,6 @@ internal static class PanelRegistry
             [PanelIds.Accessibility] = context => new AccessibilityPanelViewModel(context),
             [PanelIds.RegionLanguage] = context => new RegionLanguagePanelViewModel(context),
             [PanelIds.WindowsUpdate] = context => new WindowsUpdatePanelViewModel(context),
+            [PanelIds.Wifi] = context => new WifiPanelViewModel(context),
         };
 }

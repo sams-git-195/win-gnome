@@ -1,6 +1,7 @@
 using System.Windows.Input;
 using System.Windows.Threading;
 using WinGnome.Core.ControlCenter;
+using WinGnome.Core.Settings;
 using WinGnome.Features.Settings.ViewModels;
 using WinGnome.Infrastructure;
 using WinGnome.Services.Apps;
@@ -14,13 +15,15 @@ namespace WinGnome.Features.Settings.Panels;
 /// <param name="OpenLink">Opens an <c>ms-settings:</c> page or control panel.</param>
 /// <param name="SettingsDirectory">WinGnome's profile folder (for the display revert record).</param>
 /// <param name="Services">The shell services some panels use (apps, icons, dialogs).</param>
+/// <param name="Options">The command line, for panels that must not touch the network or radios in <c>--selftest</c>.</param>
 internal sealed record SystemPanelContext(
     SettingsService Settings,
     Dispatcher Dispatcher,
     bool IsReadOnly,
     Action<string> OpenLink,
     string SettingsDirectory,
-    SystemPanelServices Services)
+    SystemPanelServices Services,
+    CommandLineOptions Options)
 {
     /// <summary>Runs system writes off the UI thread, one at a time, and never in read-only mode.</summary>
     public SystemSettingWriter CreateWriter() => new(Dispatcher, IsReadOnly);
