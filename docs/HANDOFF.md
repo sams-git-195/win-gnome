@@ -50,95 +50,105 @@ disabled (no printers). Pointer uses a custom colour (cursor-size row is disable
 
 ---
 
-## 2. State of `main` (build clean; `publish\WinGnome.exe` is still the e85e68e build until it is republished)
+## 2. State of `main` (build clean, 3241 tests green; `publish\WinGnome.exe` is built from b1b3053 and RUNNING)
 
-`main` is at the KI-102 merge **c788f1c**, on top of **e85e68e**. Merged 2026-10-10:
+`main` is at **b1b3053** (pushed; origin in sync). Merged 2026-10-10, in order:
 
-- **KI-102 work-area fight fix + diagnostic logging** (f402e2e, 0300eed, 73a3c5d, d9f85da, f9b92a6; design in
-  spec 0010's addendum): Core's `WorkAreaFightDetector` makes direct work-area sets from the fourth application
-  on a monitor inside 10 minutes silent (no `SPIF_SENDCHANGE`), starving the broadcast→recompute loop behind the
-  mid-run fight; `StripRecovery`'s terminal give-up becomes a five-minute cool-down after which checks resume (a
-  re-dock or the strip being reserved ends it at once); the give-up wordings are corrected; and bundled
-  diagnostics log the taskbar re-hide chain (B1), the peek chain (B2), tray deliveries incl. the recorded NIM
-  version (B3) and AppBar notification names (B4). 12 new/updated Core tests, the regression test seen red
-  against the unfixed Core, all mutations run; independent review APPROVE-WITH-NITS, nits resolved. Live-verified
-  2026-10-10 on build 26200: criteria 4–10 + 15 PASS, 12 PARTIAL (the burst/backoff path needs an unlocked
-  workstation), 13/14 DEFERRED (need real clicks) — the last three ride on the everyday build after republish.
-  KNOWN_ISSUES: KI-102 resolved, KI-103 added (silent writes leave already-maximised windows oversized until the
-  next broadcast), KI-099's limits bullet updated; the next free ID is KI-104.
+- **KI-102 work-area fight fix + diagnostic logging** (merge c788f1c; design in spec 0010's addendum): Core's
+  `WorkAreaFightDetector` makes direct work-area sets from the fourth application on a monitor inside 10 minutes
+  silent (no `SPIF_SENDCHANGE`), starving the broadcast→recompute loop; `StripRecovery`'s terminal give-up became
+  a five-minute cool-down carried on the bar's existing one-shot timer; bundled diagnostics log the taskbar
+  re-hide chain (B1), the peek chain (B2), tray deliveries with the recorded NIM version (B3) and AppBar
+  notification names (B4). Live-verified: criteria 4–10, 12 (single+burst), 15 PASS; 13/14 PASS via the logo QA
+  session. KI-102 resolved; KI-103 (silent-write degradation) added.
+- **Spec 0021 logo menu items + customisable white logo** (merge 8f84731): "Windows Settings…" (ms-settings:,
+  Win+I hint kept) and "Control Panel…" (control.exe) in the logo menu; the logo button is customisable —
+  built-in Foot/Star/Terminal marks or any image rendered as a silhouette in the bar's foreground colour
+  (alpha mask, else inverted BT.601 luminance; Core `LogoSelection`/`LogoMaskRule`; settings `TopBar.Logo` +
+  `LogoImagePath`, additive). Live UI QA: menu items, all four glyphs, custom alpha image, cancel-revert,
+  gear-unchanged PASS; the opaque-JPEG, stray-pixel and missing-file edge cases were hand-tested by the user
+  and remain manual items. KI-104 records the mask's limitations.
+- **Spec 0022 tray start-up heal + callback learning + Security click fallback** (merges 355f004, b1b3053):
+  the tray host re-broadcasts TaskbarCreated once 2 s after start (Core `TrayRebroadcastPolicy`), healing icons
+  whose registration fell in the KI-019 front gap — live-proven for two apps; `TrayIconRegistry` can also LEARN
+  a callback/version from twice-observed matching plausible unflagged wire fields (WM_USER..0xBFFF, versions
+  0/3/4; flagged data always wins) for struct-reusing apps; and because SecurityHealthSystray does NEITHER
+  (live-verified twice: ignores all broadcasts, zero-fills its structs), a built-in one-entry
+  `TrayClickFallback` table launches `windowsdefender://` when its dead icon is clicked (rate-limited 750 ms
+  per icon). Live-verified: left/right/double click each opened Windows Security, one launch per gesture,
+  control icons unaffected. KI-105 (residual gaps), KI-106 (learning heuristic limits). Next free ID: KI-107.
 
-Merged 2026-10-09 (at **e85e68e**):
-
-- **Spec 0010 multi-monitor** (e85e68e): a full top bar on every monitor, docks on the primary by default or on all
-  as an option, per-monitor focused app, guarded hot corners, `DisplayLayoutService` — and the **`SPI_SETWORKAREA`
-  work-area fallback** (outcome B): a bar whose granted strip is still missing 1.5 s after a check sets that
-  monitor's work area itself, records it in `workareas.state` and recovers on exit, crash, force-kill and next start
-  (KI-098, KI-099 — both carry the measured verification record).
-- **Panel load-failure fix** (e3fe726): `LoadAsync`'s `onFailed` callback plus Core's `PanelLoadGate`, so a read
-  that throws clears the panel's busy state (KI-091 — note its *corrected* Printers symptom claim: with the spooler
-  merely disabled, `PrinterService.Read` never throws and the panel was never stuck).
-- **Launcher-stub dock grouping fix** (c42d6dc, KI-100): `AppPathMatch.IsSameInstall` matches the launcher-stub
-  layout, so a pinned Docker Desktop groups its dashboard window instead of showing a second, unpinned icon.
-
-QA at that merge: `dotnet build -c Release -warnaserror` clean; **3157 tests green**; `--selftest --safe` exits 0
-(re-run on merged main). The everyday `publish\WinGnome.exe`, built from e85e68e, is **running on the user's
-machine** (started 20:35 through `explorer.exe`, being watched for idle stability); the previous exe (built from
-3d65d76) is backed up at `C:\Users\samhe\AppData\Local\Temp\opencode\publish-backup-20261009\`. Its first start
-verified spec 0010's B6 live: both strips reserved ~4.3 s after start through the fallback, one direct set per
-monitor, marker correct (details in KI-099).
+QA at the final merge: `dotnet build -c Release -warnaserror` clean; **3241 tests green**; `--selftest --safe`
+exits 0 with no marker. `publish\WinGnome.exe` (b1b3053) is **running as the user's everyday instance** (started
+15:17 through `explorer.exe`); the previous exe (KI-102-only build) is backed up at
+`C:\Users\samhe\AppData\Local\Temp\opencode\publish-backup-20261010\`. Start at launch: the HKCU Run entry
+(`WinGnome` → `publish\WinGnome.exe`) and `StartupApproved` (enabled) were verified; the user's "with priority"
+wish is unanswered — Windows offers no priority/ordering knob for Run entries (see section 5).
 
 ## 3. Work in flight
 
-- Branch **`logo-menu-spec`** (spec 0021, logo menu items + custom white logo): implemented, independently
-  code-reviewed (deepseek-v4-pro-0813: APPROVE-WITH-NITS — deviations for the Gray8→alpha brush and the
-  aspect-preserving decode both accepted; 4 mutations re-run by the reviewer), main merged in, its
-  KNOWN_ISSUES entry renumbered to **KI-104** (next free **KI-105**). **Not** live-QA'd yet: ACs 1–4, 9–14, 16
-  (menu clicks, picker, DPI, light/dark, silhouette rendering) need an app run.
+Nothing. All branches merged; only `main` exists locally (worktrees for ki-102, logo-menu-spec and
+tray-callback-adopt removed after their merges).
 
 ## 4. Queue, in order
 
-Done since the 2026-10-09 hand-off: the **KI-102 work-area fight fix + diagnostic logging** (section 2 above) —
-fight detector, cool-down, silent writes and the B1–B4 log lines; live-verified except criteria 12-burst/13/14,
-which ride on the everyday build. Done before that: former item 1 (spec 0010, section 2), former item 4 (panel
-load failures, KI-091) and — reported by the user in between — the Docker Desktop grouping bug (KI-100). The
-remaining spec work (0016–0019) can now be based on current `main`: they touch `DockInstance` and `TrayModel`,
-which 0010 refactored, so anything started before the merge would have to be rebased.
+Done since the 2026-10-09 hand-off: the **KI-102 work-area fight fix**, **spec 0021 logo menu + custom logo**,
+and the **Windows Security tray icon fix** (former item 2 — diagnosed via the new B3 logging: the icon's mirror
+entry had no callback because SecurityHealthSystray registered into the KI-019 front gap, ignores every
+TaskbarCreated re-broadcast and zero-fills its unflagged structs; healed by the built-in `windowsdefender://`
+click fallback after the general mechanisms were live-proven not to reach it — all three mechanisms are in
+section 2 and spec 0022). Also diagnosed and closed as *not reproducible on the current build*: the "System
+tray" quick-settings tile (the user's report) — the peek chain was live-verified working end-to-end with the
+foreground window matching the tray hwnd; if it ever fails again, the B2 log lines name the exact branch.
 
-1. **Dock dark ring (bug, user-reported):** a darker rim around the whole dock body on both monitors. Cause: the
-   blur backdrop window is inset (`Core/Geometry/BackdropPlacement.Compute`) because DWM's accent blur only rounds
-   with fixed 4/8 DIP radii, leaving an unblurred rim between the backdrop and the body's larger rounded outline
-   (`Features/Dock/DockWindow.xaml.cs` `SyncBackdrop`, `Interop/BlurBackdrop.cs`). Spike whether
-   `SetWindowRgn` or `DWMWA_SYSTEMBACKDROP_TYPE` on a region-clipped window now clips the blur exactly on build
-   26200; otherwise reduce the rim (e.g. tint the rim to match, or snap the default radius to DWM's). Also
-   affects the top bar's floating mode. Check light and dark.
-2. **Windows Security tray icon ignores clicks** (user-reported; WinGnome delivers the callback without error, log
-   shows nothing). Investigate `Features/TopBar/Tray/TrayViewModel.Deliver` / `TrayCallback` for
-   `SecurityHealthSystray` (version-4 icon with GUID; may need `NIN_SELECT`/`WM_CONTEXTMENU` with the right
-   anchor, or `AllowSetForegroundWindow` for its process). Check if the everyday build has the same problem.
-   Add a KNOWN_ISSUES entry if unfixable. Since the KI-102 merge the B3 tray-delivery log lines answer the
-   version question on the everyday build: after the user clicks the icon, check the log — `version 0` on its
-   delivery line means we missed its `NIM_SETVERSION` (and the callback is encoded in legacy format the app
-   ignores).
-3. **Spec 0016 GNOME window management**, phased: v1 (Alt+Tab app switcher, Super+A/S/N, Super+Page Up/Down,
+1. **Dock dark ring (bug, user-reported):** a darker rim around the whole dock body on both monitors, and around
+   the top bar in floating mode with blur on. A read-only design investigation (2026-10-10) derived the exact
+   geometry: `BackdropPlacement.Compute` insets the blur backdrop by `ceil((radiusDip − systemRadiusDip)·(1−1/√2)·scale)`
+   (≈4 physical px at 125% for the default 18-DIP dock radius), so in the rim zone the body's 0.75-opacity tint
+   composites over the RAW desktop instead of blur, and the 1-px `BodyOutline` sharpens the edge. Worst case:
+   radius 40 + dark theme + low opacity + 125%. **Key finding: `BlurBackdrop.cs:17-18` records that DWM ignores
+   `SetWindowRgn` for accent blur, verified on build 26200** — the HANDOFF's old spike hope (region-clipping the
+   backdrop) is likely dead on arrival, and `DWMWA_SYSTEMBACKDROP_TYPE` on the body would require de-layering the
+   dock/top-bar windows (breaking per-pixel-alpha slide tricks and spec 0012's type rendering) while DWM's fixed
+   8-DIP rounding would overhang the 18-DIP tint — the mirror defect. Recommended path: a 30-minute scratch-app
+   spike to confirm the region finding on 26200, then almost certainly the cosmetic fix: snap the DEFAULT dock
+   radius to 8 DIP (zero inset; needs a settings-migration decision for persisted 18s) and/or tint the rim zone
+   (`RimWidth(radiusDip, scale)` is Core-testable). Check light and dark, 100%/125%.
+2. **Spec 0016 GNOME window management**, phased: v1 (Alt+Tab app switcher, Super+A/S/N, Super+Page Up/Down,
    tiling halves/quarters/expand with gaps), then v1.1 (layouts, Ctrl+drag zones, neighbour resize), then v1.2
    (Super+drag move/resize). WP0 spike first (which Win+ combos can be `RegisterHotKey`ed). Safety-critical:
    the shared low-level keyboard hook host — never block in the callback, swallow/unswallow symmetry, fail open.
    `Tiling.Enabled` defaults to true only if the 100 %/150 % cross-DPI QA passes.
-4. **Spec 0017 OSD + Night Light / Do Not Disturb** (spike first; OSD on every monitor per the user). When the DND
+3. **Spec 0017 OSD + Night Light / Do Not Disturb** (spike first; OSD on every monitor per the user). When the DND
    service exists, wire it into the Notifications panel's hidden DND row (KI-085).
-5. **Spec 0018 overview**: workspace strip, window-to-workspace move (undocumented COM, strict build/UBR table,
+4. **Spec 0018 overview**: workspace strip, window-to-workspace move (undocumented COM, strict build/UBR table,
    crash marker), app folders, dock pin/unpin by drag, file search. Results order Apps, Windows, Files.
-6. **Spec 0019 connectivity panels**, three parts: (a) Win+I and dock Settings pin redirect (needs 0016's hook
+5. **Spec 0019 connectivity panels**, three parts: (a) Win+I and dock Settings pin redirect (needs 0016's hook
    host), (b) Wi-Fi, (c) Network + Bluetooth.
 
 ## 5. Things that need the user (batch them into one message)
 
+- **"Start at launch with priority" — clarification needed.** The Run entry (`WinGnome` → `publish\WinGnome.exe`)
+  and its `StartupApproved` flag are verified enabled, so it starts at sign-in (proven live 2026-10-10 09:27).
+  Windows offers no priority or ordering knob for HKCU Run entries; if "priority" meant process priority or
+  starting before other apps, that needs a decision (a scheduled task could set priority but adds a system
+  component — AGENTS.md says ask first).
 - **Spec 0010 live session** for the checks that still need someone at the machine: B7 unplug/replug, B11 scale
   change / primary swap / sleep-resume, B12 native taskbar mode, the stacked-records unwind on one monitor, the
-  corrupt-marker repair with the taskbar hidden, the crash path and the TbExp hide-order experiment. A
-  step-by-step runbook (who does what, expected work areas, pass/fail per step) is ready at
-  `C:\Users\samhe\AppData\Local\Temp\opencode\mm-session\RUNBOOK.md`. It needs the everyday instance quit, so
-  agree a window with the user first — and don't forget to restart it through `explorer.exe` afterwards.
+  corrupt-marker repair with the taskbar hidden, the crash path and the TbExp hide-order experiment. Runbook:
+  `C:\Users\samhe\AppData\Local\Temp\opencode\mm-session\RUNBOOK.md` (its expectations predate the KI-102 fix —
+  a fight/cool-down episode during those tests is now expected behaviour, not a failure). Needs the everyday
+  instance quit; agree a window first and restart it through `explorer.exe` afterwards.
+- **Taskbar flashes (user-reported bug, now instrumented):** the B1 lines correlate flashes with Explorer's own
+  shows — field data shows bursts at sign-in and around tray/appbar churn (e.g. 11 suppressed shows in one
+  minute at 09:28:57, backoff windows where re-hiding slows to 5 s — those are the most visible flashes). When
+  the user next sees one, grep the everyday log for "Explorer showed taskbar window" at that timestamp; if
+  flashes bother them, the tunables are `TaskbarFeature.RehideDelay` (250 ms) and the backoff ceiling (5 s).
+- **Logo edge cases (manual items from the QA session):** opaque JPEG (dark mark on light → silhouette), the
+  stray-transparent-pixel degenerate case (KI-104), and the missing-file restart fallback — the user
+  hand-tested the changer itself and waived agent runs; keep as manual QA.
+- **Dock dark ring:** design investigation done (queue item 1); the spike + cosmetic fix needs a product
+  decision on snapping the default dock radius to 8 DIP (migration for persisted 18s) vs tinting the rim.
 - Accessibility high-contrast spike (steps in the spec 0020 notes / KI entry) and, if they want, cursor size
   (needs the white pointer style).
 - AutoPlay "Memory card": change it once in Windows Settings while you diff
@@ -146,17 +156,9 @@ which 0010 refactored, so anything started before the merge would have to be reb
   Windows may use `CameraAlternate\ShowPicturesOnArrival`).
 - Notifications: does a switched-off app stop showing toasts without sign-out? Privacy: does the Camera app lose
   access when the switch is off?
-- **New (KI-100):** with Docker Desktop running, look at the dock and confirm there is one grouped icon, with the
-  pin's own label and icon and a running dot — not a second, generic one.
-- **New (spec 0010 behaviour change):** the top bar now appears on **every** monitor by default
-  (`TopBar.Monitors = All`) and the dock on the main display only (`Dock.Monitors = Primary`). Ask the user to
-  confirm both look right; both are settings (Top Bar → "Show on", Dock → "Show on").
-- **New (KI-102 criteria 13/14):** after republishing the everyday build from merged `main`, click the quick
-  settings "System tray" tile and a couple of tray icons — including Windows Security — once, so the peek-chain
-  and tray-delivery lines land in the real log (the Windows Security line's `version` field answers queue item 2).
-- **New (KI-102 criterion 12 field data):** watch for random taskbar flashes and correlate them with the new
-  "Explorer showed taskbar window 0x…; re-hiding in … ms" lines in the log; a sustained burst should also show
-  the backoff WARN and the throttled keys' suppressed counts.
+- **KI-100 check:** with Docker Desktop running, confirm one grouped dock icon (pin's label/icon + running dot).
+- **Spec 0010 behaviour:** top bar on every monitor / dock on the main display only are the defaults — both are
+  settings (Top Bar → "Show on", Dock → "Show on"); confirm they look right.
 
 ## 6. How this session worked (copy what helped)
 
@@ -166,3 +168,17 @@ which 0010 refactored, so anything started before the merge would have to be reb
 - Parallel branches only when they own separate folders. `PanelRegistry.cs` / `PanelResources.xaml` conflicts are
   always "keep every entry".
 - Merge conflicts and shared files: check the spec's work-package table for ownership before editing.
+- **Dry-run merges** in a throwaway worktree (`git merge --no-commit`) de-risked the two-branch doc collisions
+  (KI renumbering, PLAN.md rows); the real merge then followed the proven resolution.
+- **Live QA by vision-model agents** (per the user's rule: code review = deepseek-v4-pro/qwen3.8-max, run-through
+  testing = qwen3.8-flash/deepseek-v4.1-flash) worked well: screenshots + synthesized clicks (SendInput tools in
+  `%TEMP%\opencode\ki102-session\` — note the original `click-at.ps1` was broken; use the QA agent's fixed
+  `ui-click.ps1`/`seq-click.ps1`/`dlgitem-*.ps1`) drove criteria 13/14 and the whole logo-menu QA without the user.
+  A locked workstation blocks clicks/screenshots AND makes `explorer.exe <script>` spawn transient explorer
+  processes (PID-selection traps in scripts); log-only criteria still run locked.
+- **Diagnose before fixing:** the B3 delivery log identified the Security icon's dead-callback root cause from one
+  morning of field data; two general fixes were then live-DISPROVEN on the same machine in hours (the app ignores
+  broadcasts and zero-fills structs), and the shipped fix is the targeted fallback. Field evidence beats armchair
+  mechanism design — keep the diagnostic lines in.
+- Editing docs with CRLF: `sed`/python heredoc string replacements can silently miss (line endings); prefer the
+  edit tool, and grep for conflict markers before committing a merge.

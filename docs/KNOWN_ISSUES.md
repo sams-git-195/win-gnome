@@ -1036,6 +1036,16 @@ session; criteria per the spec 0010 addendum):*
 copied everyday log shows writes at 23:50:13/14 and 23:50:48/49 with budget refusals at 23:50:23/28 in between) —
 the recurrence that motivated this fix's urgency.
 
+*Field pattern (2026-10-10, fixed build):* on this machine **every cold start with the taskbar hidden** provokes a
+fight episode (09:27, 12:23, 14:10, 14:50, 15:17 — sign-in stabilisation plus each test start): Explorer wipes the
+strips two or three times inside ~25 s, the detector switches to silent writes, the give-up cool-down engages, and
+the +5-minute re-arm restores both strips silently and unaided (e.g. 14:10:40 give-up → 14:15:40 "cool-down over"
+→ 14:15:46 "reserved again" ×2). The mechanism works exactly as designed, but start-up strip recovery now
+routinely takes ~5.5 minutes instead of seconds. *Open tuning question:* on a cold start the first fight is
+expected rather than pathological — should start-up episodes write silently from the first application, or the
+first post-start give-up use a shorter cool-down (e.g. 60 s), so bars stop being overlapped sooner? Bounded
+either way; needs a decision + spec note, not a hotfix.
+
 *Honesty note:* the provocation hypothesis — that our own `SPIF_SENDCHANGE` broadcasts trigger Explorer's mid-run
 recomputes — remains **unconfirmed**; silence cannot prevent a fight's *first* reset, only stop us from sustaining
 it. The fix bounds the damage either way, and the transition WARN + " (without a broadcast)" lines make the next
