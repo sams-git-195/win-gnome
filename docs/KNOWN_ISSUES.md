@@ -885,7 +885,7 @@ saved XML is kept), so the old, already rejected key is lost.
 
 | ID | Severity | Area | Summary | Fixed in |
 |---|---|---|---|---|
-| KI-101 | S4 | Settings | About and Displays bypassed the shared load gate; a failed About read showed nothing | KI-101 branch (both now use `LoadAsync`: failure shows the standard problem banner; Displays also clears its list on failure) |
+| KI-101 | S4 | Settings | About and Displays bypassed the shared load gate; a failed About read showed nothing | eb6f65e (both now use `LoadAsync`: failure shows the standard problem banner; Displays also clears its list on failure) |
 | KI-001 | S3 | Dock, Top bar | Dock and top bar appeared on the primary monitor only | 767388e, 32877c1 (spec 0010: a top bar on every monitor, docks on all monitors as an option) |
 | KI-002 | S4 | App | The executable had no app icon | 2f7c44b |
 | KI-009 | S4 | Repo | No CI workflow, although the README said `--selftest` is used by CI | 94b9013 |
