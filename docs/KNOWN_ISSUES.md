@@ -829,10 +829,12 @@ the second observation costs at most ~2 s (the heal broadcast) in the common sig
 **Install-on-shutdown detection reads the undocumented Update Orchestrator `ShutdownFlyoutOptions` value** · S4 · Settings, Top bar · By design
 
 The Restart and Power Off confirmations offer "Install pending software updates" when `PendingRestartSignals.InstallOnShutdownAvailable`
-is true. Besides the documented signals (the WUA reboot flag and the `Auto Update\RebootRequired` and
-`Component Based Servicing\RebootPending` keys), that reads the DWORD
-`HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\ShutdownFlyoutOptions`, which is what makes Start's own
-power menu offer "Update and restart". Microsoft doesn't document it, so it can change meaning or vanish in a Windows update.
+is true, which rests only on the DWORD `HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\ShutdownFlyoutOptions`
+being non-zero — what makes Start's own power menu offer "Update and restart". Microsoft doesn't document it, so it
+can change meaning or vanish in a Windows update. The documented signals (the WUA reboot flag and the
+`Auto Update\RebootRequired` and `Component Based Servicing\RebootPending` keys) mean an update is already applied
+and finishes on any restart; they drive the panel's "A restart is needed" line and a note in the power dialogs,
+not the switch, because switching it off couldn't stop them.
 
 - **Read-only, HKLM never written**; a missing or unreadable value (logged) counts as zero.
 - *Worst case:* the box is missing when updates are pending (the user can still use Start's menu), or shown
@@ -840,6 +842,9 @@ power menu offer "Update and restart". Microsoft doesn't document it, so it can 
   just restarts or powers off.
 - The install path itself (`InitiateShutdown`) is documented; only the "is there something to install" hint is not.
   If it fails, `PowerActions` logs the error and falls back to `shutdown.exe` without installing.
+- *Not verified live:* whether `SHUTDOWN_INSTALL_UPDATES` installs an Orchestrator-staged update on Windows 11
+  rather than just restarting. Check it the next time Start offers "Update and restart" (switch on, Restart, confirm
+  the update shows as installed afterwards) and record the result here.
 
 ## Resolved
 

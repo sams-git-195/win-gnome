@@ -92,7 +92,7 @@ internal sealed class WindowsUpdatePanelViewModel : SystemPanelViewModel
         catch (Exception ex)
         {
             Log.Warn("Windows Update: could not read the status", ex);
-            return new UpdateStatus(null, null, [], [], false, ex.HResult);
+            return new UpdateStatus(null, null, [], [], PendingRestartReader.Read(false).RestartNeeded, ex.HResult);
         }
     }
 }

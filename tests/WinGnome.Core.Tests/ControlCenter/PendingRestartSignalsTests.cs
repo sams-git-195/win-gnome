@@ -26,12 +26,12 @@ public class PendingRestartSignalsTests
     [InlineData(true, false, false)]
     [InlineData(false, true, false)]
     [InlineData(false, false, true)]
-    public void AnyRebootSignalAlone_NeedsRestartAndOffersInstall(bool wua, bool autoUpdate, bool cbs)
+    public void AnyRebootSignalAlone_NeedsRestartWithoutOfferingInstall(bool wua, bool autoUpdate, bool cbs)
     {
         var signals = new PendingRestartSignals(wua, autoUpdate, cbs, null);
 
         Assert.True(signals.RestartNeeded);
-        Assert.True(signals.InstallOnShutdownAvailable);
+        Assert.False(signals.InstallOnShutdownAvailable);
     }
 
     [Theory]

@@ -132,14 +132,17 @@ internal sealed class TopBarActions(ShellContext context)
 
     /// <summary>
     /// Confirms a restart or power off. When Windows has updates that install on the way down, the dialog also offers
-    /// to install them (on by default, as GNOME does); <paramref name="installUpdates"/> is that choice.
+    /// to install them (on by default, as GNOME does); <paramref name="installUpdates"/> is that choice. An update that
+    /// only needs a restart to finish is mentioned instead, because it finishes either way.
     /// </summary>
     private static bool AskPower(string title, string message, string confirmLabel, out bool installUpdates)
     {
-        if (!PendingRestartReader.Read(wuaRebootRequired: false).InstallOnShutdownAvailable)
+        var signals = PendingRestartReader.Read(wuaRebootRequired: false);
+        if (!signals.InstallOnShutdownAvailable)
         {
             installUpdates = false;
-            return ConfirmDialog.Ask(title, message, confirmLabel);
+            var note = signals.RestartNeeded ? " Installed updates will finish setting up." : "";
+            return ConfirmDialog.Ask(title, message + note, confirmLabel);
         }
 
         return ConfirmDialog.Ask(title, message, confirmLabel, "Install pending software updates", true, out installUpdates);

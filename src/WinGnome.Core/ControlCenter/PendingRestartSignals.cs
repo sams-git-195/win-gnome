@@ -17,6 +17,9 @@ public sealed record PendingRestartSignals(
     /// <summary>An installed update needs a restart to finish.</summary>
     public bool RestartNeeded => WuaRebootRequired || AutoUpdateRebootKey || CbsRebootPending;
 
-    /// <summary>Updates would install as part of a restart or shutdown, so the power dialogs offer to do that.</summary>
-    public bool InstallOnShutdownAvailable => RestartNeeded || ShutdownFlyoutOptions is not (null or 0);
+    /// <summary>
+    /// Updates are staged to install on the way down, so the power dialogs offer a choice. An update that only needs a
+    /// restart to finish (<see cref="RestartNeeded"/>) finishes on any restart, so there is nothing to choose.
+    /// </summary>
+    public bool InstallOnShutdownAvailable => ShutdownFlyoutOptions is not (null or 0);
 }
