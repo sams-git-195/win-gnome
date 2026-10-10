@@ -14,6 +14,13 @@ public class WifiConnectFlowTests
 
     private static WifiConnectCommand Prompt(bool retry) => WifiConnectCommand.PromptPassword(retry);
 
+    /// <summary>The password was entered and Windows accepted the profile write.</summary>
+    private static void Submit(WifiConnectFlow flow)
+    {
+        flow.PasswordSubmitted(flow.Attempt, T0);
+        flow.ProfileWritten(flow.Attempt);
+    }
+
     [Fact]
     public void Begin_SavedNetwork_ConnectsWithoutTouchingTheProfile()
     {
@@ -34,6 +41,7 @@ public class WifiConnectFlowTests
         var commands = flow.Begin(WifiProfileKind.Open, isSaved: false, T0);
 
         Assert.Equal([Set(false), Connect], commands);
+        flow.ProfileWritten(flow.Attempt);
         Assert.Equal(WifiProfileOwnership.Created, flow.Ownership);
     }
 
@@ -64,6 +72,7 @@ public class WifiConnectFlowTests
         flow.Begin(WifiProfileKind.Wpa2Psk, false, T0);
 
         var commands = flow.PasswordSubmitted(flow.Attempt, T0);
+        flow.ProfileWritten(flow.Attempt);
 
         Assert.Equal([Set(false), Connect], commands);
         Assert.Equal(WifiProfileOwnership.Created, flow.Ownership);
@@ -74,7 +83,7 @@ public class WifiConnectFlowTests
     {
         var flow = new WifiConnectFlow();
         flow.Begin(WifiProfileKind.Wpa2Psk, false, T0);
-        flow.PasswordSubmitted(flow.Attempt, T0);
+        Submit(flow);
 
         var commands = flow.Result(flow.Attempt, WlanReasonClass.AuthFailure);
 
@@ -88,7 +97,7 @@ public class WifiConnectFlowTests
     {
         var flow = new WifiConnectFlow();
         flow.Begin(WifiProfileKind.Wpa2Psk, false, T0);
-        flow.PasswordSubmitted(flow.Attempt, T0);
+        Submit(flow);
         flow.Result(flow.Attempt, WlanReasonClass.AuthFailure);
 
         var commands = flow.PasswordSubmitted(flow.Attempt, T0);
@@ -104,6 +113,7 @@ public class WifiConnectFlowTests
 
         var prompt = flow.Result(flow.Attempt, WlanReasonClass.AuthFailure);
         var retry = flow.PasswordSubmitted(flow.Attempt, T0);
+        flow.ProfileWritten(flow.Attempt);
 
         Assert.Equal([Prompt(true)], prompt);
         Assert.Equal([Set(true), Connect], retry);
@@ -116,7 +126,7 @@ public class WifiConnectFlowTests
         var flow = new WifiConnectFlow();
         flow.Begin(WifiProfileKind.Wpa2Psk, isSaved: true, T0);
         flow.Result(flow.Attempt, WlanReasonClass.AuthFailure);
-        flow.PasswordSubmitted(flow.Attempt, T0);
+        Submit(flow);
 
         var commands = flow.Result(flow.Attempt, WlanReasonClass.AuthFailure);
 
@@ -139,7 +149,7 @@ public class WifiConnectFlowTests
     {
         var flow = new WifiConnectFlow();
         flow.Begin(WifiProfileKind.Wpa2Psk, false, T0);
-        flow.PasswordSubmitted(flow.Attempt, T0);
+        Submit(flow);
 
         Assert.Equal([Delete], flow.Cancel(flow.Attempt));
     }
@@ -150,7 +160,7 @@ public class WifiConnectFlowTests
         var flow = new WifiConnectFlow();
         flow.Begin(WifiProfileKind.Wpa2Psk, true, T0);
         flow.Result(flow.Attempt, WlanReasonClass.AuthFailure);
-        flow.PasswordSubmitted(flow.Attempt, T0);
+        Submit(flow);
 
         Assert.Equal([Delete], flow.Cancel(flow.Attempt));
     }
@@ -160,7 +170,7 @@ public class WifiConnectFlowTests
     {
         var flow = new WifiConnectFlow();
         flow.Begin(WifiProfileKind.Wpa2Psk, false, T0);
-        flow.PasswordSubmitted(flow.Attempt, T0);
+        Submit(flow);
         flow.Result(flow.Attempt, WlanReasonClass.AuthFailure);
 
         Assert.Empty(flow.Cancel(flow.Attempt));
@@ -171,7 +181,7 @@ public class WifiConnectFlowTests
     {
         var flow = new WifiConnectFlow();
         flow.Begin(WifiProfileKind.Wpa2Psk, false, T0);
-        flow.PasswordSubmitted(flow.Attempt, T0);
+        Submit(flow);
 
         var commands = flow.Result(flow.Attempt, WlanReasonClass.Success);
 
@@ -185,7 +195,7 @@ public class WifiConnectFlowTests
     {
         var flow = new WifiConnectFlow();
         flow.Begin(WifiProfileKind.Wpa2Psk, false, T0);
-        flow.PasswordSubmitted(flow.Attempt, T0);
+        Submit(flow);
 
         Assert.Empty(flow.Result(flow.Attempt, WlanReasonClass.NetworkNotAvailable));
         Assert.Equal(WifiConnectState.Failed, flow.State);
@@ -196,7 +206,7 @@ public class WifiConnectFlowTests
     {
         var flow = new WifiConnectFlow();
         flow.Begin(WifiProfileKind.Wpa2Psk, false, T0);
-        flow.PasswordSubmitted(flow.Attempt, T0);
+        Submit(flow);
 
         Assert.Equal([Delete], flow.Result(flow.Attempt, WlanReasonClass.ProfileInvalid));
     }
@@ -226,6 +236,7 @@ public class WifiConnectFlowTests
     {
         var flow = new WifiConnectFlow();
         flow.Begin(WifiProfileKind.Open, false, T0);
+        flow.ProfileWritten(flow.Attempt);
 
         var commands = flow.CheckTimeout(flow.Attempt, T0.AddSeconds(30));
 
@@ -259,7 +270,7 @@ public class WifiConnectFlowTests
     {
         var flow = new WifiConnectFlow();
         flow.Begin(WifiProfileKind.Wpa2Psk, false, T0);
-        flow.PasswordSubmitted(flow.Attempt, T0);
+        Submit(flow);
         var old = flow.Attempt;
         flow.Begin(WifiProfileKind.Open, isSaved: true, T0);
 
@@ -277,5 +288,92 @@ public class WifiConnectFlowTests
         flow.Begin(WifiProfileKind.Wpa2Psk, true, T0);
 
         Assert.Empty(flow.PasswordSubmitted(flow.Attempt, T0));
+    }
+
+    [Fact]
+    public void ProfileWriteFailed_NothingIsOwnedSoNothingIsDeleted()
+    {
+        // WlanSetProfile refused (for example the profile already existed): whatever is saved under that name is not ours.
+        var flow = new WifiConnectFlow();
+        flow.Begin(WifiProfileKind.Wpa2Psk, false, T0);
+        flow.PasswordSubmitted(flow.Attempt, T0);
+
+        Assert.Empty(flow.ProfileWriteFailed(flow.Attempt));
+        Assert.Equal(WifiConnectState.Failed, flow.State);
+        Assert.Equal(WifiProfileOwnership.None, flow.Ownership);
+        Assert.Empty(flow.Cancel(flow.Attempt));
+    }
+
+    [Fact]
+    public void ProfileWriteFailed_OnAnOverwrite_DoesNotDeleteTheSavedProfile()
+    {
+        var flow = new WifiConnectFlow();
+        flow.Begin(WifiProfileKind.Wpa2Psk, isSaved: true, T0);
+        flow.Result(flow.Attempt, WlanReasonClass.AuthFailure);
+        flow.PasswordSubmitted(flow.Attempt, T0);
+
+        Assert.Empty(flow.ProfileWriteFailed(flow.Attempt));
+        Assert.Empty(flow.CheckTimeout(flow.Attempt, T0.AddMinutes(5)));
+    }
+
+    [Fact]
+    public void ConnectFailsAfterASuccessfulWrite_DeletesTheProfileItWrote()
+    {
+        var flow = new WifiConnectFlow();
+        flow.Begin(WifiProfileKind.Wpa2Psk, false, T0);
+        flow.PasswordSubmitted(flow.Attempt, T0);
+        flow.ProfileWritten(flow.Attempt);
+
+        Assert.Equal([Delete], flow.Cancel(flow.Attempt));
+    }
+
+    [Fact]
+    public void ProfileWritten_ForASupersededAttempt_ClaimsNothing()
+    {
+        var flow = new WifiConnectFlow();
+        flow.Begin(WifiProfileKind.Wpa2Psk, false, T0);
+        flow.PasswordSubmitted(flow.Attempt, T0);
+        var old = flow.Attempt;
+        flow.Begin(WifiProfileKind.Wpa2Psk, true, T0);
+
+        flow.ProfileWritten(old);
+
+        Assert.Equal(WifiProfileOwnership.None, flow.Ownership);
+    }
+
+    [Fact]
+    public void Abandon_KeepsTheProfile_AndIgnoresTheAttemptsLateResults()
+    {
+        var flow = new WifiConnectFlow();
+        flow.Begin(WifiProfileKind.Wpa2Psk, false, T0);
+        Submit(flow);
+        var attempt = flow.Attempt;
+
+        flow.Abandon();
+
+        Assert.Equal(WifiConnectState.Idle, flow.State);
+        Assert.Equal(WifiProfileOwnership.None, flow.Ownership);
+        Assert.Empty(flow.Cancel(attempt));
+        Assert.Empty(flow.Result(attempt, WlanReasonClass.AuthFailure));
+        Assert.Empty(flow.CheckTimeout(attempt, T0.AddMinutes(5)));
+    }
+
+    [Fact]
+    public void Begin_SavedEnterpriseNetwork_Connects()
+    {
+        var flow = new WifiConnectFlow();
+
+        Assert.Equal([Connect], flow.Begin(WifiProfileKind.HandOff, isSaved: true, T0));
+        Assert.Equal(WifiConnectState.Connecting, flow.State);
+    }
+
+    [Fact]
+    public void AuthFailureOnASavedEnterpriseNetwork_Fails()
+    {
+        var flow = new WifiConnectFlow();
+        flow.Begin(WifiProfileKind.HandOff, isSaved: true, T0);
+
+        Assert.Empty(flow.Result(flow.Attempt, WlanReasonClass.AuthFailure));
+        Assert.Equal(WifiConnectState.Failed, flow.State);
     }
 }

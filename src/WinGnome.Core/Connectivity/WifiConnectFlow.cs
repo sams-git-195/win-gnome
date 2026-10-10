@@ -54,8 +54,10 @@ public readonly record struct WifiConnectCommand(WifiConnectCommandKind Kind, bo
 /// The rules of connecting to a network, as a state machine with no Windows calls: what to write, when a failed
 /// attempt must delete the profile it made, when to ask for the password again, and the 30 second limit. The panel
 /// does what the returned commands say and reports back. A newer attempt supersedes an older one, whose late results
-/// are ignored. A profile is deleted only when this attempt created it or replaced its key; a saved profile that was
-/// used as is is never deleted.
+/// are ignored. A profile is deleted only when this attempt created it or replaced its key <em>and Windows confirmed the
+/// write</em> (<see cref="ProfileWritten"/>): a write that failed, for example because the profile already existed,
+/// never makes the attempt the owner of whatever is saved under that name. A saved profile that was used as is is
+/// never deleted.
 /// </summary>
 public sealed class WifiConnectFlow(TimeSpan timeout)
 {
@@ -63,6 +65,7 @@ public sealed class WifiConnectFlow(TimeSpan timeout)
 
     private WifiProfileKind _kind;
     private bool _profileSaved;
+    private WifiProfileOwnership _pendingOwnership;
 
     public WifiConnectFlow()
         : this(TimeSpan.FromSeconds(30))
@@ -86,7 +89,15 @@ public sealed class WifiConnectFlow(TimeSpan timeout)
         _kind = kind;
         _profileSaved = isSaved;
         Ownership = WifiProfileOwnership.None;
+        _pendingOwnership = WifiProfileOwnership.None;
         Deadline = null;
+
+        // A saved profile connects whatever its security (a saved enterprise network works from the panel); only
+        // an unsaved network WinGnome can't set up is handed off.
+        if (isSaved)
+        {
+            return StartConnecting(now, WifiConnectCommand.Connect());
+        }
 
         if (kind == WifiProfileKind.HandOff)
         {
@@ -94,14 +105,9 @@ public sealed class WifiConnectFlow(TimeSpan timeout)
             return [WifiConnectCommand.HandOff()];
         }
 
-        if (isSaved)
-        {
-            return StartConnecting(now, WifiConnectCommand.Connect());
-        }
-
         if (!WifiSecurity.NeedsPassword(kind))
         {
-            Ownership = WifiProfileOwnership.Created;
+            _pendingOwnership = WifiProfileOwnership.Created;
             return StartConnecting(now, WifiConnectCommand.SetProfile(false), WifiConnectCommand.Connect());
         }
 
@@ -119,15 +125,54 @@ public sealed class WifiConnectFlow(TimeSpan timeout)
 
         if (_profileSaved)
         {
-            Ownership = WifiProfileOwnership.Overwritten;
+            _pendingOwnership = WifiProfileOwnership.Overwritten;
             return StartConnecting(now, WifiConnectCommand.SetProfile(true), WifiConnectCommand.Connect());
         }
 
-        Ownership = WifiProfileOwnership.Created;
+        _pendingOwnership = WifiProfileOwnership.Created;
         return StartConnecting(now, WifiConnectCommand.SetProfile(false), WifiConnectCommand.Connect());
     }
 
-    /// <summary>The user cancelled the dialog, or the panel is going away mid-attempt.</summary>
+    /// <summary>Windows confirmed the profile write: from now on this attempt owns the profile it wrote.</summary>
+    public void ProfileWritten(int attempt)
+    {
+        if (attempt == Attempt && State == WifiConnectState.Connecting)
+        {
+            Ownership = _pendingOwnership;
+        }
+    }
+
+    /// <summary>
+    /// Windows refused the profile write. The attempt fails and owns nothing, so nothing is deleted: whatever is saved
+    /// under that name is not ours.
+    /// </summary>
+    public IReadOnlyList<WifiConnectCommand> ProfileWriteFailed(int attempt)
+    {
+        if (attempt != Attempt || State != WifiConnectState.Connecting)
+        {
+            return None;
+        }
+
+        State = WifiConnectState.Failed;
+        Deadline = null;
+        _pendingOwnership = WifiProfileOwnership.None;
+        return None;
+    }
+
+    /// <summary>
+    /// The panel is going away while an attempt may still be running. Windows carries on connecting, so nothing is
+    /// deleted (a profile this attempt wrote stays saved and can be forgotten from the list); later results of the
+    /// attempt are ignored (the flow is idle).
+    /// </summary>
+    public void Abandon()
+    {
+        State = WifiConnectState.Idle;
+        Ownership = WifiProfileOwnership.None;
+        _pendingOwnership = WifiProfileOwnership.None;
+        Deadline = null;
+    }
+
+    /// <summary>The user cancelled the dialog, or the connection failed to start.</summary>
     public IReadOnlyList<WifiConnectCommand> Cancel(int attempt)
     {
         if (attempt != Attempt || State is not (WifiConnectState.AwaitingPassword or WifiConnectState.Connecting))
@@ -195,6 +240,7 @@ public sealed class WifiConnectFlow(TimeSpan timeout)
 
         // The profile is gone (a rejected key is never kept), so the next try starts from nothing.
         Ownership = WifiProfileOwnership.None;
+        _pendingOwnership = WifiProfileOwnership.None;
         _profileSaved = false;
         return [WifiConnectCommand.DeleteProfile()];
     }

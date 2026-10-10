@@ -157,4 +157,75 @@ public class WifiProfileXmlTests
         Assert.All(document.Buffer, c => Assert.Equal('\0', c));
         Assert.Equal(0, document.Xml.Length);
     }
+
+    [Fact]
+    public void Build_SixtyFourDigitPasswordOnWpa3_StaysAPassphrase()
+    {
+        var xml = XDocument.Parse(XmlOf(WifiProfileXml.Build("n"u8, WifiProfileKind.Wpa3Sae, 4, new string('a', 64), "n")));
+
+        Assert.Equal("passPhrase", xml.Descendants(Ns + "keyType").Single().Value);
+    }
+
+    private const string Saved = Prefix + "<name>Home</name><SSIDConfig><SSID><hex>486F6D65</hex><name>Home</name></SSID><nonBroadcast>true</nonBroadcast></SSIDConfig>"
+        + "<connectionType>ESS</connectionType><connectionMode>manual</connectionMode><MSM><security><authEncryption><authentication>WPA2PSK</authentication>"
+        + "<encryption>AES</encryption><useOneX>false</useOneX></authEncryption><sharedKey><keyType>passPhrase</keyType><protected>true</protected>"
+        + "<keyMaterial>01000000D08C9DDF</keyMaterial></sharedKey></security></MSM>"
+        + "<MacRandomization xmlns=\"http://www.microsoft.com/networking/WLAN/profile/v3\"><enableRandomization>true</enableRandomization></MacRandomization></WLANProfile>";
+
+    [Fact]
+    public void ReplaceKey_ChangesOnlyTheKey()
+    {
+        var document = WifiProfileXml.ReplaceKey(Saved, WifiProfileKind.Wpa2Psk, "newpassword1", "Home");
+
+        Assert.Equal(
+            Saved.Replace("<protected>true</protected><keyMaterial>01000000D08C9DDF</keyMaterial>",
+                "<protected>false</protected><keyMaterial>newpassword1</keyMaterial>"),
+            XmlOf(document));
+    }
+
+    [Fact]
+    public void ReplaceKey_EscapesTheKey_AndRoundTrips()
+    {
+        var xml = XDocument.Parse(XmlOf(WifiProfileXml.ReplaceKey(Saved, WifiProfileKind.Wpa2Psk, "p&\"<>'x1234", "Home")));
+
+        Assert.Equal("p&\"<>'x1234", xml.Descendants(Ns + "keyMaterial").Single().Value);
+        Assert.Equal("manual", xml.Descendants(Ns + "connectionMode").Single().Value);
+    }
+
+    [Fact]
+    public void ReplaceKey_SixtyFourHexOnWpa2_BecomesTheNetworkKey()
+    {
+        var xml = XDocument.Parse(XmlOf(WifiProfileXml.ReplaceKey(Saved, WifiProfileKind.Wpa2Psk, new string('b', 64), "Home")));
+
+        Assert.Equal("networkKey", xml.Descendants(Ns + "keyType").Single().Value);
+    }
+
+    [Fact]
+    public void ReplaceKey_NoSharedKeyYet_AddsOneInsideSecurity()
+    {
+        var withoutKey = Saved.Replace("<sharedKey><keyType>passPhrase</keyType><protected>true</protected><keyMaterial>01000000D08C9DDF</keyMaterial></sharedKey>", "");
+
+        var xml = XDocument.Parse(XmlOf(WifiProfileXml.ReplaceKey(withoutKey, WifiProfileKind.Wpa2Psk, "newpassword1", "Home")));
+
+        Assert.Equal("newpassword1", xml.Descendants(Ns + "security").Single().Element(Ns + "sharedKey")!.Element(Ns + "keyMaterial")!.Value);
+    }
+
+    [Fact]
+    public void ReplaceKey_BadInput_IsRejectedWithoutNamingTheKey()
+    {
+        var invalid = Assert.Throws<ArgumentException>(() => WifiProfileXml.ReplaceKey(Saved, WifiProfileKind.Wpa2Psk, "hunter\u0001two", "Home"));
+        Assert.Equal("The password holds characters a profile can't store. (Parameter 'key')", invalid.Message);
+        Assert.Throws<ArgumentException>(() => WifiProfileXml.ReplaceKey(Saved, WifiProfileKind.Open, "", "Home"));
+        Assert.Throws<ArgumentException>(() => WifiProfileXml.ReplaceKey("<WLANProfile/>", WifiProfileKind.Wpa2Psk, "newpassword1", "Home"));
+    }
+
+    [Fact]
+    public void ReplaceKey_DocumentClearsAndHidesTheKey()
+    {
+        var document = WifiProfileXml.ReplaceKey(Saved, WifiProfileKind.Wpa2Psk, "newpassword1", "Home");
+
+        Assert.Equal("Wi-Fi profile \"Home\" (Wpa2Psk)", document.ToString());
+        document.Clear();
+        Assert.All(document.Buffer, c => Assert.Equal('\0', c));
+    }
 }

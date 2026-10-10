@@ -46,7 +46,8 @@ public sealed record WifiNetworkRow(
         get
         {
             var state = IsConnected ? "Connected" : IsSaved ? "Saved" : null;
-            var security = Kind == WifiProfileKind.HandOff ? "Enterprise, opens in Windows Settings" : WifiSecurity.Label(Kind);
+            // A saved enterprise network connects from the panel; an unsaved one is set up in Windows Settings.
+            var security = Kind == WifiProfileKind.HandOff && !IsSaved ? "Enterprise, opens in Windows Settings" : WifiSecurity.Label(Kind);
             return state is null ? security : $"{state} · {security}";
         }
     }

@@ -72,7 +72,7 @@ public static class WifiProfileXml
         }
 
         var (authentication, encryption, baseKeyType) = Describe(kind, cipherAlgorithm);
-        var keyType = KeyTypeFor(baseKeyType, key);
+        var keyType = KeyTypeFor(kind, baseKeyType, key);
         var hasKey = WifiSecurity.NeedsPassword(kind);
 
         // Escaping grows a character to at most six ("&quot;"), so this is a safe upper bound and the buffer never moves.
@@ -135,9 +135,61 @@ public static class WifiProfileXml
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
-    // A 64-digit hex WPA key is the key itself, not a passphrase to hash.
-    private static string KeyTypeFor(string keyType, ReadOnlySpan<char> key) =>
-        keyType == "passPhrase" && key.Length == 64 && IsHex(key) ? "networkKey" : keyType;
+    // A 64-digit hex WPA or WPA2 key is the key itself, not a passphrase to hash. (WPA3 has no raw keys: a 64-digit
+    // password there is an ordinary password.)
+    private static string KeyTypeFor(WifiProfileKind kind, string keyType, ReadOnlySpan<char> key) =>
+        kind is WifiProfileKind.WpaPsk or WifiProfileKind.Wpa2Psk && key.Length == 64 && IsHex(key) ? "networkKey" : keyType;
+
+    /// <summary>
+    /// Replaces only the key of an existing profile's XML (as <c>WlanGetProfile</c> returns it, with the old key still
+    /// encrypted), so everything else the user or Windows set (connection mode, non-broadcast, MAC randomisation,
+    /// metered settings) survives a corrected password. Throws <see cref="ArgumentException"/>, never naming the key,
+    /// when the key holds characters XML can't carry, the kind takes no key, or the XML has no security section.
+    /// </summary>
+    public static WifiProfileDocument ReplaceKey(string existingProfileXml, WifiProfileKind kind, ReadOnlySpan<char> key, string profileName)
+    {
+        ArgumentNullException.ThrowIfNull(existingProfileXml);
+        ArgumentNullException.ThrowIfNull(profileName);
+        if (!WifiSecurity.NeedsPassword(kind))
+        {
+            throw new ArgumentException("This kind of network has no key to replace.", nameof(kind));
+        }
+
+        if (!IsXmlSafe(key))
+        {
+            throw new ArgumentException("The password holds characters a profile can't store.", nameof(key));
+        }
+
+        const string Open = "<sharedKey>";
+        const string Close = "</sharedKey>";
+        var start = existingProfileXml.IndexOf(Open, StringComparison.Ordinal);
+        var end = start < 0 ? -1 : existingProfileXml.IndexOf(Close, start, StringComparison.Ordinal);
+        string head;
+        string tail;
+        if (start >= 0 && end > start)
+        {
+            head = existingProfileXml[..start];
+            tail = existingProfileXml[(end + Close.Length)..];
+        }
+        else
+        {
+            var security = existingProfileXml.IndexOf("</security>", StringComparison.Ordinal);
+            if (security < 0)
+            {
+                throw new ArgumentException("The saved profile has no security section.", nameof(existingProfileXml));
+            }
+
+            head = existingProfileXml[..security];
+            tail = existingProfileXml[security..];
+        }
+
+        var keyType = KeyTypeFor(kind, kind == WifiProfileKind.Wep ? "networkKey" : "passPhrase", key);
+        var buffer = new char[head.Length + tail.Length + 6 * key.Length + 128 + 1];
+        var writer = new BufferWriter(buffer);
+        writer.Append(head).Append(Open).Append("<keyType>").Append(keyType)
+            .Append("</keyType><protected>false</protected><keyMaterial>").AppendEscaped(key).Append("</keyMaterial>").Append(Close).Append(tail);
+        return new WifiProfileDocument(buffer, writer.Length, profileName, kind);
+    }
 
     private static bool IsHex(ReadOnlySpan<char> key)
     {

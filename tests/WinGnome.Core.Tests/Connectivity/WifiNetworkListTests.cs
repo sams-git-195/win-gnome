@@ -102,6 +102,7 @@ public class WifiNetworkListTests
     [InlineData(false, true, WifiProfileKind.Open, "Saved · Open")]
     [InlineData(false, false, WifiProfileKind.Wpa3Sae, "WPA3")]
     [InlineData(false, false, WifiProfileKind.HandOff, "Enterprise, opens in Windows Settings")]
+    [InlineData(false, true, WifiProfileKind.HandOff, "Saved · Enterprise")]
     public void Subtitle_CombinesStateAndSecurity(bool connected, bool saved, WifiProfileKind kind, string expected)
     {
         var row = new WifiNetworkRow([1], "n", saved ? "n" : null, 2, kind, 4, true, saved, connected);
