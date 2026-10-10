@@ -21,6 +21,8 @@ internal enum TopBarAction
     Screenshot,
     Settings,
     WinGnomeSettings,
+    WindowsSettings,
+    ControlPanel,
     AboutThisPc,
     MicrosoftStore,
     StartMenu,
@@ -89,11 +91,19 @@ internal sealed class TopBarActions(ShellContext context)
             case TopBarAction.MicrosoftStore:
                 context.Launcher.Launch("ms-windows-store:");
                 break;
+            case TopBarAction.WindowsSettings:
+                // The top-level ms-settings: URI (Win+I); LaunchPlanner.IsUri routes it to the scheme's handler.
+                context.Launcher.Launch("ms-settings:");
+                break;
             case TopBarAction.StartMenu:
                 ShellShortcuts.OpenStartMenu();
                 break;
             case TopBarAction.TaskManager:
                 context.Launcher.Launch(Path.Combine(Environment.SystemDirectory, "taskmgr.exe"));
+                break;
+            case TopBarAction.ControlPanel:
+                // The classic Control Panel, launched like Task Manager: a rooted System32 path, never elevated.
+                context.Launcher.Launch(Path.Combine(Environment.SystemDirectory, "control.exe"));
                 break;
             case TopBarAction.Quit:
                 context.Commands.Quit();

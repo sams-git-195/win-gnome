@@ -99,7 +99,7 @@
                 <Button x:Name="LogoButton" Style="{StaticResource BarButton}" Padding="10,0" Click="OnLogoClick"
                         AutomationProperties.Name="Windows menu"
                         Visibility="{Binding ShowLogoMenu, Converter={StaticResource VisibleWhen}}">
-                    <controls:WindowsLogo x:Name="Logo" Fill="{DynamicResource BarForeground}" />
+                    <controls:LogoGlyph x:Name="Logo" Fill="{DynamicResource BarForeground}" />
                 </Button>
                 <Button Style="{StaticResource BarButton}" Content="Activities" Click="OnActivitiesClick"
                         Visibility="{Binding ShowActivitiesButton, Converter={StaticResource VisibleWhen}}" />

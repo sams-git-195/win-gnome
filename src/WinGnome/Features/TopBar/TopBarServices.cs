@@ -21,6 +21,8 @@ internal sealed class TopBarServices : IDisposable
         Tray = new TrayModel(context.Dispatcher, context.Commands.Quit);
         Tray.SetEnabled(settings.ShowTrayIcons);
         Popups = new PopupHost(context.Windows);
+        Logo = new LogoProvider(context.Dispatcher);
+        Logo.ApplySettings(settings);
     }
 
     public ClockViewModel Clock { get; }
@@ -33,15 +35,20 @@ internal sealed class TopBarServices : IDisposable
 
     public PopupHost Popups { get; }
 
+    /// <summary>Resolves the logo mark and decodes a custom image once, shared by every bar.</summary>
+    public LogoProvider Logo { get; }
+
     public void ApplySettings(TopBarSettings settings)
     {
         Clock.ApplySettings(settings);
         Status.ApplySettings(settings.ShowBatteryPercentage);
         Tray.SetEnabled(settings.ShowTrayIcons);
+        Logo.ApplySettings(settings);
     }
 
     public void Dispose()
     {
+        Logo.Dispose();
         Popups.Dispose();
         Tray.Dispose();
         Status.Dispose();

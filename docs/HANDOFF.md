@@ -89,10 +89,11 @@ monitor, marker correct (details in KI-099).
 
 ## 3. Work in flight
 
-- Branch **`logo-menu-spec`** (spec 0021, logo menu items + custom white logo): implemented and advisor-reviewed
-  at spec level (3187 tests green), but **not** code-reviewed and **not** live-QA'd yet. Its KNOWN_ISSUES entry
-  claims **KI-103** — renumber it to **KI-104** (next free KI-105) when that branch merges: `main` now uses
-  KI-103 for the silent-write degradation (KI-102's fix).
+- Branch **`logo-menu-spec`** (spec 0021, logo menu items + custom white logo): implemented, independently
+  code-reviewed (deepseek-v4-pro-0813: APPROVE-WITH-NITS — deviations for the Gray8→alpha brush and the
+  aspect-preserving decode both accepted; 4 mutations re-run by the reviewer), main merged in, its
+  KNOWN_ISSUES entry renumbered to **KI-104** (next free **KI-105**). **Not** live-QA'd yet: ACs 1–4, 9–14, 16
+  (menu clicks, picker, DPI, light/dark, silhouette rendering) need an app run.
 
 ## 4. Queue, in order
 

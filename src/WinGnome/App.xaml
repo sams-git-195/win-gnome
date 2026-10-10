@@ -9,6 +9,7 @@
                 <ResourceDictionary Source="Theme/Dark.xaml" />
                 <ResourceDictionary Source="Theme/Controls.xaml" />
                 <ResourceDictionary Source="Theme/SymbolicIcons.xaml" />
+                <ResourceDictionary Source="Theme/LogoMarks.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

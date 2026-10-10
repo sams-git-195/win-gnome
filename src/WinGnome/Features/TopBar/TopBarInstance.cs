@@ -37,7 +37,7 @@ internal sealed class TopBarInstance : IDisposable
         Monitor = monitor;
         _viewModel = new TopBarViewModel(context, services, settings);
         _backdrop = new BlurBackdrop("WinGnome Top Bar Backdrop");
-        _window = new TopBarWindow(context, _viewModel, settings, services.Popups, _backdrop);
+        _window = new TopBarWindow(context, _viewModel, settings, services.Popups, _backdrop, services.Logo);
 
         // Creates the handle: the bar must be a no-activate tool window before it is ever shown.
         ShellSurface.MakeNonActivating(_window, topmost: true);

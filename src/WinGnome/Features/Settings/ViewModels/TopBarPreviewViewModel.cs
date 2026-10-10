@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using WinGnome.Core.Settings;
 using WinGnome.Core.Theming;
 using WinGnome.Core.TopBar;
@@ -62,6 +63,13 @@ internal sealed class TopBarPreviewViewModel : ObservableObject
 
     public bool ShowBatteryText { get; private set; }
 
+    /// <summary>The logo mark the preview's <c>LogoGlyph</c> draws; set by the page as the selection resolves.</summary>
+    public LogoKind LogoKind { get; private set; } = LogoKind.WindowsMark;
+
+    public string? LogoGeometryKey { get; private set; }
+
+    public BitmapSource? LogoMask { get; private set; }
+
     /// <summary>Recomputes the preview from the settings.</summary>
     public void Update(AppSettings settings)
     {
@@ -83,5 +91,16 @@ internal sealed class TopBarPreviewViewModel : ObservableObject
         ShowAppName = bar.ShowFocusedAppName;
         ShowBatteryText = bar.ShowBatteryPercentage;
         OnPropertyChanged(string.Empty);
+    }
+
+    /// <summary>Points the preview's logo glyph at a resolved mark (and its mask, for a custom image).</summary>
+    public void SetLogo(LogoKind kind, string? geometryKey, BitmapSource? mask)
+    {
+        LogoKind = kind;
+        LogoGeometryKey = geometryKey;
+        LogoMask = mask;
+        OnPropertyChanged(nameof(LogoKind));
+        OnPropertyChanged(nameof(LogoGeometryKey));
+        OnPropertyChanged(nameof(LogoMask));
     }
 }

@@ -155,6 +155,57 @@ public class SettingsSerializerTests
     }
 
     [Fact]
+    public void Deserialize_TopBarWithoutLogoFields_UsesWindowsAndEmptyPath()
+    {
+        // A settings file written before spec 0021 added the customisable logo.
+        var settings = SettingsSerializer.Deserialize("""{ "TopBar": { "Enabled": true, "FontSize": 14 } }""");
+
+        Assert.Equal(TopBarLogo.Windows, settings.TopBar.Logo);
+        Assert.Equal("", settings.TopBar.LogoImagePath);
+        Assert.Equal(14, settings.TopBar.FontSize);
+    }
+
+    [Fact]
+    public void RoundTrip_PreservesTopBarLogo()
+    {
+        var original = new AppSettings();
+        original.TopBar.Logo = TopBarLogo.Custom;
+        original.TopBar.LogoImagePath = @"C:\Pictures\logo.png";
+
+        var json = SettingsSerializer.Serialize(original);
+        var copy = SettingsSerializer.Deserialize(json);
+
+        Assert.Contains("\"Logo\": \"Custom\"", json);
+        Assert.Equal(TopBarLogo.Custom, copy.TopBar.Logo);
+        Assert.Equal(@"C:\Pictures\logo.png", copy.TopBar.LogoImagePath);
+    }
+
+    [Fact]
+    public void Deserialize_UnknownTopBarLogoName_UsesWindows_AndKeepsTheRest()
+    {
+        var settings = SettingsSerializer.Deserialize("""{ "TopBar": { "Logo": "Gnome", "FontSize": 15 } }""");
+
+        Assert.Equal(TopBarLogo.Windows, settings.TopBar.Logo);
+        Assert.Equal(15, settings.TopBar.FontSize);
+    }
+
+    [Fact]
+    public void Deserialize_UnknownTopBarLogoNumber_UsesWindows()
+    {
+        var settings = SettingsSerializer.Deserialize("""{ "TopBar": { "Logo": 42 } }""");
+
+        Assert.Equal(TopBarLogo.Windows, settings.TopBar.Logo);
+    }
+
+    [Fact]
+    public void Deserialize_KnownTopBarLogo_StillReadsIt()
+    {
+        var settings = SettingsSerializer.Deserialize("""{ "TopBar": { "Logo": "Terminal" } }""");
+
+        Assert.Equal(TopBarLogo.Terminal, settings.TopBar.Logo);
+    }
+
+    [Fact]
     public void Deserialize_UnknownWindowButtonNames_UseTheirDefaults_AndKeepTheRest()
     {
         var settings = SettingsSerializer.Deserialize(

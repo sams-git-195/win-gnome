@@ -127,8 +127,14 @@ public sealed class TopBarSettings
     /// </summary>
     public double ItemCornerRadius { get; set; }
 
-    /// <summary>Windows-logo button at the far left that opens a system menu (like the macOS Apple menu).</summary>
+    /// <summary>Logo button at the far left that opens a system menu (like the macOS Apple menu).</summary>
     public bool ShowLogoMenu { get; set; } = true;
+
+    /// <summary>Which mark the logo button shows (spec 0021). Only visible while <see cref="ShowLogoMenu"/> is on.</summary>
+    public TopBarLogo Logo { get; set; } = TopBarLogo.Windows;
+
+    /// <summary>Path of the custom logo image, used only when <see cref="Logo"/> is <see cref="TopBarLogo.Custom"/>. Empty = unset.</summary>
+    public string LogoImagePath { get; set; } = "";
 
     public bool ShowActivitiesButton { get; set; } = true;
     public bool ShowWorkspaceIndicator { get; set; } = true;
@@ -164,10 +170,31 @@ public sealed class TopBarSettings
         ClockStyle = EnumSetting.Normalize(ClockStyle, ClockStyle.TwentyFourHour);
         FontFamily = EnumSetting.Normalize(FontFamily, TopBarFont.AdwaitaSans);
         Monitors = EnumSetting.Normalize(Monitors, BarMonitors.All);
+        Logo = EnumSetting.Normalize(Logo, TopBarLogo.Windows);
+
+        // A Custom logo with an empty path is left alone: the render-time fallback (Windows mark + one warning)
+        // handles a file that is temporarily missing, so Normalize must not destroy the user's pending choice.
+        var logoPath = LogoImagePath?.Trim() ?? "";
+        LogoImagePath = logoPath.Length > 260 ? "" : logoPath;
     }
 }
 
 public enum TopBarFont { AdwaitaSans, SegoeUI }
+
+/// <summary>The mark shown in the top bar's logo button (spec 0021).</summary>
+public enum TopBarLogo
+{
+    /// <summary>The four-pane Windows mark (default).</summary>
+    Windows,
+    /// <summary>An original GNOME-flavoured foot / "start here" mark.</summary>
+    Foot,
+    /// <summary>A star.</summary>
+    Star,
+    /// <summary>A terminal prompt (&gt;_) in a rounded box.</summary>
+    Terminal,
+    /// <summary>A user-chosen image file at <see cref="TopBarSettings.LogoImagePath"/>, rendered as a silhouette.</summary>
+    Custom,
+}
 
 /// <summary>Which displays a top bar or a dock appears on.</summary>
 public enum BarMonitors
