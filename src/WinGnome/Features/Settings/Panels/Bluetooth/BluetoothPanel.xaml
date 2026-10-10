@@ -1,0 +1,49 @@
+<UserControl x:Class="WinGnome.Features.Settings.Panels.Bluetooth.BluetoothPanel" x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:WinGnome.Features.Settings.Controls"
+             xmlns:p="clr-namespace:WinGnome.Features.Settings.Panels">
+    <StackPanel>
+        <p:PanelNotices />
+
+        <c:SettingsGroup Visibility="{Binding HasRadio, Converter={x:Static c:Converters.BoolToVisibility}}">
+            <c:SettingsRow Title="Bluetooth" Subtitle="{Binding BluetoothSubtitle}">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding BluetoothOn}" IsEnabled="{Binding CanToggleBluetooth}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <TextBlock Text="No Bluetooth adapter found." Style="{DynamicResource RowSubtitleText}" Margin="4,0,0,20"
+                   Visibility="{Binding ShowsNoAdapter, Converter={x:Static c:Converters.BoolToVisibility}}" />
+
+        <c:SettingsGroup Header="Devices" ItemsSource="{Binding Devices}"
+                         Visibility="{Binding HasDevices, Converter={x:Static c:Converters.BoolToVisibility}}">
+            <c:SettingsGroup.ItemTemplate>
+                <DataTemplate>
+                    <c:SettingsRow Title="{Binding Name}" Subtitle="{Binding Status}">
+                        <c:SettingsRow.Details>
+                            <WrapPanel>
+                                <Button Content="Connect in Windows Settings" Style="{DynamicResource SettingsButton}" Margin="0,8,8,0"
+                                        Command="{Binding DataContext.ConnectInWindowsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        Visibility="{Binding ShowsConnectInWindows, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                                <Button Content="Remove Device" Style="{DynamicResource SettingsDestructiveButton}" Margin="0,8,8,0"
+                                        Command="{Binding DataContext.RemoveCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                            </WrapPanel>
+                        </c:SettingsRow.Details>
+                    </c:SettingsRow>
+                </DataTemplate>
+            </c:SettingsGroup.ItemTemplate>
+        </c:SettingsGroup>
+
+        <TextBlock Text="No paired devices." Style="{DynamicResource RowSubtitleText}" Margin="4,0,0,20"
+                   Visibility="{Binding ShowsEmptyNote, Converter={x:Static c:Converters.BoolToVisibility}}" />
+
+        <c:SettingsGroup>
+            <c:SettingsRow Title="Add Device" Subtitle="Windows Settings finds and pairs nearby devices.">
+                <Button Content="Add Device&#x2026;" Style="{DynamicResource SettingsButton}" Command="{Binding AddDeviceCommand}" />
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
+        <p:PanelFooter />
+    </StackPanel>
+</UserControl>

@@ -17,5 +17,6 @@
         <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/RegionLanguage/RegionLanguagePanelResources.xaml" />
         <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/WindowsUpdate/WindowsUpdatePanelResources.xaml" />
         <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/Wifi/WifiPanelResources.xaml" />
+        <ResourceDictionary Source="/WinGnome;component/Features/Settings/Panels/Bluetooth/BluetoothPanelResources.xaml" />
     </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>
