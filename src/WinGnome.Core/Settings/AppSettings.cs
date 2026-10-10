@@ -66,6 +66,12 @@ public sealed class GeneralSettings
     /// </summary>
     public bool NativeTaskbarAutoHide { get; set; }
 
+    /// <summary>
+    /// Dock mode only: give Explorer's hidden taskbar windows an empty window region so a taskbar Explorer re-shows
+    /// draws nothing (spec 0023). The hide-and-re-hide stays as the backup.
+    /// </summary>
+    public bool HideTaskbarFlashes { get; set; } = true;
+
     /// <summary>Colour scheme for WinGnome's own surfaces (top bar menus, dock, overview, settings).</summary>
     public ThemeMode Theme { get; set; } = ThemeMode.Dark;
 

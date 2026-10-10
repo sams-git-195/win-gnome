@@ -1,6 +1,6 @@
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text.Json;
+using WinGnome.Core.Shell;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
 using WinGnome.Services.Tray;
@@ -37,8 +37,6 @@ internal static partial class TaskbarController
 
     [LibraryImport("shell32.dll")]
     private static partial nuint SHAppBarMessage(uint message, ref APPBARDATA data);
-
-    private sealed record Marker(bool WasAutoHide);
 
     /// <summary>
     /// Explorer's own primary taskbar window, or 0. Not simply <c>FindWindow("Shell_TrayWnd")</c>: WinGnome's tray host
@@ -84,6 +82,27 @@ internal static partial class TaskbarController
     public static bool IsTaskbarWindow(nint hwnd) =>
         NativeMethods.GetClassName(hwnd) is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" && !IsTrayHost(hwnd);
 
+    /// <summary>
+    /// A taskbar window that Explorer (the process of the shell's desktop window) owns. Stricter than
+    /// <see cref="IsTaskbarWindow"/>: window regions are only ever touched on windows this accepts, never on a tray
+    /// host's look-alike. False while there is no shell window.
+    /// </summary>
+    public static bool IsExplorerTaskbarWindow(nint hwnd)
+    {
+        if (hwnd == 0 || !IsTaskbarWindow(hwnd))
+        {
+            return false;
+        }
+
+        var shell = NativeMethods.GetShellWindow();
+        var shellProcess = shell == 0 ? 0 : NativeMethods.GetProcessId(shell);
+        return shellProcess != 0 && NativeMethods.GetProcessId(hwnd) == shellProcess;
+    }
+
+    /// <summary>The primary and secondary taskbar windows that <see cref="IsExplorerTaskbarWindow"/> accepts.</summary>
+    public static IReadOnlyList<nint> FindExplorerTaskbarWindows() =>
+        FindTaskbarWindows().Where(IsExplorerTaskbarWindow).ToList();
+
     /// <summary>A WinGnome tray host (this process's, or another WinGnome's that currently hosts the tray).</summary>
     private static bool IsTrayHost(nint hwnd) => NativeMethods.IsOwnWindow(hwnd) || TrayHost.IsHostWindow(hwnd);
 
@@ -95,7 +114,7 @@ internal static partial class TaskbarController
     public static bool Hide(string settingsDirectory)
     {
         // Only record the state the user had before WinGnome ever touched it.
-        if (!File.Exists(MarkerPath(settingsDirectory)) && !WriteMarker(settingsDirectory, new Marker(IsAutoHide())))
+        if (!File.Exists(MarkerPath(settingsDirectory)) && !WriteMarker(settingsDirectory, new TaskbarMarker { WasAutoHide = IsAutoHide() }))
         {
             Log.Warn("Not hiding the taskbar because its restore marker could not be written");
             return false;
@@ -113,7 +132,7 @@ internal static partial class TaskbarController
     /// </summary>
     public static bool SetAutoHideOnly(string settingsDirectory)
     {
-        if (!File.Exists(MarkerPath(settingsDirectory)) && !WriteMarker(settingsDirectory, new Marker(IsAutoHide())))
+        if (!File.Exists(MarkerPath(settingsDirectory)) && !WriteMarker(settingsDirectory, new TaskbarMarker { WasAutoHide = IsAutoHide() }))
         {
             Log.Warn("Not auto-hiding the taskbar because its restore marker could not be written");
             return false;
@@ -178,6 +197,8 @@ internal static partial class TaskbarController
         }
 
         var marker = ReadMarker(path);
+        // Explorer never sets an empty region, so any live taskbar window with one is ours to give back, recorded or not.
+        TaskbarRegionManager.Sweep(new TaskbarRegionHost(settingsDirectory), marker?.EmptiedRegions ?? []);
         ShowWindows();
         SetAutoHide(marker?.WasAutoHide ?? false);
         try
@@ -198,6 +219,37 @@ internal static partial class TaskbarController
     /// It disappears when anything restores the taskbar (settings page, <c>--restore-taskbar</c>, a crash handler).
     /// </summary>
     public static bool HasMarker(string settingsDirectory) => File.Exists(MarkerPath(settingsDirectory));
+
+    /// <summary>
+    /// Records in the marker that <paramref name="handle"/> is about to get an empty region, so a crash or kill
+    /// still lets the next start or <c>--restore-taskbar</c> undo it. Returns false, and the region must then not
+    /// be applied, when there is no marker or it cannot be written.
+    /// </summary>
+    public static bool RecordEmptiedRegion(string settingsDirectory, nint handle)
+    {
+        var marker = ReadExistingMarker(settingsDirectory);
+        return marker is not null && WriteMarker(settingsDirectory, marker.WithEmptiedRegion(handle));
+    }
+
+    /// <summary>The window handles the marker records as given an empty region (none when there is no marker).</summary>
+    public static IReadOnlyList<long> ReadEmptiedRegions(string settingsDirectory) =>
+        ReadExistingMarker(settingsDirectory)?.EmptiedRegions ?? [];
+
+    /// <summary>Replaces the recorded regions (those whose removal failed stay). Does nothing when there is no marker or nothing changes.</summary>
+    public static void ReplaceEmptiedRegions(string settingsDirectory, IReadOnlyList<long> handles)
+    {
+        var marker = ReadExistingMarker(settingsDirectory);
+        if (marker is not null && !marker.EmptiedRegions.SequenceEqual(handles))
+        {
+            WriteMarker(settingsDirectory, marker.WithEmptiedRegions(handles));
+        }
+    }
+
+    private static TaskbarMarker? ReadExistingMarker(string settingsDirectory)
+    {
+        var path = MarkerPath(settingsDirectory);
+        return File.Exists(path) ? ReadMarker(path) : null;
+    }
 
     public static bool IsAutoHide()
     {
@@ -220,12 +272,16 @@ internal static partial class TaskbarController
 
     private static string MarkerPath(string directory) => Path.Combine(directory, MarkerFileName);
 
-    private static bool WriteMarker(string directory, Marker marker)
+    private static bool WriteMarker(string directory, TaskbarMarker marker)
     {
         try
         {
             Directory.CreateDirectory(directory);
-            File.WriteAllText(MarkerPath(directory), JsonSerializer.Serialize(marker));
+            // Written beside and moved over, so a kill mid-write never leaves a truncated marker (which would read as "restore to always visible").
+            var path = MarkerPath(directory);
+            var temp = path + ".tmp";
+            File.WriteAllText(temp, marker.Serialize());
+            File.Move(temp, path, overwrite: true);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -235,13 +291,19 @@ internal static partial class TaskbarController
         }
     }
 
-    private static Marker? ReadMarker(string path)
+    private static TaskbarMarker? ReadMarker(string path)
     {
         try
         {
-            return JsonSerializer.Deserialize<Marker>(File.ReadAllText(path));
+            var marker = TaskbarMarker.Parse(File.ReadAllText(path));
+            if (marker is null)
+            {
+                Log.Warn("Taskbar marker unreadable; restoring to always visible");
+            }
+
+            return marker;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Log.Warn("Taskbar marker unreadable; restoring to always visible", ex);
             return null;

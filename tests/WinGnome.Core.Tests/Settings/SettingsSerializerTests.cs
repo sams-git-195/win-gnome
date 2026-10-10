@@ -47,6 +47,25 @@ public class SettingsSerializerTests
     }
 
     [Fact]
+    public void Deserialize_GeneralWithoutHideTaskbarFlashesField_TurnsItOn()
+    {
+        var settings = SettingsSerializer.Deserialize("""{ "General": { "HideWindowsTaskbar": true, "Theme": "Light" } }""");
+
+        Assert.True(settings.General.HideTaskbarFlashes);
+    }
+
+    [Fact]
+    public void RoundTrip_HideTaskbarFlashesOff_StaysOff()
+    {
+        var original = new AppSettings();
+        original.General.HideTaskbarFlashes = false;
+
+        var copy = SettingsSerializer.Deserialize(SettingsSerializer.Serialize(original));
+
+        Assert.False(copy.General.HideTaskbarFlashes);
+    }
+
+    [Fact]
     public void Deserialize_PinWithoutRunAsAdministratorField_KeepsItOff()
     {
         // A settings file written before PinnedApp.RunAsAdministrator existed.

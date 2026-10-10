@@ -20,6 +20,7 @@ internal sealed class GeneralPageViewModel : SettingsPageViewModel
             ChoiceOption.Of(true, "WinGnome dock", "Hides the Windows taskbar and uses the WinGnome dock. Tray icons stay reachable through Show system tray in quick settings."),
             ChoiceOption.Of(false, "Native Windows taskbar", "Keeps the Windows taskbar (with tray icons and Start button). The WinGnome dock is turned off."));
         NativeTaskbarAutoHide = Toggle(s => s.General.NativeTaskbarAutoHide, (s, v) => s.General.NativeTaskbarAutoHide = v);
+        HideTaskbarFlashes = Toggle(s => s.General.HideTaskbarFlashes, (s, v) => s.General.HideTaskbarFlashes = v);
         Theme = Choice(s => s.General.Theme, (s, v) => s.General.Theme = v,
             ChoiceOption.Of(ThemeMode.System, "System"),
             ChoiceOption.Of(ThemeMode.Light, "Light"),
@@ -42,6 +43,11 @@ internal sealed class GeneralPageViewModel : SettingsPageViewModel
     public ChoiceSetting TaskbarMode { get; }
 
     public ToggleSetting NativeTaskbarAutoHide { get; }
+
+    public ToggleSetting HideTaskbarFlashes { get; }
+
+    /// <summary>True when WinGnome hides the Windows taskbar, which reveals the option that keeps it from flashing.</summary>
+    public bool IsDockTaskbar => Settings.Current.General.HideWindowsTaskbar;
 
     /// <summary>True when the Windows taskbar stays visible, which reveals the native taskbar options.</summary>
     public bool IsNativeTaskbar => !Settings.Current.General.HideWindowsTaskbar;

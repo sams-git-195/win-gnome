@@ -17,8 +17,8 @@ or *Fixed* (with the commit). When in doubt, pick the higher severity. A resolve
 detail section below the Resolved table when the measured evidence behind the fix is worth keeping (KI-100,
 KI-102).
 
-IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-111 all
-have entries now). The next free ID is **KI-112**; grep the specs for `KI-0` before allocating one.
+IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-112 all
+have entries now). The next free ID is **KI-113**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
@@ -78,6 +78,7 @@ have entries now). The next free ID is **KI-112**; grep the specs for `KI-0` bef
 | [KI-109](#ki-109) | S4 | Settings | Wi-Fi panel v1 leaves out Saved Networks, captive-portal sign-in and handle reopen, uses a link for Airplane Mode, and its write paths aren't verified live | Open |
 | [KI-110](#ki-110) | S4 | Settings | Bluetooth panel v1 doesn't pair, discover, connect or show battery, and its radio and Remove Device paths aren't verified live | Open |
 | [KI-111](#ki-111) | S4 | Settings | Wi-Fi profile leftovers: a crash mid-connect can leave a just-created or overwritten profile saved, and a denied all-user write falls back to a per-user profile | Open |
+| [KI-112](#ki-112) | S4 | Taskbar | The secondary taskbar's empty window region is a race with Explorer, so a flash can still get through | Open |
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -875,6 +876,18 @@ from the list. Profiles are written as all-user profiles and, when Windows denie
 profiles, which other accounts on the PC don't see; an overwrite never falls back (it would leave a same-name duplicate) and
 shows the problem banner. Overwriting a saved profile after an authentication failure replaces only its key (the rest of the
 saved XML is kept), so the old, already rejected key is lost.
+
+### KI-112
+**The secondary taskbar's empty window region is a race with Explorer, so a flash can still get through** · S4 · Taskbar · Open
+
+*Hide taskbar flashes* (spec 0023) gives Explorer's taskbar windows an empty window region. Explorer rewrites the secondary
+taskbar's region on its own, every 0.5 to 2 s during bursts, so WinGnome empties it again on the next window event; between
+Explorer's rewrite and ours the taskbar can still draw once. The primary taskbar's region held for 90 s in the spike. A peek removes the regions, and the secondary taskbar then has no region
+until Explorer rewrites it and we empty it again. If Explorer and WinGnome keep overwriting the same window (more than 20
+times in 10 s) WinGnome stops managing regions for the rest of the session and leaves the re-hide ramp. The
+re-hide with `ShowWindow` stays as the backup. `SetWindowRgn` on another process's window is supported API, but Explorer's own
+use of window regions is undocumented and may change; the setting can be turned off. Like the existing `ShowWindow` hide,
+the call is cross-process, so a hung Explorer could block the UI thread inside it.
 
 ## Resolved
 
