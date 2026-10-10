@@ -70,7 +70,6 @@ have entries now). The next free ID is **KI-112**; grep the specs for `KI-0` bef
 | [KI-092](#ki-092) | S4 | Settings | Region & Language formats and Windows Update status are partly left to Windows Settings | By design |
 | [KI-098](#ki-098) | S4 | Top bar, Dock | `MonitorKeyOf` can map a recycled HMONITOR to the wrong monitor for up to 250 ms | Open |
 | [KI-099](#ki-099) | S3 | Top bar, Dock | WinGnome sets monitor work areas directly when Explorer doesn't apply a strip it granted | Open |
-| [KI-101](#ki-101) | S4 | Settings | About and Displays bypass the shared load gate; a failed About read shows nothing at all | Open |
 | [KI-103](#ki-103) | S4 | Top bar, Dock | Silent work-area writes leave already-maximised windows oversized until the next broadcast | By design |
 | [KI-104](#ki-104) | S4 | Top bar | The custom-logo mask inverts a light mark on a dark background, one stray transparent pixel takes the alpha rule, and the size guards don't bound the decompressed middle | By design |
 | [KI-105](#ki-105) | S4 | Tray | An icon whose registration fell in a front gap stays click-dead until the app re-registers, a second matching unflagged update arrives, or the built-in fallback knows its owner | Open |
@@ -715,18 +714,6 @@ That verified stability had a time limit: 15 minutes after B6's clean start the 
 again and the fallback fought Explorer's own recomputes to a terminal give-up — see KI-102.
 *Workaround:* none needed; without it the strip simply arrives late or not at all.
 
-### KI-101
-**About and Displays bypass the shared load gate; a failed About read shows nothing at all** · S4 · Settings · Open
-
-The two panels that predate spec 0020's `LoadAsync` keep their own `Task.Run(...).ContinueWith` loads and generation
-counters, so neither benefits from the shared failure path (`onFailed`), the newest-only load rules or Core's
-`PanelLoadGate` generations. When the read throws, About logs it and leaves `Info` null: the heading keeps its
-"Reading…" fallback and the rows stay blank until the panel is closed and reopened, with no problem banner to say why.
-Displays logs it and shows an empty display list, whose `Show` does raise the banner ("WinGnome couldn't read the
-displays."), so its gap is the duplicated machinery, not a silent failure. Found while fixing KI-091's shared failure
-path. The fix is to convert both to `LoadAsync`, which brings the banner, `onFailed` and the gate for free and deletes
-their local counters.
-
 ### KI-103
 **Silent work-area writes leave already-maximised windows oversized until the next broadcast** · S4 · Top bar, Dock · By design
 
@@ -898,6 +885,7 @@ saved XML is kept), so the old, already rejected key is lost.
 
 | ID | Severity | Area | Summary | Fixed in |
 |---|---|---|---|---|
+| KI-101 | S4 | Settings | About and Displays bypassed the shared load gate; a failed About read showed nothing | KI-101 branch (both now use `LoadAsync`: failure shows the standard problem banner; Displays also clears its list on failure) |
 | KI-001 | S3 | Dock, Top bar | Dock and top bar appeared on the primary monitor only | 767388e, 32877c1 (spec 0010: a top bar on every monitor, docks on all monitors as an option) |
 | KI-002 | S4 | App | The executable had no app icon | 2f7c44b |
 | KI-009 | S4 | Repo | No CI workflow, although the README said `--selftest` is used by CI | 94b9013 |

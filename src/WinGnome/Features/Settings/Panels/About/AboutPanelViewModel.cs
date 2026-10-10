@@ -1,5 +1,4 @@
 using WinGnome.Core.ControlCenter;
-using WinGnome.Infrastructure;
 
 namespace WinGnome.Features.Settings.Panels.About;
 
@@ -7,7 +6,6 @@ namespace WinGnome.Features.Settings.Panels.About;
 internal sealed class AboutPanelViewModel(SystemPanelContext context) : SystemPanelViewModel(context, PanelIds.About)
 {
     private SystemInfo? _info;
-    private int _generation;
 
     /// <summary>Null while reading.</summary>
     public SystemInfo? Info
@@ -16,27 +14,5 @@ internal sealed class AboutPanelViewModel(SystemPanelContext context) : SystemPa
         private set => SetProperty(ref _info, value);
     }
 
-    protected override void Open()
-    {
-        var generation = ++_generation;
-        Task.Run(SystemInfoReader.Read).ContinueWith(task =>
-        {
-            if (task.IsFaulted)
-            {
-                Log.Warn("Could not read the system information", task.Exception);
-                return;
-            }
-
-            // Ignore a slow read that finished after the panel was closed and reopened.
-            Context.Dispatcher.BeginInvoke(() =>
-            {
-                if (generation == _generation)
-                {
-                    Info = task.Result;
-                }
-            });
-        }, TaskScheduler.Default);
-    }
-
-    protected override void Close() => _generation++;
+    protected override void Open() => LoadAsync(SystemInfoReader.Read, info => Info = info);
 }
