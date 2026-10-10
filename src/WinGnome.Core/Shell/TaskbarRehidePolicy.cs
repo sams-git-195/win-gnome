@@ -40,8 +40,11 @@ public sealed class TaskbarRehidePolicy
     /// <summary>Shows within <see cref="Window"/> (counting the current one) that move the level to Burst.</summary>
     public const int BurstShows = 5;
 
-    /// <summary>Shows within <see cref="Window"/> (counting the current one) that move the level to Runaway.</summary>
-    public const int RunawayShows = 15;
+    /// <summary>
+    /// Shows within <see cref="Window"/> (counting the current one) that move the level to Runaway. The caller counts one
+    /// show per scheduled re-hide, so a sustained loop at the Burst delay (about 13 re-hides in the window) reaches it.
+    /// </summary>
+    public const int RunawayShows = 12;
 
     public static readonly TimeSpan Window = TimeSpan.FromSeconds(10);
 

@@ -21,8 +21,8 @@ public class TaskbarRehidePolicyTests
     [InlineData(1, 250, TaskbarRehideLevel.Normal)]
     [InlineData(4, 250, TaskbarRehideLevel.Normal)]
     [InlineData(5, 750, TaskbarRehideLevel.Burst)]
-    [InlineData(14, 750, TaskbarRehideLevel.Burst)]
-    [InlineData(15, 3000, TaskbarRehideLevel.Runaway)]
+    [InlineData(11, 750, TaskbarRehideLevel.Burst)]
+    [InlineData(12, 3000, TaskbarRehideLevel.Runaway)]
     [InlineData(40, 3000, TaskbarRehideLevel.Runaway)]
     public void OnShow_ShowsInWindow_PicksTheRampedDelay(int shows, int expectedMs, TaskbarRehideLevel expectedLevel)
     {
@@ -87,7 +87,7 @@ public class TaskbarRehidePolicyTests
     public void OnShow_BurstGrowsToRunaway_EscalatesAgain()
     {
         var policy = new TaskbarRehidePolicy();
-        ShowTimes(policy, 14, T0);
+        ShowTimes(policy, 11, T0);
 
         var decision = policy.OnShow(T0);
 
@@ -115,9 +115,9 @@ public class TaskbarRehidePolicyTests
     public void OnShow_RunawayDrainsGradually_StepsDownThroughBurst()
     {
         var policy = new TaskbarRehidePolicy();
-        ShowTimes(policy, 15, T0);
+        ShowTimes(policy, 12, T0);
 
-        // Past the window the 15 old shows are gone; 5 fresh ones put it at Burst, not straight back to Normal.
+        // Past the window the 12 old shows are gone; 5 fresh ones put it at Burst, not straight back to Normal.
         var decision = ShowTimes(policy, 5, T0 + TimeSpan.FromSeconds(11));
 
         Assert.Equal(TaskbarRehideLevel.Burst, decision.Level);

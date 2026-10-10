@@ -129,7 +129,10 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
 
     private void OnRawWindowEvent(uint eventType, nint hwnd)
     {
-        if (eventType == WinEventHook.EVENT_OBJECT_SHOW && IsHidden && !_peeking && TaskbarController.IsTaskbarWindow(hwnd))
+        // A show while a re-hide is already pending is the same episode: Explorer shows one taskbar window per
+        // monitor at once, and counting each would let multi-monitor set-ups reach the slow levels several times faster.
+        if (eventType == WinEventHook.EVENT_OBJECT_SHOW && IsHidden && !_peeking && !_rehideTimer.IsEnabled
+            && TaskbarController.IsTaskbarWindow(hwnd))
         {
             ScheduleRehide(NextRehideDelay(), hwnd);
         }
@@ -137,15 +140,24 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
 
     /// <summary>
     /// The re-hide delay ramps with how often Explorer re-shows the taskbar (see <see cref="TaskbarRehidePolicy"/>).
-    /// Every show is counted, including ones that land while the re-hide timer is already running, so a genuine
-    /// runaway is visible to the policy even though the timer coalesces the re-hides.
+    /// One show is counted per scheduled re-hide; a genuine runaway still reaches the slow level, because at the
+    /// normal rate it produces a re-hide every 250 ms.
     /// </summary>
     private TimeSpan NextRehideDelay()
     {
         var decision = _rehidePolicy.OnShow(DateTime.UtcNow);
         if (decision.Escalated)
         {
-            Log.Warn($"Explorer keeps showing the taskbar again; re-hiding it less often ({decision.Delay.TotalMilliseconds:0} ms)");
+            // A burst is normal at start-up (our own work-area broadcasts provoke it); only a runaway is worth a warning.
+            var message = $"Explorer keeps showing the taskbar again; re-hiding it less often ({decision.Delay.TotalMilliseconds:0} ms)";
+            if (decision.Level == TaskbarRehideLevel.Runaway)
+            {
+                Log.Warn(message);
+            }
+            else
+            {
+                Log.Info(message);
+            }
         }
         else if (decision.Recovered)
         {
@@ -194,7 +206,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
     /// <summary>
     /// Starts the re-hide timer if it is idle. <paramref name="hwnd"/> is the taskbar window Explorer showed, or 0
     /// when the trigger was not a show event; only the show path logs, throttled because a burst re-runs this every
-    /// 250 ms and the suppressed count preserves the correlation.
+    /// few hundred ms and the suppressed count preserves the correlation.
     /// </summary>
     private void ScheduleRehide(TimeSpan delay, nint hwnd = 0)
     {
