@@ -109,31 +109,29 @@ public static class DockModelBuilder
         return result;
     }
 
+    /// <summary>
+    /// The pin a window joins. Each pass (identity, same install, exe file name) takes the first pin that matches;
+    /// when several pins match in the same pass, <see cref="PreferPlain"/> picks among them.
+    /// </summary>
     private static PinnedSlot? FindPinnedSlot(List<PinnedSlot> slots, RunningWindow window)
     {
-        foreach (var slot in slots)
+        var byIdentity = PreferPlain(slots.Where(slot => AppIdentity.IsSameApp(slot.Identity, window.Identity)));
+        if (byIdentity is not null)
         {
-            if (AppIdentity.IsSameApp(slot.Identity, window.Identity))
-            {
-                return slot;
-            }
+            return byIdentity;
         }
 
         var windowHasAumid = !string.IsNullOrWhiteSpace(window.AppUserModelId);
-        foreach (var slot in slots)
+        var byInstall = PreferPlain(slots.Where(slot =>
         {
             // A named-AUMID pin takes a window with a different AUMID of its own only by identity: a browser web
             // app runs the browser's exe but must keep its own icon. Path pins match by install as before.
             var isNamedAumidPin = slot.ExeName.Length == 0;
-            if (isNamedAumidPin && windowHasAumid)
-            {
-                continue;
-            }
-
-            if (AppPathMatch.IsSameInstall(slot.TargetPath, window.ProcessPath))
-            {
-                return slot;
-            }
+            return !(isNamedAumidPin && windowHasAumid) && AppPathMatch.IsSameInstall(slot.TargetPath, window.ProcessPath);
+        }));
+        if (byInstall is not null)
+        {
+            return byInstall;
         }
 
         var processFile = PathText.FileName(window.ProcessPath);
@@ -142,15 +140,29 @@ public static class DockModelBuilder
             return null;
         }
 
-        foreach (var slot in slots)
+        return PreferPlain(slots.Where(slot =>
+            slot.ExeName.Length > 0 && string.Equals(slot.ExeName, processFile, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>
+    /// Chooses among pins that match a window equally well (KI-023). A window carries no launch arguments the dock
+    /// can read, so it can't be told which of two pins for the same program (say two browser profiles) started it.
+    /// The pin launched without arguments is the plain app and wins; otherwise the first in pinned order does.
+    /// </summary>
+    private static PinnedSlot? PreferPlain(IEnumerable<PinnedSlot> matches)
+    {
+        PinnedSlot? first = null;
+        foreach (var slot in matches)
         {
-            if (slot.ExeName.Length > 0 && string.Equals(slot.ExeName, processFile, StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(slot.Pin.Arguments))
             {
                 return slot;
             }
+
+            first ??= slot;
         }
 
-        return null;
+        return first;
     }
 
     /// <summary>

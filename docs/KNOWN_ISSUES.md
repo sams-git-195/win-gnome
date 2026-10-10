@@ -37,7 +37,7 @@ have entries now). The next free ID is **KI-112**; grep the specs for `KI-0` bef
 | [KI-019](#ki-019) | S4 | Tray | The tray host can take up to 1 s to get back in front of Explorer's taskbar | By design |
 | [KI-021](#ki-021) | S4 | Top bar | Brightness slider controls only a laptop's built-in display | Open |
 | [KI-022](#ki-022) | S4 | Tray | A `WM_CLOSE` posted to "the taskbar" quits WinGnome while it hosts tray icons | By design |
-| [KI-023](#ki-023) | S4 | Dock | Two pins with the same target group the app's windows into the first one | Open |
+| [KI-023](#ki-023) | S4 | Dock | Two pins with the same target can't be told apart by their windows | By design |
 | [KI-031](#ki-031) | S4 | Overview | Overview animation details not verified on every path | Open |
 | [KI-032](#ki-032) | S4 | Overview | The overview's close glide gets 8–13 frames | Open |
 | [KI-033](#ki-033) | S4 | Overview | A dock request for some windows doesn't narrow an open overview | Open |
@@ -237,12 +237,15 @@ close the settings window — or any other WinGnome window — programmatically 
 shell.
 
 ### KI-023
-**Two pins with the same target group the app's windows into the first one** · S4 · Dock · Open
+**Two pins with the same target can't be told apart by their windows** · S4 · Dock · By design
 
 Since spec 0006 a window joins a pin whose shortcut target is the same install as the window's process
-(`AppPathMatch.IsSameInstall`), as well as a pin with the same identity. When two pins resolve to the same target,
-for example a named-AUMID pin and a path pin for the same executable, or two Squirrel apps pinned through stubs in
-the same folder, all of its windows go to the first pin and the second shows as not running. An exact identity
+(`AppPathMatch.IsSameInstall`), as well as a pin with the same identity. When several pins match a window equally
+well, for example two browser-profile pins with different arguments, a named-AUMID pin and a path pin for the same
+executable, or two Squirrel apps pinned through stubs in the same folder, the window goes to the pin launched
+without arguments, else to the first in pinned order (`DockModelBuilder.PreferPlain`); the others show as not
+running. The dock can't read a running window's launch arguments (that needs the process's command line: new
+interop, and many apps rewrite it), so it can't match a window to the pin that started it. An exact identity
 match still wins over a path match. Also, before the app catalogue has loaded, named-AUMID pins can't resolve
 their target, so their windows show unpinned until the catalogue's `Changed` refresh.
 
@@ -329,7 +332,9 @@ instance alone is unaffected. Capture header bars with `PrintWindow` to see only
 Only `CabinetWClass` windows in `explorer.exe` are treated as File Explorer (`AppIdentity.ImpliedAppUserModelId`,
 spec 0006). Other un-owned `explorer.exe` windows that pass the alt-tab filter, such as a file-copy progress
 window, have no AUMID and still show as a separate unpinned "Explorer" icon, where the Windows taskbar groups them
-under File Explorer. *Fix direction:* list the classes seen live (for example `OperationStatusWindow`) and add
+under File Explorer. `WindowTracker.Inspect` already has the class name, so the fix is a Core rule only, but the
+classes to admit haven't been listed from a live session (`OperationStatusWindow` is a guess), and admitting an
+unlisted class risks pulling shell windows into the pin. *Fix direction:* list the classes seen live (for example `OperationStatusWindow`) and add
 them to the rule, keeping the desktop, taskbar and other shell windows out.
 
 ### KI-055

@@ -44,6 +44,9 @@ Status: Implemented (branch improvements/shell-polish)
 - App: `DockFeature.ToRunningWindow` passes `IsMinimized`; `ExternalForeground` clears `Handle` on
   `EVENT_SYSTEM_MINIMIZESTART` for that window; `AppCatalog.FindForWindow` uses the Squirrel rule so unpinned
   Squirrel apps get their catalogue name and icon.
+- Several pins matching one window (KI-023): within each pass the pin without launch arguments takes the window,
+  else the first in pinned order. The dock can't read a window's launch arguments, so it can't tell which pin
+  started it.
 - File Explorer (follow-up fix): folder windows (`CabinetWClass` in `explorer.exe`) carry no AUMID, and the
   `Microsoft.Windows.Explorer` AppsFolder entry targets `::{52205FD8-5DFB-447D-801A-D0B52F2E83E1}` (not a file
   path, so the catalogue has no target for it). Neither the identity nor the path pass could match, so they showed

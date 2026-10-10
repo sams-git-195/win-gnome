@@ -301,6 +301,58 @@ public class DockModelBuilderTests
         Assert.False(apps[1].IsRunning);
     }
 
+    [Theory]
+    [InlineData(null, null, 0)]
+    [InlineData("--profile=work", null, 1)]
+    [InlineData("--profile=work", "--profile=home", 0)]
+    [InlineData("--profile=work", " ", 1)]
+    [InlineData("", "--profile=home", 0)]
+    public void PinsWithSameTarget_WindowGoesToThePinWithoutArguments_ElseTheFirst(string? firstArgs, string? secondArgs, int expectedIndex)
+    {
+        var pinned = new[]
+        {
+            new PinnedApp { Name = "One", LaunchId = FirefoxPath, Arguments = firstArgs },
+            new PinnedApp { Name = "Two", LaunchId = FirefoxPath, Arguments = secondArgs },
+        };
+
+        var apps = Build(pinned, [Win(1, "Firefox", FirefoxPath)]);
+
+        Assert.Equal(expectedIndex == 0, apps[0].IsRunning);
+        Assert.Equal(expectedIndex == 1, apps[1].IsRunning);
+    }
+
+    [Fact]
+    public void PinsMatchingByInstall_PinWithoutArgumentsTakesTheWindowOverAnEarlierPinWithArguments()
+    {
+        // The dashboard runs a folder below the launcher, so neither pin's identity equals the window's; both match
+        // by install and the pin without arguments wins.
+        var pinned = new[]
+        {
+            new PinnedApp { Name = "Docker (minimised)", LaunchId = DockerLauncher, Arguments = "--minimized" },
+            Pin("Docker Desktop", DockerAumid),
+        };
+
+        var apps = Build(pinned, [Win(5, "Docker Desktop", DockerFrontendExe)], resolve: CatalogResolve);
+
+        Assert.Empty(apps[0].Windows);
+        Assert.Equal(new nint[] { 5 }, apps[1].Windows.ToArray());
+    }
+
+    [Fact]
+    public void IdentityMatch_StillWinsOverAPinWithoutArguments()
+    {
+        var pinned = new[]
+        {
+            new PinnedApp { Name = "Code (new window)", LaunchId = VsCodePath, Arguments = "--new-window" },
+            Pin("VS Code", VsCodeAumid),
+        };
+
+        var apps = Build(pinned, [Win(5, "Code", VsCodePath)], resolve: CatalogResolve);
+
+        Assert.Equal(new nint[] { 5 }, apps[0].Windows.ToArray());
+        Assert.Empty(apps[1].Windows);
+    }
+
     [Fact]
     public void IsFocused_ForegroundWindowMinimised_IsFalse()
     {
