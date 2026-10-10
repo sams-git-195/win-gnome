@@ -352,18 +352,43 @@ public class TrayIconRegistryTests
         var registry = CallbackLessRegistry();
         registry.Apply(TooltipModify(0x8001), true); // candidate (0x8001, 4) pending
 
-        // The app re-registers properly (the heal's effect): the flagged ADD is authoritative.
-        var add = registry.Apply(Add(1, 100, "tip"), true);
+        // The app re-registers with the authoritative "no callback" answer: a flagged ADD carrying
+        // callback 0. Flagged data wins, so the pending guess must be dropped with it.
+        var add = registry.Apply(Command(NotifyIconMessage.Add, 1, 100,
+            NotifyIconFields.Message | NotifyIconFields.Tip, callback: 0, tip: "tip"), true);
         Assert.False(add.LearnedCallback);
-        Assert.Equal(0x8000u, registry.Icons[0].CallbackMessage);
+        Assert.Equal(0u, registry.Icons[0].CallbackMessage);
 
-        // Same trick as the flagged-modify test: drop back to no callback and check the old candidate
-        // is gone — the pair that was pending must be a first observation again, not a confirmation.
-        registry.Apply(Command(NotifyIconMessage.Modify, 1, 100, NotifyIconFields.Message, callback: 0), true);
         var after = registry.Apply(TooltipModify(0x8001), true);
 
+        // The old candidate is gone: the same pair is a fresh first observation (stored), not a
+        // confirmation (adopted). Without the ADD-path clear this adopts instantly.
         Assert.False(after.LearnedCallback);
         Assert.Equal((0x8001u, 4u), after.ObservedCallback);
+        Assert.Equal(0u, registry.Icons[0].CallbackMessage);
+    }
+
+    [Fact]
+    public void Learning_CandidateFollowsAGuidOwnerMove()
+    {
+        var guid = Guid.NewGuid();
+        var registry = new TrayIconRegistry();
+        registry.Apply(Command(NotifyIconMessage.Add, 1, 100,
+            NotifyIconFields.ItemGuid | NotifyIconFields.Tip, tip: "Security", guid: guid), true); // callback 0
+
+        var first = registry.Apply(Command(NotifyIconMessage.Modify, 1, 100,
+            NotifyIconFields.ItemGuid | NotifyIconFields.Tip, callback: 0x8001, tip: "t1", version: 4, guid: guid), true);
+        Assert.Equal((0x8001u, 4u), first.ObservedCallback);
+
+        // The app recreated its icon window: same GUID, new owner. The candidate belongs to the icon,
+        // so it moves with the entry and this second observation confirms it.
+        var second = registry.Apply(Command(NotifyIconMessage.Modify, 2, 100,
+            NotifyIconFields.ItemGuid | NotifyIconFields.Tip, callback: 0x8001, tip: "t2", version: 4, guid: guid), true);
+
+        Assert.True(second.LearnedCallback);
+        Assert.Equal(0x8001u, registry.Icons[0].CallbackMessage);
+        Assert.Equal(4u, registry.Icons[0].Version);
+        Assert.Equal((nint)2, registry.Icons[0].Id.Owner);
     }
 
     [Fact]

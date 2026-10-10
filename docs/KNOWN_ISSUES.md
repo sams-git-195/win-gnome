@@ -73,7 +73,7 @@ have entries now). The next free ID is **KI-107**; grep the specs for `KI-0` bef
 | [KI-101](#ki-101) | S4 | Settings | About and Displays bypass the shared load gate; a failed About read shows nothing at all | Open |
 | [KI-103](#ki-103) | S4 | Top bar, Dock | Silent work-area writes leave already-maximised windows oversized until the next broadcast | By design |
 | [KI-104](#ki-104) | S4 | Top bar | The custom-logo mask inverts a light mark on a dark background, one stray transparent pixel takes the alpha rule, and the size guards don't bound the decompressed middle | By design |
-| [KI-105](#ki-105) | S4 | Tray | An icon whose registration fell in a front gap stays click-dead until the app re-registers or repeats an unflagged update | Open |
+| [KI-105](#ki-105) | S4 | Tray | An icon whose registration fell in a front gap stays click-dead until the app re-registers or a second matching unflagged update arrives | Open |
 | [KI-106](#ki-106) | S4 | Tray | Tray callback learning reads unflagged wire fields: a range-gated, twice-confirmed heuristic | By design |
 
 ### KI-003
@@ -763,7 +763,7 @@ accepted limitations of that rule:
 background. Colour logos are out of scope by design (spec 0021 non-goals).
 
 ### KI-105
-**An icon whose registration fell in a front gap stays click-dead until the app re-registers or repeats an unflagged update** · S4 · Tray · Open
+**An icon whose registration fell in a front gap stays click-dead until the app re-registers or a second matching unflagged update arrives** · S4 · Tray · Open
 
 If an app's NIM_ADD + NIM_SETVERSION reach Explorer's tray window while it is in front of the tray host (a
 ≤1 s front gap, KI-019), the host first learns of the icon through a later update — typically a tooltip-only
