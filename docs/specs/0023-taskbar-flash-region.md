@@ -50,20 +50,27 @@ Core (`WinGnome.Core/Shell`, tested):
   NULLREGION: the guard against re-apply loops, since our own `SetWindowRgn` can raise window events);
   `RegionsToClear(recorded, present)` (only recorded windows that are still live Explorer taskbar windows and whose
   region is currently empty; a SIMPLE region is Explorer's and is never cleared).
+- `TaskbarRegionManager` (over `ITaskbarRegionHost`): the start, stop, suspend and resume state machine. The known-window
+  set is only a pre-filter for location changes; every region change is preceded by a fresh Explorer-window check (a
+  handle can be reused once Explorer's window is gone), destroys are honoured even while suspended, and a window is
+  written to the marker once, not on every re-apply. Hung windows are skipped and logged once. `Sweep` removes the empty
+  region from every live Explorer taskbar window that has one, recorded or not (Explorer never sets an empty one), and
+  keeps the record of any whose removal failed.
+- `TaskbarRegionBreaker`: more than 20 applies to one window within 10 s ends region management for the session
+  (Warn in the log, regions removed); the re-hide ramp carries on alone.
 - `TaskbarMarker`: parse and serialize of `taskbar.state` (`WasAutoHide` plus `EmptiedRegions`, the HWNDs we
   emptied). A marker from before this spec has only `WasAutoHide` and parses with no regions.
 
 App:
 
 - `Interop/NativeMethods.TaskbarRegion.cs`: `CreateRectRgn`, `GetWindowRgn` (`SetWindowRgn` and `DeleteObject` exist).
-- `Services/TaskbarRegions`: Win32 wrapper (region type, empty, remove-if-empty, remove recorded). After a successful
-  `SetWindowRgn` the system owns the region; it is deleted here only when the call fails. Failures are logged with
+- `Services/TaskbarRegionHost`: the Win32 and marker side of the manager. After a successful `SetWindowRgn` the
+  system owns the region; it is deleted here only when the call fails. Emptying passes redraw false. Failures are logged with
   the HWND and error, never fatal.
 - `Services/TaskbarController`: `IsExplorerTaskbarWindow` (class match **and** same process as `GetShellWindow()`, so
   the tray host's own `Shell_TrayWnd` is never touched), marker record/clear helpers, and region removal inside
   `RestoreFromMarker`.
-- `Features/Taskbar/TaskbarRegionGuard`: holds the active/suspended state and the set of known windows.
-- `TaskbarFeature`: creates the guard, starts and stops it from `ApplySettings`/`SwitchTo`, forwards the raw window
+- `TaskbarFeature`: creates the manager, starts and stops it from `ApplySettings`/`SwitchTo`, forwards the raw window
   events, suspends it around a peek and re-applies after the re-hide timer.
 
 Re-apply triggers (no timer, no polling, no new hook): `WindowTracker.RawWindowEvent` already forwards
@@ -84,15 +91,16 @@ exists whenever Hidden mode is in effect, so no new file.
 
 | Event | Result |
 |---|---|
-| Mode switch, setting off, feature stop, Dispose | `Stop()` removes the regions (known windows plus recorded) and clears the records |
-| Restore from Settings, `--restore-taskbar`, start-up recovery | `RestoreFromMarker` removes recorded empty regions first |
-| Crash handler | `EmergencyRestore` calls `RemoveAll()`, then `RestoreFromMarker` |
+| Mode switch, setting off, feature stop, Dispose | `Stop()` removes the regions (known windows plus recorded) and keeps the record of any window whose removal failed |
+| Restore from Settings, `--restore-taskbar`, start-up recovery | `RestoreFromMarker` sweeps: recorded windows plus every live Explorer taskbar window with an empty region |
+| Crash handler | `EmergencyRestore` calls `RestoreFromMarker`, which sweeps from the marker only (it never reads the UI thread's state) |
 | Force-kill | Next start (or `--restore-taskbar`) reads the records |
 | Explorer restart | Old handles are gone; stale records are ignored (not live, or not empty) and cleared by the next restore |
 | `--safe`, `--selftest` | `ShouldManage` is false: nothing is touched |
 
 Only windows whose current region is NULLREGION are cleared, and only if they are live Explorer taskbar windows, so a
-reused HWND or a region Explorer set is never changed.
+reused HWND or a region Explorer set is never changed. `taskbar.state` is written to a temporary file and moved over,
+so a kill mid-write cannot leave a truncated marker.
 
 ## Footprint
 

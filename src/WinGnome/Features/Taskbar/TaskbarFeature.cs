@@ -30,7 +30,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
     private readonly DispatcherTimer _rehideTimer;
     private readonly DispatcherTimer _peekTimer;
     private readonly TaskbarRehidePolicy _rehidePolicy = new();
-    private readonly TaskbarRegionGuard _regions;
+    private readonly TaskbarRegionManager _regions;
     private TaskbarCreatedListener? _listener;
 
     /// <summary>
@@ -48,7 +48,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _settingsDirectory = context.Settings.Directory;
-        _regions = new TaskbarRegionGuard(_settingsDirectory);
+        _regions = new TaskbarRegionManager(new TaskbarRegionHost(_settingsDirectory), () => DateTime.UtcNow);
         _rehideTimer = new DispatcherTimer(DispatcherPriority.Normal, context.Dispatcher);
         _rehideTimer.Tick += OnRehideTimer;
         _peekTimer = new DispatcherTimer(DispatcherPriority.Normal, context.Dispatcher);
@@ -150,7 +150,18 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
 
     private void OnRawWindowEvent(uint eventType, nint hwnd)
     {
-        _regions.OnWindowEvent(eventType, hwnd);
+        switch (eventType)
+        {
+            case WinEventHook.EVENT_OBJECT_LOCATIONCHANGE:
+                _regions.OnWindowEvent(TaskbarRegionEvent.LocationChange, hwnd);
+                break;
+            case WinEventHook.EVENT_OBJECT_SHOW or WinEventHook.EVENT_OBJECT_CREATE:
+                _regions.OnWindowEvent(TaskbarRegionEvent.ShowOrCreate, hwnd);
+                break;
+            case WinEventHook.EVENT_OBJECT_DESTROY:
+                _regions.OnWindowEvent(TaskbarRegionEvent.Destroy, hwnd);
+                break;
+        }
 
         // A show while a re-hide is already pending is the same episode: Explorer shows one taskbar window per
         // monitor at once, and counting each would let multi-monitor set-ups reach the slow levels several times faster.
@@ -456,7 +467,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
         if (_mode != TaskbarMode.Untouched)
         {
             _mode = TaskbarMode.Untouched;
-            _regions.RemoveAll();
+            // Marker only: the crash thread must not read the UI thread's state. RestoreFromMarker removes the regions.
             TaskbarController.RestoreFromMarker(_settingsDirectory);
         }
     }

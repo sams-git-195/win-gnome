@@ -77,9 +77,18 @@ public class TaskbarMarkerTests
     }
 
     [Fact]
-    public void WithoutEmptiedRegions_KeepsTheOriginalAutoHideState()
+    public void WithEmptiedRegions_ReplacesTheListAndKeepsTheOriginalAutoHideState()
     {
-        var marker = new TaskbarMarker { WasAutoHide = true }.WithEmptiedRegion(5).WithoutEmptiedRegions();
+        var marker = new TaskbarMarker { WasAutoHide = true }.WithEmptiedRegion(5).WithEmptiedRegions([8, 9, 8]);
+
+        Assert.True(marker.WasAutoHide);
+        Assert.Equal([8L, 9L], marker.EmptiedRegions);
+    }
+
+    [Fact]
+    public void WithEmptiedRegions_EmptyList_ClearsTheRecord()
+    {
+        var marker = new TaskbarMarker { WasAutoHide = true }.WithEmptiedRegion(5).WithEmptiedRegions([]);
 
         Assert.True(marker.WasAutoHide);
         Assert.Empty(marker.EmptiedRegions);

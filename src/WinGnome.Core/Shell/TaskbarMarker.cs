@@ -21,8 +21,9 @@ public sealed class TaskbarMarker
             ? this
             : new TaskbarMarker { WasAutoHide = WasAutoHide, EmptiedRegions = [.. EmptiedRegions, handle] };
 
-    /// <summary>This marker with no recorded regions.</summary>
-    public TaskbarMarker WithoutEmptiedRegions() => new() { WasAutoHide = WasAutoHide };
+    /// <summary>This marker with exactly <paramref name="handles"/> recorded (duplicates dropped).</summary>
+    public TaskbarMarker WithEmptiedRegions(IEnumerable<long> handles) =>
+        new() { WasAutoHide = WasAutoHide, EmptiedRegions = [.. handles.Distinct()] };
 
     public string Serialize() => JsonSerializer.Serialize(new RawMarker
     {

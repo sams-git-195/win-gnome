@@ -900,7 +900,9 @@ saved XML is kept), so the old, already rejected key is lost.
 
 *Hide taskbar flashes* (spec 0023) gives Explorer's taskbar windows an empty window region. Explorer rewrites the secondary
 taskbar's region on its own, every 0.5 to 2 s during bursts, so WinGnome empties it again on the next window event; between
-Explorer's rewrite and ours the taskbar can still draw once. The primary taskbar's region held for 90 s in the spike. The
+Explorer's rewrite and ours the taskbar can still draw once. The primary taskbar's region held for 90 s in the spike. A peek removes the regions, and the secondary taskbar then has no region
+until Explorer rewrites it and we empty it again. If Explorer and WinGnome keep overwriting the same window (more than 20
+times in 10 s) WinGnome stops managing regions for the rest of the session and leaves the re-hide ramp. The
 re-hide with `ShowWindow` stays as the backup. `SetWindowRgn` on another process's window is supported API, but Explorer's own
 use of window regions is undocumented and may change; the setting can be turned off. Like the existing `ShowWindow` hide,
 the call is cross-process, so a hung Explorer could block the UI thread inside it.

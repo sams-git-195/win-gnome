@@ -197,7 +197,8 @@ internal static partial class TaskbarController
         }
 
         var marker = ReadMarker(path);
-        TaskbarRegions.RemoveRecorded(marker?.EmptiedRegions ?? []);
+        // Explorer never sets an empty region, so any live taskbar window with one is ours to give back, recorded or not.
+        TaskbarRegionManager.Sweep(new TaskbarRegionHost(settingsDirectory), marker?.EmptiedRegions ?? []);
         ShowWindows();
         SetAutoHide(marker?.WasAutoHide ?? false);
         try
@@ -234,13 +235,13 @@ internal static partial class TaskbarController
     public static IReadOnlyList<long> ReadEmptiedRegions(string settingsDirectory) =>
         ReadExistingMarker(settingsDirectory)?.EmptiedRegions ?? [];
 
-    /// <summary>Forgets the recorded regions once they have all been removed. Does nothing when there is no marker.</summary>
-    public static void ClearEmptiedRegionRecords(string settingsDirectory)
+    /// <summary>Replaces the recorded regions (those whose removal failed stay). Does nothing when there is no marker or nothing changes.</summary>
+    public static void ReplaceEmptiedRegions(string settingsDirectory, IReadOnlyList<long> handles)
     {
         var marker = ReadExistingMarker(settingsDirectory);
-        if (marker is { EmptiedRegions.Count: > 0 })
+        if (marker is not null && !marker.EmptiedRegions.SequenceEqual(handles))
         {
-            WriteMarker(settingsDirectory, marker.WithoutEmptiedRegions());
+            WriteMarker(settingsDirectory, marker.WithEmptiedRegions(handles));
         }
     }
 
@@ -276,7 +277,11 @@ internal static partial class TaskbarController
         try
         {
             Directory.CreateDirectory(directory);
-            File.WriteAllText(MarkerPath(directory), marker.Serialize());
+            // Written beside and moved over, so a kill mid-write never leaves a truncated marker (which would read as "restore to always visible").
+            var path = MarkerPath(directory);
+            var temp = path + ".tmp";
+            File.WriteAllText(temp, marker.Serialize());
+            File.Move(temp, path, overwrite: true);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
