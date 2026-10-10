@@ -747,7 +747,9 @@ message` log line; seen in the field with Windows Security, spec 0022). The star
 sign-in, where the common gap happens: one delayed TaskbarCreated re-broadcast makes apps re-register with
 full data. It does not cover mid-session gaps — an icon adopted after the heal stays click-dead until the app
 next re-registers (an Explorer restart, an app restart or its own re-add). The host logs every adoption
-("appeared without a callback … the startup heal should repair it"), so field logs show which case occurred.
+("appeared without a callback … clicks do nothing until the app re-registers"); whether the heal still covers
+it depends on when it arrived — before the heal's broadcast, sign-in adoptions are repaired; after it, they
+are not (compare the line's timestamp with the "startup heal" line).
 *Fix direction:* re-broadcasting on every mid-session front regain was rejected in spec 0022: it would storm
 every app with re-registrations for a rare, bounded gap.
 

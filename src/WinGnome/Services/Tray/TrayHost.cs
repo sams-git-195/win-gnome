@@ -61,8 +61,8 @@ internal sealed class TrayHost : IDisposable
     /// <summary>After Explorer restarts, apps re-add their icons straight to its new (frontmost) tray; ask again.</summary>
     private const uint RebroadcastDelayMs = 2000;
 
-    /// <summary>When the one-shot start-up heal broadcast is due; mirrors <see cref="TrayRebroadcastPolicy.GraceMs"/>.</summary>
-    private const uint StartupHealDelayMs = 2000;
+    /// <summary>When the one-shot start-up heal broadcast is due; coupled to the policy's grace so they can't drift.</summary>
+    private const uint StartupHealDelayMs = (uint)TrayRebroadcastPolicy.GraceMs;
 
     private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(5);
 
@@ -532,7 +532,7 @@ internal sealed class TrayHost : IDisposable
             {
                 // Plain Log: this runs on the tray host's own thread, where ThrottledLog must not be used. Fires
                 // at most once per adopted entry: later modifies update it instead of creating it.
-                Log.Info($"Tray icon (owner 0x{command.Owner:X}, id {command.Id}) appeared without a callback (it registered before the host was in front); the startup heal should repair it");
+                Log.Info($"Tray icon (owner 0x{command.Owner:X}, id {command.Id}) appeared without a callback (it registered before the host was in front); clicks do nothing until the app re-registers");
             }
 
             if (command.Message == NotifyIconMessage.SetVersion && change.Accepted)

@@ -48,7 +48,10 @@ Heal timing rules (Core, `TrayRebroadcastPolicy`):
 Diagnostic: when a `NIM_MODIFY` the shell accepted creates a new registry entry (`TrayChange.CreatedViaModify`)
 and the call carries no `NIF_MESSAGE`, the host logs once per such entry (plain `Log`, tray thread):
 
-> `Tray icon (owner 0x…, id …) appeared without a callback (it registered before the host was in front); the startup heal should repair it`
+> `Tray icon (owner 0x…, id …) appeared without a callback (it registered before the host was in front); clicks do nothing until the app re-registers`
+
+(The wording deliberately does not promise the heal: an adoption logged *after* the heal's broadcast is a
+mid-session gap the heal no longer covers — KI-105. Compare timestamps with the heal line.)
 
 ## Non-goals
 
