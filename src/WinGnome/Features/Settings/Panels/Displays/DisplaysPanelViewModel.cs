@@ -78,7 +78,6 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
     private DisplayItem? _selected;
     private bool _isApplying;
     private bool _open;
-    private int _generation;
     private int _secondsLeft;
 
     public DisplaysPanelViewModel(SystemPanelContext context)
@@ -221,7 +220,6 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
     protected override void Close()
     {
         _open = false;
-        _generation++;
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         _timer.Stop();
         if (_countdown.Revert() && _pending is { } pending)
@@ -261,21 +259,15 @@ internal sealed class DisplaysPanelViewModel : SystemPanelViewModel
     /// <summary>Reads the displays off the UI thread (mode lists take a while) and shows them, dropping staged changes.</summary>
     private void Load()
     {
-        var generation = ++_generation;
-        Task.Run(DisplayService.Read).ContinueWith(task => Context.Dispatcher.BeginInvoke(() =>
-        {
-            if (generation != _generation || !_open)
-            {
-                return;
-            }
+        LoadAsync(DisplayService.Read, Show, onFailed: ShowNone);
+    }
 
-            if (task.IsFaulted)
-            {
-                Log.Warn("Could not read the displays", task.Exception);
-            }
-
-            Show(task.IsFaulted ? [] : task.Result);
-        }), TaskScheduler.Default);
+    /// <summary>A failed read: drops the displays shown before it, keeping the shared problem banner.</summary>
+    private void ShowNone()
+    {
+        var problem = Problem;
+        Show([]);
+        Problem = problem;
     }
 
     private void Show(IReadOnlyList<DisplayInfo> displays)
