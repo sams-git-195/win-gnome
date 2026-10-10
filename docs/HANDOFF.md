@@ -50,7 +50,7 @@ disabled (no printers). Pointer uses a custom colour (cursor-size row is disable
 
 ---
 
-## 2. State of `main` (build clean, 3480 tests green; `publish\WinGnome.exe` rebuilt from main 2026-10-10 evening)
+## 2. State of `main` (build clean, 3557 tests green; `publish\WinGnome.exe` rebuilt from main 2026-10-10 evening)
 
 `main` is at **b1b3053** (pushed; origin in sync). Merged 2026-10-10, in order:
 
@@ -93,6 +93,17 @@ Merged later on 2026-10-10 (Claude Opus 5.5 as PM, Sonnet authors, Opus reviews)
   disconnect, forget; location-consent gated via `AppCapability("wiFiControl")`, no automatic gated call while
   consent is unasked) and Bluetooth panel (switch, paired devices, Remove Device). Network panel and part (a) stay
   deferred. All write paths unverified live — manual QA list in KI-109/KI-110. KI-108..111; next free KI-112.
+
+- **Spec 0023 taskbar flash region** (merge 789905b): Explorer's taskbar windows get an empty window region in
+  dock mode (`General.HideTaskbarFlashes`, default on), re-applied when Explorer rewrites it (the secondary does,
+  every 0.5–2 s in bursts); Core `TaskbarRegionManager`/`TaskbarRegionBreaker`; regions recorded in
+  `taskbar.state` before applying; restore sweeps every live Explorer taskbar with an empty region. Live-verified
+  2026-10-10 18:12 with a scratch profile: both windows emptied (tray host untouched), re-apply worked, graceful
+  quit and force-kill + `--restore-taskbar` both restored; `--safe` never touches regions. NOT live-verified: the
+  tray peek with regions, Explorer restart (never restart Explorer for tests — wait for one in the field). KI-112.
+- **KI fixes** (merges ea90cc2, db17f7e, 6c4dc50): KI-023 dock pin tie-break prefers the pin without arguments
+  (By design); KI-101 About/Displays on the shared load gate (Fixed); KI-055 top-bar Wi-Fi icon shows signal bars
+  via the ungated `GetSignalBars()` with a 45 s one-shot refresh only while on Wi-Fi (Fixed). Next free KI-113.
 
 Earlier QA at b1b3053: `dotnet build -c Release -warnaserror` clean; **3241 tests green**; `--selftest --safe`
 exits 0 with no marker. `publish\WinGnome.exe` (b1b3053) is **running as the user's everyday instance** (started
