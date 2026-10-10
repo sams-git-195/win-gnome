@@ -1,5 +1,6 @@
 using System.Windows.Threading;
 using WinGnome.Core.Settings;
+using WinGnome.Core.Shell;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
 using WinGnome.Services;
@@ -15,18 +16,6 @@ namespace WinGnome.Features.Taskbar;
 [FeatureOrder(10)]
 internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
 {
-    /// <summary>Delay before re-hiding a taskbar Explorer just showed, so we never fight Explorer in a tight loop.</summary>
-    private static readonly TimeSpan RehideDelay = TimeSpan.FromMilliseconds(250);
-
-    /// <summary>
-    /// If Explorer re-shows the taskbar more than <see cref="RehideBurstLimit"/> times within
-    /// <see cref="RehideBurstWindow"/>, re-hiding slows down to <see cref="RehideBackoffDelay"/> so the two never
-    /// flicker the taskbar back and forth several times a second.
-    /// </summary>
-    private const int RehideBurstLimit = 5;
-    private static readonly TimeSpan RehideBurstWindow = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan RehideBackoffDelay = TimeSpan.FromSeconds(5);
-
     /// <summary>Delay after an Explorer restart; the new taskbar is still initialising when the broadcast arrives.</summary>
     private static readonly TimeSpan RecreatedDelay = TimeSpan.FromSeconds(1);
 
@@ -40,9 +29,8 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
     private readonly string _settingsDirectory;
     private readonly DispatcherTimer _rehideTimer;
     private readonly DispatcherTimer _peekTimer;
-    private readonly Queue<DateTime> _recentRehides = new();
+    private readonly TaskbarRehidePolicy _rehidePolicy = new();
     private TaskbarCreatedListener? _listener;
-    private bool _backoffLogged;
 
     /// <summary>
     /// What is currently in effect. Anything but <see cref="TaskbarMode.Untouched"/> is backed by the restore marker.
@@ -141,38 +129,42 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
 
     private void OnRawWindowEvent(uint eventType, nint hwnd)
     {
-        if (eventType == WinEventHook.EVENT_OBJECT_SHOW && IsHidden && !_peeking && TaskbarController.IsTaskbarWindow(hwnd))
+        // A show while a re-hide is already pending is the same episode: Explorer shows one taskbar window per
+        // monitor at once, and counting each would let multi-monitor set-ups reach the slow levels several times faster.
+        if (eventType == WinEventHook.EVENT_OBJECT_SHOW && IsHidden && !_peeking && !_rehideTimer.IsEnabled
+            && TaskbarController.IsTaskbarWindow(hwnd))
         {
             ScheduleRehide(NextRehideDelay(), hwnd);
         }
     }
 
+    /// <summary>
+    /// The re-hide delay ramps with how often Explorer re-shows the taskbar (see <see cref="TaskbarRehidePolicy"/>).
+    /// One show is counted per scheduled re-hide; a genuine runaway still reaches the slow level, because at the
+    /// normal rate it produces a re-hide every 250 ms.
+    /// </summary>
     private TimeSpan NextRehideDelay()
     {
-        var now = DateTime.UtcNow;
-        while (_recentRehides.Count > 0 && now - _recentRehides.Peek() > RehideBurstWindow)
+        var decision = _rehidePolicy.OnShow(DateTime.UtcNow);
+        if (decision.Escalated)
         {
-            _recentRehides.Dequeue();
-        }
-
-        if (_recentRehides.Count < RehideBurstLimit)
-        {
-            if (_backoffLogged)
+            // A burst is normal at start-up (our own work-area broadcasts provoke it); only a runaway is worth a warning.
+            var message = $"Explorer keeps showing the taskbar again; re-hiding it less often ({decision.Delay.TotalMilliseconds:0} ms)";
+            if (decision.Level == TaskbarRehideLevel.Runaway)
             {
-                Log.Info("Explorer stopped re-showing the taskbar; re-hiding at the normal rate again");
+                Log.Warn(message);
             }
-
-            _backoffLogged = false;
-            return RehideDelay;
+            else
+            {
+                Log.Info(message);
+            }
         }
-
-        if (!_backoffLogged)
+        else if (decision.Recovered)
         {
-            _backoffLogged = true;
-            Log.Warn("Explorer keeps showing the taskbar again; re-hiding it less often");
+            Log.Info("Explorer stopped re-showing the taskbar; re-hiding at the normal rate again");
         }
 
-        return RehideBackoffDelay;
+        return decision.Delay;
     }
 
     /// <summary>
@@ -214,7 +206,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
     /// <summary>
     /// Starts the re-hide timer if it is idle. <paramref name="hwnd"/> is the taskbar window Explorer showed, or 0
     /// when the trigger was not a show event; only the show path logs, throttled because a burst re-runs this every
-    /// 250 ms and the suppressed count preserves the correlation.
+    /// few hundred ms and the suppressed count preserves the correlation.
     /// </summary>
     private void ScheduleRehide(TimeSpan delay, nint hwnd = 0)
     {
@@ -260,7 +252,6 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
             }
             else if (IsHidden)
             {
-                _recentRehides.Enqueue(DateTime.UtcNow);
                 var hidden = TaskbarController.HideWindows();
                 ThrottledLog.Info("taskbar-rehide-executed", $"Re-hid {hidden} taskbar window(s) Explorer had shown");
             }

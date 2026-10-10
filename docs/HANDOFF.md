@@ -141,9 +141,9 @@ foreground window matching the tray hwnd; if it ever fails again, the B2 log lin
   instance quit; agree a window first and restart it through `explorer.exe` afterwards.
 - **Taskbar flashes (user-reported bug, now instrumented):** the B1 lines correlate flashes with Explorer's own
   shows — field data shows bursts at sign-in and around tray/appbar churn (e.g. 11 suppressed shows in one
-  minute at 09:28:57, backoff windows where re-hiding slows to 5 s — those are the most visible flashes). When
+  minute at 09:28:57, backoff windows where re-hiding slowed to 5 s — those were the most visible flashes; now a 250 ms / 750 ms / 3 s ramp, `TaskbarRehidePolicy`). When
   the user next sees one, grep the everyday log for "Explorer showed taskbar window" at that timestamp; if
-  flashes bother them, the tunables are `TaskbarFeature.RehideDelay` (250 ms) and the backoff ceiling (5 s).
+  flashes bother them, the tunables are the constants in `TaskbarRehidePolicy`.
 - **Logo edge cases (manual items from the QA session):** opaque JPEG (dark mark on light → silhouette), the
   stray-transparent-pixel degenerate case (KI-104), and the missing-file restart fallback — the user
   hand-tested the changer itself and waived agent runs; keep as manual QA.
