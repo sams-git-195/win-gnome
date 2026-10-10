@@ -32,7 +32,7 @@ internal static class UpdateStatusService
             var dates = Guard("search and install times", failure, () => ReadDates(com));
             var rebootRequired = Guard("restart state", failure, () => ReadRebootRequired(com));
             var pending = Guard("pending updates", failure, () => SearchOffline(com, searchTimeout, failure));
-            return new UpdateStatus(dates.LastChecked, dates.LastInstalled, pending ?? [], rebootRequired, failure.HResult);
+            return new UpdateStatus(dates.LastChecked, dates.LastInstalled, pending?.Recommended ?? [], pending?.Optional ?? [], rebootRequired, failure.HResult);
         }
         finally
         {
@@ -56,7 +56,7 @@ internal static class UpdateStatusService
         return (bool)info.RebootRequired;
     }
 
-    private static List<string> SearchOffline(List<object> com, TimeSpan timeout, FirstFailure failure)
+    private static FoundUpdates SearchOffline(List<object> com, TimeSpan timeout, FirstFailure failure)
     {
         dynamic session = Create(com, WindowsUpdateProgIds.Session);
         dynamic searcher = Track(com, session.CreateUpdateSearcher());
@@ -75,20 +75,23 @@ internal static class UpdateStatusService
                 // Whether or not the abort lands in time, nothing is left blocked: the job is released with the rest.
                 finished.Wait(AbortGrace);
                 failure.Record(UpdateStatusText.TimedOut);
-                return [];
+                return new FoundUpdates([], []);
             }
 
             dynamic result = Track(com, searcher.EndSearch(job));
             dynamic updates = Track(com, result.Updates);
-            var titles = new List<string>();
+            var recommended = new List<string>();
+            var optional = new List<string>();
             int count = updates.Count;
             for (var i = 0; i < count; i++)
             {
                 dynamic update = Track(com, updates.Item(i));
-                titles.Add((string)update.Title);
+                var isOptional = UpdateClassification.IsOptional(
+                    (int)update.Type, (bool)update.BrowseOnly, (bool)update.AutoSelectOnWebSites, (bool)update.IsMandatory);
+                (isOptional ? optional : recommended).Add((string)update.Title);
             }
 
-            return titles;
+            return new FoundUpdates(recommended, optional);
         }
         finally
         {
@@ -154,6 +157,9 @@ internal static class UpdateStatusService
 
         return DateTime.SpecifyKind(date, DateTimeKind.Utc).ToLocalTime();
     }
+
+    /// <summary>The search's hits by <see cref="UpdateClassification"/>.</summary>
+    private sealed record FoundUpdates(List<string> Recommended, List<string> Optional);
 
     /// <summary>The HRESULT of the first thing that went wrong, kept so later successes don't hide it.</summary>
     private sealed class FirstFailure

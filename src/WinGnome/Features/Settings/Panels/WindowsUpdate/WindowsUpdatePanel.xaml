@@ -22,6 +22,15 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+            <c:SettingsRow Title="Optional Updates" Subtitle="{Binding Optional}"
+                           Visibility="{Binding HasOptional, Converter={x:Static c:Converters.BoolToVisibility}}" />
+            <ItemsControl ItemsSource="{Binding OptionalTitles}" Focusable="False" AutomationProperties.Name="Optional updates">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding}" Style="{DynamicResource RowSubtitleText}" Margin="32,0,16,8" TextWrapping="Wrap" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
             <c:SettingsRow Title="Restart" Subtitle="{Binding Restart}"
                            Visibility="{Binding HasStatus, Converter={x:Static c:Converters.BoolToVisibility}}" />
             <c:SettingsRow Title="Refresh" Subtitle="Read the status again.">

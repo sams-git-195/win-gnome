@@ -130,6 +130,24 @@ internal sealed class TopBarActions(ShellContext context)
         }
     }
 
+    /// <summary>
+    /// Confirms a restart or power off. When Windows has updates that install on the way down, the dialog also offers
+    /// to install them (on by default, as GNOME does); <paramref name="installUpdates"/> is that choice. An update that
+    /// only needs a restart to finish is mentioned instead, because it finishes either way.
+    /// </summary>
+    private static bool AskPower(string title, string message, string confirmLabel, out bool installUpdates)
+    {
+        var signals = PendingRestartReader.Read(wuaRebootRequired: false);
+        if (!signals.InstallOnShutdownAvailable)
+        {
+            installUpdates = false;
+            var note = signals.RestartNeeded ? " Installed updates will finish setting up." : "";
+            return ConfirmDialog.Ask(title, message + note, confirmLabel);
+        }
+
+        return ConfirmDialog.Ask(title, message, confirmLabel, "Install pending software updates", true, out installUpdates);
+    }
+
     private void ExecutePowerAction(TopBarAction action)
     {
         // Belt and braces: power actions are only reachable by clicking, but an unattended run must never trigger one.
@@ -147,11 +165,11 @@ internal sealed class TopBarActions(ShellContext context)
             case TopBarAction.Suspend:
                 PowerActions.Suspend();
                 break;
-            case TopBarAction.Restart when ConfirmDialog.Ask("Restart", "Restart the computer now? Unsaved work in open apps may be lost.", "Restart"):
-                PowerActions.Restart();
+            case TopBarAction.Restart when AskPower("Restart", "Restart the computer now? Unsaved work in open apps may be lost.", "Restart", out var installOnRestart):
+                PowerActions.Restart(installOnRestart);
                 break;
-            case TopBarAction.ShutDown when ConfirmDialog.Ask("Power off", "Shut down the computer now? Unsaved work in open apps may be lost.", "Power Off"):
-                PowerActions.ShutDown();
+            case TopBarAction.ShutDown when AskPower("Power off", "Shut down the computer now? Unsaved work in open apps may be lost.", "Power Off", out var installOnShutdown):
+                PowerActions.ShutDown(installOnShutdown);
                 break;
             case TopBarAction.SignOut when ConfirmDialog.Ask("Log out", "Sign out of Windows now? Unsaved work in open apps may be lost.", "Log Out"):
                 PowerActions.SignOut();

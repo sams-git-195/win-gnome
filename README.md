@@ -82,7 +82,7 @@ WinGnome's settings window works like GNOME Settings: a header bar, a **searchab
   - **Region & Language**: country or region, the date and time formats and the first day of the week (the format locale and display language are changed in Windows Settings).
   - **Privacy & Security**: camera, microphone and location, for all apps, desktop apps and each app, with when each was last used (the device-wide switch is read-only).
   - **Removable Media**: what AutoPlay does for each kind of media and device.
-  - **Windows Update**: when Windows last checked and installed updates, the updates it already knows about and whether a restart is needed. It never checks for or installs updates itself.
+  - **Windows Update**: when Windows last checked and installed updates, the recommended updates it already knows about, any optional ones (such as drivers) listed separately, and whether a restart is needed. It never checks for or installs updates itself; the Restart and Power Off confirmations offer "Install pending software updates" when Windows has some to install on the way down.
 - **Linked panels** open the matching Windows Settings page and are marked with an arrow: Wi-Fi, Network, Bluetooth, Colour (the colour management control panel), Default Apps, Online Accounts, Sharing and Users.
 - **WinGnome's own pages** (General, Top Bar, Dock, Window Buttons, Activities, Streamline, About WinGnome) sit in their own group at the bottom.
 - In `--safe` mode the system panels are read-only. If Windows refuses a change (a policy, a missing API), the panel says so and offers the Windows Settings page.

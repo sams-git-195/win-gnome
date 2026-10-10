@@ -5,13 +5,15 @@ namespace WinGnome.Core.ControlCenter;
 /// <summary>What Windows Update's cached state says, as read by the Windows Update panel.</summary>
 /// <param name="LastChecked">When updates were last searched for successfully (local time), or null if never or unknown.</param>
 /// <param name="LastInstalled">When an update was last installed successfully (local time), or null.</param>
-/// <param name="PendingTitles">Titles of the updates found and not yet installed or hidden.</param>
+/// <param name="PendingTitles">Titles of the recommended updates found and not yet installed or hidden.</param>
+/// <param name="OptionalTitles">Titles of the optional updates (see <see cref="UpdateClassification"/>), which Windows Settings keeps under Optional updates.</param>
 /// <param name="RebootRequired">True when an installed update needs a restart to finish.</param>
 /// <param name="ErrorCode">The HRESULT of what went wrong reading the status, or null when it was read.</param>
 public sealed record UpdateStatus(
     DateTime? LastChecked,
     DateTime? LastInstalled,
     IReadOnlyList<string> PendingTitles,
+    IReadOnlyList<string> OptionalTitles,
     bool RebootRequired,
     int? ErrorCode);
 
@@ -20,6 +22,8 @@ public sealed record UpdateStatus(
 /// <param name="LastInstalled">Same style as <paramref name="LastChecked"/>.</param>
 /// <param name="Pending">E.g. "No updates waiting" or "3 updates waiting".</param>
 /// <param name="PendingTitles">The titles to list under <paramref name="Pending"/>.</param>
+/// <param name="Optional">E.g. "2 optional updates available", or null when there are none or the status couldn't be read.</param>
+/// <param name="OptionalTitles">The titles to list under <paramref name="Optional"/>.</param>
 /// <param name="Restart">"A restart is needed to finish updating" or "No restart needed".</param>
 /// <param name="Error">What went wrong, or null when the status was read.</param>
 public sealed record UpdateStatusLines(
@@ -27,6 +31,8 @@ public sealed record UpdateStatusLines(
     string LastInstalled,
     string Pending,
     IReadOnlyList<string> PendingTitles,
+    string? Optional,
+    IReadOnlyList<string> OptionalTitles,
     string Restart,
     string? Error);
 
@@ -42,6 +48,7 @@ public static class UpdateStatusText
     public static UpdateStatusLines Build(UpdateStatus status, DateTime now, CultureInfo culture)
     {
         var count = status.PendingTitles.Count;
+        var optional = status.OptionalTitles.Count;
         return new UpdateStatusLines(
             When(status.LastChecked, now, culture),
             When(status.LastInstalled, now, culture),
@@ -52,6 +59,10 @@ public static class UpdateStatusText
                 _ => string.Create(culture, $"{count} updates waiting"),
             },
             status.PendingTitles,
+            status.ErrorCode is null && optional > 0
+                ? optional == 1 ? "1 optional update available" : string.Create(culture, $"{optional} optional updates available")
+                : null,
+            status.OptionalTitles,
             status.RebootRequired ? "A restart is needed to finish updating" : "No restart needed",
             status.ErrorCode is { } code ? ErrorMessage(code) : null);
     }
