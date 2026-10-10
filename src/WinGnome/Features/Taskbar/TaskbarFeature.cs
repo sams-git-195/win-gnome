@@ -30,6 +30,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
     private readonly DispatcherTimer _rehideTimer;
     private readonly DispatcherTimer _peekTimer;
     private readonly TaskbarRehidePolicy _rehidePolicy = new();
+    private readonly TaskbarRegionGuard _regions;
     private TaskbarCreatedListener? _listener;
 
     /// <summary>
@@ -41,11 +42,13 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
     private bool _peeking;
     private DateTime _peekStartedUtc;
     private bool _started;
+    private bool _hideFlashes;
 
     public TaskbarFeature(ShellContext context)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _settingsDirectory = context.Settings.Directory;
+        _regions = new TaskbarRegionGuard(_settingsDirectory);
         _rehideTimer = new DispatcherTimer(DispatcherPriority.Normal, context.Dispatcher);
         _rehideTimer.Tick += OnRehideTimer;
         _peekTimer = new DispatcherTimer(DispatcherPriority.Normal, context.Dispatcher);
@@ -88,6 +91,23 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
         {
             SwitchTo(desired);
         }
+
+        _hideFlashes = general.HideTaskbarFlashes;
+        UpdateRegions();
+    }
+
+    /// <summary>Starts or stops the empty-region guard to match the mode and the "hide flashes" setting (see <see cref="TaskbarRegionPolicy"/>).</summary>
+    private void UpdateRegions()
+    {
+        var wanted = TaskbarRegionPolicy.ShouldManage(_context.IsSafeMode, IsHidden, _hideFlashes);
+        if (wanted && !_regions.Active && !_peeking)
+        {
+            _regions.Start();
+        }
+        else if (!wanted && _regions.Active)
+        {
+            _regions.Stop();
+        }
     }
 
     /// <summary>
@@ -98,6 +118,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
     private void SwitchTo(TaskbarMode target)
     {
         EndPeek(rehide: false, "taskbar mode changed");
+        _regions.Stop();
         _rehideTimer.Stop();
         _recreated = false;
         switch (target)
@@ -129,6 +150,8 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
 
     private void OnRawWindowEvent(uint eventType, nint hwnd)
     {
+        _regions.OnWindowEvent(eventType, hwnd);
+
         // A show while a re-hide is already pending is the same episode: Explorer shows one taskbar window per
         // monitor at once, and counting each would let multi-monitor set-ups reach the slow levels several times faster.
         if (eventType == WinEventHook.EVENT_OBJECT_SHOW && IsHidden && !_peeking && !_rehideTimer.IsEnabled
@@ -186,6 +209,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
 
         Log.Info("The taskbar was restored outside the taskbar feature; leaving it alone");
         _mode = TaskbarMode.Untouched;
+        _regions.Stop();
         return false;
     }
 
@@ -248,12 +272,20 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
                 if (!applied)
                 {
                     _mode = TaskbarMode.Untouched;
+                    _regions.Stop();
+                }
+                else
+                {
+                    _regions.Apply();
                 }
             }
             else if (IsHidden)
             {
                 var hidden = TaskbarController.HideWindows();
                 ThrottledLog.Info("taskbar-rehide-executed", $"Re-hid {hidden} taskbar window(s) Explorer had shown");
+
+                // Backup for a missed event, and for a taskbar window (a new monitor's) the guard has not seen yet.
+                _regions.Apply();
             }
         }
         catch (Exception ex)
@@ -280,6 +312,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
             _rehideTimer.Stop();
             _peeking = true;
             _peekStartedUtc = DateTime.UtcNow;
+            _regions.Suspend();
             var shown = TaskbarController.ShowWindows();
 
             var primary = TaskbarController.FindExplorerTray();
@@ -365,10 +398,14 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
         if (rehide && IsHidden && StillOwnsTaskbar())
         {
             var hidden = TaskbarController.HideWindows();
+            _regions.Resume(reapply: true);
+            UpdateRegions();
             Log.Info($"Taskbar peek ended ({reason}); re-hid {hidden} taskbar window(s)");
         }
         else
         {
+            // Mode changes and Explorer restarts rebuild the regions themselves (or remove them for good).
+            _regions.Resume(reapply: false);
             Log.Info($"Taskbar peek ended ({reason})");
         }
     }
@@ -419,6 +456,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
         if (_mode != TaskbarMode.Untouched)
         {
             _mode = TaskbarMode.Untouched;
+            _regions.RemoveAll();
             TaskbarController.RestoreFromMarker(_settingsDirectory);
         }
     }

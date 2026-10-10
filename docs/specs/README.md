@@ -7,3 +7,7 @@ for when a spec is needed and the template to use.
 - Numbers are never reused, even if a spec is abandoned. Mark it *Abandoned* at the top instead of deleting it.
 - Put the status on the first line under the title: *Draft*, *Agreed*, *Implemented* (with the commit) or *Abandoned*.
 - When the implementation differs from the spec, update the spec in the same change.
+
+## Recent specs
+
+- [0023 — Hide taskbar flashes with an empty window region](0023-taskbar-flash-region.md)

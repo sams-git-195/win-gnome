@@ -24,6 +24,10 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
             </c:SettingsRow>
+            <c:SettingsRow Title="Hide taskbar flashes" Subtitle="Keeps the hidden Windows taskbar from flashing into view."
+                           Visibility="{Binding IsDockTaskbar, Converter={x:Static c:Converters.BoolToVisibility}}">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding HideTaskbarFlashes.Value}" />
+            </c:SettingsRow>
             <c:SettingsRow Title="Auto-hide the taskbar" Subtitle="Restored when WinGnome exits."
                            Visibility="{Binding IsNativeTaskbar, Converter={x:Static c:Converters.BoolToVisibility}}">
                 <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding NativeTaskbarAutoHide.Value}" />
