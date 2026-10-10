@@ -4,6 +4,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using WinGnome.Core.Geometry;
 using WinGnome.Core.Theming;
+using WinGnome.Infrastructure;
 using WinGnome.Interop;
 
 namespace WinGnome.Features.WindowButtons;

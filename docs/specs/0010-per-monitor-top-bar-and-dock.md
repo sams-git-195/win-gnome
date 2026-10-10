@@ -699,8 +699,9 @@ B12. Q Native taskbar mode (taskbar visible, not auto-hidden) with an always-vis
     ended in the three-attempt cap's give-up, which is terminal for the run: a display pass that changes nothing
     does not re-arm `StripRecovery` (only an undock/fresh dock or a strip really reserved again does — the log's
     "giving up until the next display change" overstates what re-arms it, since a display change only re-docks the
-    bars when the layout actually changed), and both strips stayed missing until a restart. KI-102 (S3) records the
-    measured episode and the fix directions.
+    bars when the layout actually changed), and both strips stayed missing until a restart. KI-102 (S3, now
+    *Fixed*) records the measured episode and the fix directions; the fix and its live verification are in the
+    addendum below.
 13. **`SPIF_SENDCHANGE` broadcasts synchronously** to top-level windows, so a hung app could delay a shrink. It is
     skipped on the crash path for that reason; on the normal path it runs on the dispatcher and is worth its cost.
 14. **The marker is per profile.** A force-kill followed by a start with a different `--settings-dir` cannot recover
@@ -713,3 +714,502 @@ B12. Q Native taskbar mode (taskbar visible, not auto-hidden) with an always-vis
     re-shrinks within ~1.5 s, rewriting the marker. Only a force-kill inside that window could strand it, and the
     next start's repair covers that. Noted in KI-099; no guard, because the switch exists to fix a desktop WinGnome
     itself may have broken.
+
+---
+
+## Addendum 2026-10-09: KI-102 — the mid-run work-area fight and the terminal give-up
+
+Status: **Implemented** — f402e2e (fight detector), 0300eed (cool-down), 73a3c5d (app wiring), d9f85da + f9b92a6
+(Part B diagnostics); live-verified 2026-10-10 except criteria 12-burst/13/14, which ride on the everyday build.
+One branch (`ki-102-work-area-fight`) contains Part A (the KI-102 fix) and Part B (bundled diagnostic logging).
+Evidence read for this plan:
+`C:\Users\samhe\AppData\Local\Temp\opencode\fight-evidence\wingnome-before-restart.log` and
+`workareas-before-restart.state` (the fight, ending at the two give-up WARNs), and
+`C:\Users\samhe\AppData\Local\Temp\opencode\everyday-log4\wingnome.log` (the same run through the 21:16:09 graceful
+quit — "Dropped 2 work area record(s) …" — and the 21:16:40 restart, whose fallback fixed both strips ~5 s after
+start; KI-102's "~4 s" is a hair optimistic, measured 5.1 s and 5.9 s after the start line).
+
+### Problem
+
+KI-102 (S3), in short: 15 minutes into an everyday run, Explorer recomputed both monitors' work areas **without the
+strips of WinGnome's still-registered, still-granted AppBars**, and the outcome-B fallback fought it — 18 direct
+`SPI_SETWORKAREA` writes over ~7 minutes, each provoking another reset — until the per-monitor `WorkAreaBudget`
+refused three attempts in one episode and both bars hit `StripRecovery`'s give-up, which is terminal for the run
+(`AppBar._gaveUp` and `StripRecovery._attempts` clear only on `Undock()` or a strip genuinely reserved again). Two
+defects, as KI-102 (a)/(b):
+
+- **(a) The fallback feeds the fight.** Every shrink broadcasts (`SetWorkArea(shrunk, broadcast: true)` →
+  `SPIF_SENDCHANGE`), and Explorer — which in this state recomputes work areas *without* our granted strips — appears
+  to recompute on our broadcast: of the 18 fight writes, 12 were reset within ~1–14 s and four more within 69–83 s;
+  only the first pair of the fight (20:50:42/43, before any fight write could have provoked anything) held ~3 minutes.
+- **(b) The give-up never re-arms.** A no-op display pass runs `CheckStrip` but `Update` keeps returning `GiveUp`;
+  the log line "giving up until the next display change" (`Interop/AppBar.cs`, the `default:` branch of `CheckStrip`)
+  and the `StripRecoveryKind.GiveUp` XML doc ("the next display change or Explorer restart starts afresh",
+  `WinGnome.Core/Shell/AppBarReservation.cs`) are both wrong and are corrected by this branch whatever else changes.
+
+Two readings of the evidence sharpen KI-102 without contradicting it; the design below relies on both:
+
+1. **The 3-attempt cap never bounded the fight — the budget did.** A successful shrink makes the next check see the
+   strip reserved, and `StripRecovery.Update(reserved: true)` calls `Reset()` (locked in by the existing test
+   `Recovery_StripReservedAgain_StartsAfreshNextTime`). The fight's nine writes per monitor were nine *fresh*
+   episodes with `_attempts` back at 0; `MaxAttempts` fired only once budget refusals made three attempts of one
+   episode fail in a row (20:57:24 → 20:57:53). Left to itself — Explorer resetting slower than the budget fills —
+   the fight would have run indefinitely at up to `WorkAreaBudget.MaxApplications` writes per monitor per minute,
+   all broadcast. Any fix that only re-arms the cap therefore makes things *worse* unless the write rate itself is
+   bounded and the feedback loop is broken.
+2. **The fight's first trigger was an external work-area write, not (directly) a display event.** The 20:50:41.006
+   pass logged "Displays re-checked: removed 0, changed 0, added 0" — `DisplayLayoutService.OnTick` only logs an
+   *empty* diff when the pass was **forced**, and the mid-run sources of `Invalidate(force: true)` are the bars'
+   `WM_SETTINGCHANGE(SPI_SETWORKAREA)` handlers (`TopBarInstance.WndProc`, `DockInstance.WndProc` — the dock was
+   Intellihide, so only the bars), a detach (logs "its monitor … is gone or changed; undocking" first — absent) and
+   an Explorer restart (logs "Explorer restarted" — absent). So at ~20:50:40.7 *some process — almost certainly
+   Explorer — wrote a work area with `SPIF_SENDCHANGE`*. A plain `WM_DISPLAYCHANGE` (display power event) with no
+   resulting diff would have produced **no log line at all**. KI-102's "probably a display power event, unproven"
+   stands as the upstream cause; the proximate cause was Explorer's own broadcast write. Consequence for the fix:
+   dropping our broadcast (direction 1) can break the *sustaining* loop but cannot prevent the *first* loss — a
+   re-arm path (direction 3) is needed regardless.
+
+What must not change (proven by the same episode and by KI-099's live verification): `WorkAreaBudget`
+(3 applications / 60 s / monitor), the 3-attempt schedule inside an episode (1.5 s / 5 s / 20 s), the
+one-record-per-(owner, monitor) rule (`WorkAreaLedger`), the graceful-quit "drop records that no longer describe a
+live work area" behaviour (`WorkAreaRecovery.Plan`'s already-given-back branch), and "no record, no shrink".
+
+### Fix directions — evaluation
+
+**1. Shrink without `SPIF_SENDCHANGE` — adopt with modification (fight-gated hybrid).**
+Who consumes our broadcast today:
+
+- *Our own bars*: `TopBarInstance.WndProc`/`DockInstance.WndProc` turn `WM_SETTINGCHANGE(SPI_SETWORKAREA)` into a
+  forced display pass, which is how a shrink is confirmed "reserved again" within ~1 ms in the evidence log. Without
+  it, confirmation rides the triggers that already exist: the bar's one-shot `StripRecovery` timer at the next
+  attempt slot (≤ 5 s / ≤ 20 s later — `CheckStrip` already calls `StartRecoveryTimer(step.DueMs)` after a `Shrink`
+  step), and Explorer's *own* resets (each of which broadcasts, in the fight state and in normal operation).
+  `IsStripReserved()` reads `GetMonitorInfo` fresh; broadcasts are irrelevant to correctness.
+- *Maximised-window relayout* — the visible consumer. `DefWindowProc` re-lays maximised windows out on
+  `WM_SETTINGCHANGE`; a silent write leaves **already**-maximised windows at their old size (spanning our strip)
+  until the next work-area broadcast by anyone, or a re-maximise. *Newly* maximised windows read the live work area
+  and are correct immediately. This is the cost of silence; it is bounded and it beats the alternative (today the
+  fight ends with the work area full for the rest of the run and, per KI-102, maximised windows covering the bars —
+  with a full-bounds work area every maximised window covers the whole monitor, which also feeds Explorer's
+  `ABN_FULLSCREENAPP` and `TopBarInstance.OnFullScreenChanged`'s hide).
+- *Explorer* — the consumer we must starve in the fight state: the hypothesis (KI-102 (a), supported by the 1–14 s
+  reset-after-write cadence) is that Explorer's handling of the broadcast re-runs its taskbar layout pass, which in
+  this state drops our granted strips.
+
+Pure "never broadcast" is rejected: it would degrade the *normal* case (the start-up deferral of KI-099 B6 and the
+unplug case), where one broadcast write finishes Explorer's job and immediately relayouts maximised windows — that
+case measured exactly one write per monitor with no repeats, so its broadcast provably does not sustain any loop.
+"Broadcast only on the first shrink of an episode" is also rejected: episodes restart on every *successful* shrink
+(reading 1 above), so in a fight every cycle's first shrink would broadcast — the loop survives. The chosen hybrid
+keys silence to a per-monitor **fight detector** (below): the first three applications on a monitor inside any
+10-minute window broadcast as today; from the fourth onwards, while applications keep arriving, writes are silent;
+when the window slides clear (10 quiet minutes), the next application broadcasts again. "One broadcast at the end"
+was considered and rejected: noticing "the end" needs a new transition timer (idle-footprint rule), and a manual
+`WM_SETTINGCHANGE` (`SystemBroadcast` pattern) would re-provoke exactly the Explorer recompute the silence exists to
+starve; oversized maximised windows heal on the next natural broadcast or a re-maximise.
+
+**2. Nudge Explorer after a shrink (ABM_SETPOS re-assert or the janitor's 1×1 ABM_NEW+ABM_REMOVE) — reject for the
+fight path.** The evidence already in this spec is against both: "a SETPOS of the unchanged rectangle did not bring
+the strip back" (implementation note, third live run), and re-registering "during the deferral … may have restarted
+that deferral" (KI-099) — outcome-B rule 5 bans the re-register fallback for the same reason. The janitor nudge
+(`AppBarJanitor.Nudge`) and `Reregister()` are AppBar traffic that makes Explorer recompute *and broadcast*; in the
+fight state Explorer's recompute is precisely the operation that drops granted strips, so a nudge is far more
+likely to trigger the next reset than to include our strip. The steady-state observation that registering again
+restored strips "at once" (implementation note, second live run) was after an *external* `SPI_SETWORKAREA` reset
+with Explorer healthy — the mid-run-fight state is neither, exactly as KI-102 says. Because the hypothesis cannot be
+settled from the armchair: the live-test plan includes an **optional exploratory step** (run a nudge from a scratch
+tool during an artificial fight and record whether strips come back or reset faster; results go into KI-102, not
+into shipped code).
+
+**3. Re-arm `StripRecovery` — adopt, as a cool-down, not per display pass.** Re-arming on *every* display pass
+(including no-op ones) is rejected: in a fight, forced passes fire on every Explorer broadcast (the evidence log
+shows one per reset, seconds apart), so per-pass re-arming restarts episodes every few seconds and recreates the
+unbounded fight at the budget's full 180 writes/h/monitor. Chosen design: `StripRecovery`'s give-up becomes a
+**5-minute cool-down** (`ReArmDelayMs = 300_000`): the first `GiveUp` after exhaustion carries
+`DueMs = now + ReArmDelayMs`; the bar points its *existing* one-shot `_recoveryTimer` at that instant
+(`CheckStrip`'s `default:` branch calls `StartRecoveryTimer(step.DueMs)` instead of `StopRecoveryTimer()`); when a
+check runs at or after the due time (the timer, or any notification/pass that happens to arrive first), `Update`
+clears `_attempts` internally and returns `Wait(now + FirstActionMs)` — a fresh, fully bounded episode. No new
+timer type, no polling: the timer runs only while a bar is given up *and* its strip is missing, and `Reset()`
+(undock, reserved) cancels it exactly as today. A *real* display change still re-arms immediately, because it
+re-docks the bar (`SurfacePlan.Reconcile` → `Undock()` → `Reset()`) — that part of the old wording was only ever
+true via the re-dock, and the corrected docs will say so. Worst-case rate with cool-down, **per fighting bar**: one
+cycle = 5 min cool-down + ~46.5 s episode = 346.5 s and lands ≤ 3 writes → 3 / 346.5 s ≈ **31.2 writes/h per bar**.
+One monitor with two reserving bars (top bar + always-visible dock) whose cycles drift apart therefore sits at
+≤ ~64 writes/h/monitor — still under `WorkAreaBudget`'s 180/h/monitor, which remains the hard bound and trims
+aligned cycles (both bars' six attempts inside ~27 s → at most three pass `TrySpend`). Broadcasts stay
+≤ 18/h/monitor (three per 10-minute fight window) because the fight detector is per monitor, not per bar. Today, by
+contrast: ≤ 180 broadcast writes/h/monitor until the terminal give-up. Interaction
+with the cap: the 3-attempt cap stays (direction 4) and now bounds work *per cool-down cycle*; re-arming cannot
+recreate the unbounded fight because both the budget and the detector's silence are per write, not per episode.
+
+**4. Give up sooner — reject "sooner", keep 3; fix the WARN.** With the cool-down the cap is less load-bearing
+(reading 1: the budget is the real bound), but 3 attempts remain right: attempt 1 covers the normal deferral
+(KI-099 B6: one write sufficed), attempts 2–3 cover Explorer applying late or a second reset inside one episode,
+and one episode's three attempts fit exactly inside one `WorkAreaBudget` window — a bar that cannot land three
+writes in a minute is definitionally in a fight, and the cool-down (not more attempts) is the correct response.
+Giving up after fewer attempts would abandon the slow-Explorer cases the schedule exists for. The give-up stays
+`Log.Warn` (WinGnome has no user-facing notification surface; spec 0017's OSD is not implemented — logged as an
+open question) with corrected, actionable wording:
+`"AppBar 0x…: Explorer still hasn't reserved the strip … after 3 attempts; not acting again for 5 minutes (a re-dock or Explorer applying the strip ends the cool-down at once)"`.
+
+**5. TbExp / spec 0010 option 1 — not in this branch.** The hide-order experiment (hide the taskbar windows only
+after Explorer applied auto-hide) needs the user physically at the machine and attacks the start-up deferral, which
+the fallback already survives; it cannot fix the mid-run recompute or the unplugged-monitor case (this spec says so
+in the design note's option list). This branch must not prejudice it:
+
+- Do not touch `TaskbarController.Hide`/`SetAutoHideOnly`'s order or timing (option 1 is exactly a re-ordering
+  there). Part B's change to `ShowWindows`/`HideWindows` (return the count of windows acted on) is additive and
+  leaves `Hide()`'s `SetAutoHide(true); HideWindows();` sequence intact.
+- Do not tune `WorkAreaFightDetector` or `ReArmDelayMs` to the start-up timeline: both key on *repeated*
+  applications, so if option 1 later makes Explorer apply strips promptly, the fallback fires once (broadcast, as
+  B6 measured) and the new machinery stays inert.
+- Do not remove or bypass the AppBar mechanism, and do not delete or modify `tools/TbExp`.
+
+**Fight detection: yes, a distinct per-monitor state — but the strategy switch is "write silently", not "stop
+writing".** Stopping writes in a fight leaves the work area full for as long as Explorer keeps resetting: every
+maximised window then spans the whole monitor, covers the bar's strip and (through `ABN_FULLSCREENAPP` →
+`TopBarInstance.OnFullScreenChanged`) hides the bar itself — KI-102's end state, now by design. Silent writing keeps
+the work area correct between Explorer's own events (which, with the broadcast loop starved, should return to their
+natural minutes-apart cadence — the 20:50:43 → 20:53:49 gap in the evidence), keeps new maximisations correct, and
+costs only the immediate relayout of already-maximised windows. The state lives in Core per the project's
+logic-in-Core rule: `WorkAreaFightDetector` (new file `src/WinGnome.Core/Shell/WorkAreaFightDetector.cs`), a pure
+sliding-window counter with an injected clock, held by `WorkAreaController` in a `Dictionary<string,
+WorkAreaFightDetector>` next to `Budgets` (per monitor key, because the fight is a property of a monitor's work
+area — two bars on one monitor share it, exactly like the budget).
+
+### The chosen design (Part A)
+
+**Core (`src/WinGnome.Core/Shell/`, all tested):**
+
+- `WorkAreaFightDetector` (new): `const int ApplicationLimit = 3; const long WindowMs = 600_000;` —
+  `bool IsFighting(long nowMs)` prunes applications older than the window (edge semantics identical to
+  `WorkAreaBudget.TrySpend`: an application leaves it exactly `WindowMs` after it was made) and returns whether
+  `ApplicationLimit` or more remain; `bool Record(long nowMs)` appends one shrink application and returns the new
+  state. In-memory only (not persisted): a restart starts unfought, which is what B6 needs (its single write must
+  broadcast). Counts *applications* (real writes), not loss episodes: a write is what broadcasts, and episodes
+  whose writes the budget refused did not provoke anything; counting writes needs no new event plumbing from
+  `AppBar` into the controller.
+- `StripRecovery` (modified, same class and call sites): new `const long ReArmDelayMs = 300_000`. The exhaustion
+  branch of `Update` stamps `_reArmAtMs = nowMs + ReArmDelayMs` on the first `GiveUp` it returns (later `GiveUp`s
+  return the *same* due time — the cool-down is not a sliding one), returns `GiveUp` with `DueMs = _reArmAtMs`
+  while `nowMs < _reArmAtMs`, and at/after it clears `_attempts`/`_reArmAtMs`, sets
+  `_nextAttemptMs = nowMs + FirstActionMs` and returns `Wait(_nextAttemptMs)` — a fresh episode. `Reset()` clears
+  `_reArmAtMs` too. XML docs updated: `StripRecoveryKind.GiveUp` ("the attempts are used up; the bar stops acting
+  until the cool-down (`StripRecovery.ReArmDelayMs`) has passed, after which the next check — the bar's own one-shot
+  timer, a shell notification or a display pass — starts a fresh episode; an undock, a re-dock or the strip being
+  reserved ends it sooner") and the class summary (drop "gives up until it is docked afresh"). The cool-down applies
+  equally to safe mode's `Reregister` cycle (bounded, writes nothing).
+- Unchanged: `WorkAreaBudget`, `WorkAreaFallback.Shrink`, `WorkAreaLedger`, `WorkAreaRecord`, `WorkAreaState`,
+  `WorkAreaRecovery` (files untouched; their suites must stay green).
+
+**App:**
+
+- `Services/WorkAreaController.cs`: a `Fighters` dictionary beside `Budgets` (cleared in `Initialize`, pruned in
+  `Prune` like the budgets). In `TryShrink`, after `TrySpend` succeeds and before the write:
+  `var fighting = Fight(key).IsFighting(now)` (one `Environment.TickCount64` read for the whole call); the write
+  becomes `SetWorkArea(shrunk, broadcast: !fighting)`; on success `Fight(key).Record(now)`, and on a
+  false→true transition one `Log.Warn`:
+  `"{key}: Explorer keeps resetting this work area (3 direct sets in 10 minutes); setting it without a broadcast from the next write on — our own WM_SETTINGCHANGE may be what provokes the resets (KI-102)"`
+  — "from the next write on", not "from now on": the write that trips the detector has itself just broadcast, and a
+  replayed log must not contradict the behaviour.
+  The applied line gains `" (without a broadcast)"` when silent, so every write's mode is greppable. A failed
+  `SPI_SETWORKAREA` is not recorded (it never broadcast); detector state is deliberately *not* rolled back with the
+  record list — over-counting only makes later writes more silent, and the window bounds it. Restore paths keep
+  broadcasting exactly as today (`Release` → `Apply(broadcast: true, nudge: true)`, `RecoverFromMarker` →
+  `Apply(broadcast: true, …)`, `RepairWithoutRecords` → `broadcast: true`); giving a work area back is not fight
+  traffic. `ReleaseAll()` (crash path) stays broadcast-free by design. Class doc updated ("Bounded twice" → three
+  bounds: budget, StripRecovery with its cool-down, fight detector).
+- `Interop/AppBar.cs`: `CheckStrip`'s `default:` branch keeps the log-once `_gaveUp` flag, logs the corrected WARN
+  (direction 4 wording) and calls `StartRecoveryTimer(step.DueMs)` — the re-arm rides the existing one-shot timer.
+  The branch forwards `step.DueMs` **verbatim** (it never recomputes a deadline), and re-pointing the timer is
+  idempotent: a forced-pass storm during a fight calls `Update` repeatedly, and every pre-expiry `GiveUp` returns
+  the *same* stamped `_reArmAtMs` (guaranteed by Core, pinned by `Recovery_GiveUp_DoesNotSlideTheCoolDown`), so
+  re-scheduling shortens the remaining interval but can never push the cool-down deadline later.
+  In the `Wait` branch, when `_gaveUp` was set, log once
+  `"AppBar 0x…: cool-down over; checking the strip … again"` and clear the flag. `EnsureReserved`'s XML doc:
+  "… at most three times, 5 s and 20 s apart, then a five-minute cool-down after which the checks resume".
+  Small diagnostic (Part B, same file, same owner): `WndProc` passes the notification name into
+  `OnPositionChanged`/`CheckStrip`, so the trigger reads `ABN_POSCHANGED` / `ABN_STATECHANGE` instead of the
+  ambiguous "a shell notification" — the evidence log cannot say which notification accompanied Explorer's
+  recomputes, and the next field occurrence should.
+- No changes to `TopBarInstance`, `DockInstance`, `DisplayLayoutService`, `AppBarJanitor`, `TaskbarController`'s
+  hide/restore logic, or the marker format.
+
+**Safety and recovery (Part A):**
+
+| Path | Effect of this branch |
+|---|---|
+| Recorded/restored state | **Nothing changes.** `workareas.state` format, "no record, no shrink", `WorkAreaLedger` replacement, `WorkAreaRecovery.Plan` unwind, the drop-without-write branches: all untouched. A silent write records identically (the broadcast flag is not part of a record). |
+| Normal exit / crash / force-kill / next start / `--restore-taskbar` | Unchanged (`Release` broadcasts as today; `ReleaseAll` stays broadcast-free; `RecoverFromMarker` unchanged). |
+| `--safe` / `--selftest` | Unchanged: `CanShrink` false ⇒ `Reregister` steps only, the detector is never consulted (no writes), the self-test's work-area equality check is indifferent to broadcast flags. |
+| Worst case, sustained fight | Hard bound unchanged: 3 writes/min/monitor (`WorkAreaBudget`, 180/h). Effective sustained bound: **≤ ~31 writes/h per fighting bar** (≤ 3 writes per 346.5-s cool-down cycle), so ≤ ~64/h/monitor with two reserving bars (top bar + always-visible dock) whose cycles drift apart, and less when the budget trims aligned cycles; broadcasts ≤ 18/h/monitor (the fight detector is per monitor). Today: ≤ 180/h/monitor, *all* broadcast, until the terminal give-up. One small marker rewrite per write, as today. |
+| New degradation | A silent write does not relayout already-maximised windows until the next broadcast (ours after 10 quiet minutes, Explorer's, or a re-maximise). Logged in KNOWN_ISSUES with the fix. |
+| New degradation (safe mode) | A long-running `--safe` instance whose strip stays missing now re-registers every cool-down cycle instead of stopping forever: 3 `ABM_REMOVE`+`ABM_NEW` cycles per bar per ~5.8 min. Bounded, writes no system state; accepted. |
+
+**Footprint (Part A):** no new polling, no new timer *type*. At idle (strips reserved) nothing runs, exactly as
+today: the detector is O(1) queue work inside the existing `TryShrink` lock, and the re-arm timer exists only
+while a bar is given up with its strip missing (one `DispatcherTimer` per bar, one tick per cool-down). Idle
+CPU/memory must measure unchanged (QA 6).
+
+### Part B — bundled diagnostic logging
+
+All lines are event-driven (zero idle cost); anything that can repeat in a burst goes through `ThrottledLog`,
+which **moves** from `Features/WindowButtons/` to `Infrastructure/` (features never reference each other) and gains
+an `Info` twin of its `Warn` (same 1/minute/key + suppressed-count mechanics; still UI-thread-only, so the tray
+host's line below uses plain `Log`). Its existing WindowButtons call sites (14 `ThrottledLog.Warn` calls across six
+files) only change `using`s.
+
+**B1. `TaskbarFeature` re-hide correlation** (the user sees random taskbar flashes; today only the backoff WARN is
+logged):
+
+- `ScheduleRehide` grows a source-hwnd parameter; when it actually starts the idle timer from
+  `OnRawWindowEvent` (i.e. `EVENT_OBJECT_SHOW` on a taskbar window while hidden and not peeking):
+  `ThrottledLog.Info("taskbar-rehide-scheduled", $"Explorer showed taskbar window 0x{hwnd:X}; re-hiding in {delay.TotalMilliseconds:0} ms")`.
+  The `OnTaskbarCreated` path passes no hwnd and keeps its existing line. Throttled because `ScheduleRehide` can
+  re-run every 250 ms in a burst; the suppressed count preserves the correlation.
+- `OnRehideTimer`'s execution branch: `TaskbarController.HideWindows()` returns the number of windows it hid
+  (additive signature change; `Hide()`/`RestoreFromMarker`/`EndPeek` ignore or use it), logged as
+  `ThrottledLog.Info("taskbar-rehide-executed", $"Re-hid {n} taskbar window(s) Explorer had shown")`.
+- Backoff transitions: the entry WARN stays verbatim ("Explorer keeps showing the taskbar again; re-hiding it less
+  often"); the exit — today a silent `_backoffLogged = false` in `NextRehideDelay` — logs
+  `Log.Info("Explorer stopped re-showing the taskbar; re-hiding at the normal rate again")`.
+
+**B2. The peek** (`TopBarActions.ShowSystemTray` → `ShellCommands.PeekTaskbar` → `TaskbarFeature.OnPeekRequested`;
+reportedly the button does nothing, and there is no success log at all today):
+
+- `TopBarActions.Execute`, `case ShowSystemTray`: `Log.Info("Quick settings 'System tray': requesting a taskbar peek")` — distinguishes "the command never fired" from "the feature ignored it".
+- `OnPeekRequested` early return when `!IsHidden`: `Log.Info($"Taskbar peek ignored: the taskbar is not hidden (mode {_mode})")`. (The `!StillOwnsTaskbar` return is already covered by `StillOwnsTaskbar`'s own line.)
+- After `ShowWindows`: `Log.Info($"Taskbar peek: showed {n} taskbar window(s); Explorer's tray window is 0x{primary:X}")`; `primary == 0` adds `Log.Warn("Taskbar peek: Explorer's taskbar window was not found; the peek may stay invisible")`.
+- After `WindowActivator.Activate(primary)` (which keeps its own failure WARN): `Log.Info($"Taskbar peek: foreground window is now 0x{fg:X}{(fg == primary ? " (the taskbar)" : "")}")`.
+- `OnPeekTimer` cursor-over re-check: `ThrottledLog.Info("taskbar-peek-recheck", "Taskbar peek: the cursor is over the taskbar; re-checking in 1 s")`.
+- `EndPeek` grows a reason string; one line whenever a peek really ends: `Log.Info($"Taskbar peek ended ({reason})")` plus `"; re-hid {n} taskbar window(s)"` when it re-hides. Reasons: `"timeout"`, `"foreground changed to 0x…"`, `"reveal failed"`, `"taskbar mode changed"`, `"Explorer recreated the taskbar"`.
+
+**B3. `TrayModel` delivery** (for the Windows Security icon investigation: a version-4 icon whose `NIM_SETVERSION`
+we missed is encoded in legacy format by `TrayCallback.Encode` and silently ignored by the app):
+
+- `Deliver`, for click-class actions only (gate: `TrayCallback.MayTakeForeground(action)` — Enter/Hover/Leave stay
+  silent, so hovering the tray costs nothing), one line before the send loop:
+  `Log.Info($"Tray {action} on \"{tip or "(no tooltip)"}\" (owner 0x{owner:X}, id {state.Id.Id}, guid {state.Id.ItemGuid or "none"}, version {state.Version}, callback 0x{state.CallbackMessage:X}): sending [{notification list, hex}]; anchor {x},{y}, icon {l,t,r,b}, bar {l,t,r,b}")`.
+  The tooltip is arbitrary app-supplied text (and potential PII): truncate it to 64 characters with an ellipsis
+  before it reaches the line. A missed SETVERSION shows up as `version 0` on an icon known to be v4 — the exact
+  evidence needed. The existing delivery-failure WARN stays.
+- Silent no-op paths, click-class actions only: `state.CallbackMessage == 0` →
+  `Log.Info($"Tray {action} on \"{tip}\" (owner 0x…, id …) did nothing: the icon registered no callback message")`;
+  empty notification set (defensive; unreachable for the defined button actions) → `… produced no notifications;
+  nothing sent`; and in `Send`'s early return when `_host is null` →
+  `Log.Info($"Tray {action} did nothing: the tray host is not running")` (this one throttled, key `"tray-nohost"`).
+- `Services/Tray/TrayHost.cs`, `OnNotifyIcon`: when `command.Message == SetVersion` and the registry accepted it,
+  `Log.Info($"Tray icon (owner 0x{command.Owner:X}, id {command.Id}) set callback version {command.Version}")` —
+  plain `Log` (host thread, thread-safe), once per icon registration, so a *received* SETVERSION is as greppable as
+  a missed one.
+
+**B4.** The `AppBar` notification-name trigger (above, in the Part A app section — same file, same work package).
+
+### Acceptance criteria
+
+T = Core unit test, M = mutation check (see table below), L = live check in the session described next,
+R = code review. Statuses recorded 2026-10-10 on branch build f9b92a6 (the measured numbers are in KI-102's
+verification record):
+
+1. T/M `WorkAreaFightDetector`: first two applications inside the window keep `IsFighting` false; the third makes
+   it true; an application exactly at `WindowMs` leaves the window; `IsFighting` prunes without recording.
+   **PASS** (mutations run; see the correction under the table).
+2. T/M `StripRecovery` cool-down: `GiveUp` carries `DueMs = firstGiveUp + ReArmDelayMs` and does not re-stamp;
+   before the due time `Update` keeps returning `GiveUp`; at/after it a fresh episode starts (`Wait(due+1500)`,
+   then `Shrink` at +1.5/+5/+20 s, then `GiveUp` again); `reserved` or `Reset()` during the cool-down ends it
+   immediately. Criterion 2's first test is the KI-102(b) regression test: it must be run against the *unfixed*
+   Core and fail (today `Update` returns `GiveUp` forever). **PASS** (seen red against the unfixed Core; every
+   mutation run — rows 8/9 were crossed as drafted, both directions proven red).
+3. T The existing `Recovery_StillMissing_SetsTheWorkAreaThreeTimes_ThenGivesUp` is updated for the new `DueMs`
+   semantics, and `WorkAreaBudget`/`WorkAreaLedger`/`WorkAreaRecovery`/`WorkAreaState`/`WorkAreaFallback` suites
+   pass with those five source files untouched (the must-not-change list in the Problem section, enforced by the
+   diff). **PASS** (suites green, five files untouched).
+4. L Normal case unchanged (B6 regression): non-safe start with the taskbar hidden → one *broadcast* write per
+   monitor within ~4 s, the immediate "Displays re-checked" pass and "reserved again" lines as in KI-099's B6, no
+   fight WARN, no repeats over 5 idle minutes. **PASS** (twice — 01:55 and 02:25 starts: one broadcast write per
+   monitor within ~4.2 s, zero warnings, marker with exactly two records, 5 idle minutes clean).
+5. L Silent-write switch: four artificial resets of DISPLAY2 inside 10 minutes. Writes 1–3 broadcast (each followed
+   by the forced re-check pass within ~0.5 s), and write 3 logs the transition WARN after it; write 4 is silent —
+   the applied line's "(without a broadcast)" suffix, **no** "Displays re-checked" pass within 2 s of the write, and
+   `tools/Get-WorkAreas.ps1` still showing the shrunk work area (the write lands; only the broadcast is gone).
+   **PASS** (transition WARN 00:01:34.041 after the 3rd application; write 4 at 00:02:14.872 with " (without a
+   broadcast)", no re-check pass within 2 s after it, the recovery timer confirming +5.004 s later, work area
+   still shrunk).
+6. L Cool-down re-arm: four resets inside 60 s (spaced ~10 s, so each shrink lands before the next reset) exhaust
+   the budget → three refused attempts → the give-up WARN in its new wording → no writes for ~5 minutes → the
+   re-arm INFO line, a fresh `Wait`→`Shrink` episode, and the strip restored with no external help. Timing note
+   for the tester: the give-up WARN lands one `ThirdActionMs` (20 s) after the third refused attempt — ~46.5 s
+   after the episode's first loss detection — because the exhaustion check rides the next scheduled slot; that
+   tail is the schedule, not a failure. **PASS** (budget refusals ×3 at +1.499/+5.003/+19.996 s; the give-up WARN
+   in the new wording at 00:06:05.504, +46.496 s after first detection; 5:00.003 of silence; the re-arm INFO at
+   00:11:05.507; the fresh episode wrote silently +1.499 s later and "reserved again" +4.999 s later — the strip
+   restored with no external help).
+7. L Fight-window slide: ≥ 10 quiet minutes after the last application, a fresh reset produces a broadcast write
+   again (re-check pass visible) with no transition WARN until three more applications accumulate. (Long pole; may
+   run unattended in the session.) **PASS**.
+8. L Marker discipline through a fight: after ≥ 6 resets, `workareas.state` holds exactly one record per
+   (owner, monitor) with `Applied` equal to the live work area; graceful quit gives back or drops per
+   `WorkAreaRecovery.Plan` and deletes the marker; `taskkill /f` + `--restore-taskbar` from the same profile
+   restores; work areas and taskbar end at the documented baseline (RUNBOOK table: taskbar visible D1
+   `0,0,2560,1540`, D2 `-447,-1440,2993,-48`). **PASS** (exactly one record, `Owner` 0x4E09D2; `taskkill /f` left
+   the marker byte-identical (md5 equal); `--restore-taskbar` dropped it and deleted the marker, exit 0; the final
+   capture equalled the exact baseline).
+9. L `--selftest --safe` exits 0; a `--safe` run never logs a shrink (unchanged). **PASS** (exit 0, no marker).
+10. L Footprint: 20 idle minutes with strips reserved → no new log lines, no timer activity, CPU/memory within
+    noise of the pre-branch build (AGENTS.md QA 6). **PASS** (13+ idle minutes, zero new log lines — 64 before
+    and after; profile B added 5 more with zero B1–B3 lines).
+11. R Wording corrections landed: `AppBar.CheckStrip` give-up message, `StripRecoveryKind.GiveUp` doc,
+    `StripRecovery` class doc, `EnsureReserved` doc, `WorkAreaController` class doc; no source comment still claims
+    the give-up lasts until "the next display change". **PASS** (review confirmed no such wording remains).
+12. L Re-hide correlation (profile B): a tool shows `Shell_TrayWnd` → scheduled line (hwnd, delay) then executed
+    line (count); five shows inside 10 s → the backoff WARN, 5 s delays, and the exit INFO once quiet; during a
+    sustained burst both throttled keys log ≤ 1 line/minute with suppressed counts. **PARTIAL** — the
+    scheduled/executed chain fired live on real Explorer-initiated shows (two startups: "Explorer showed taskbar
+    window 0xB708A2; re-hiding in 250 ms" → "Re-hid 2 taskbar window(s) Explorer had shown" ~258 ms later); the
+    burst/backoff/throttle path was not exercised — a scripted `ShowWindow` on a locked workstation produced no
+    `EVENT_OBJECT_SHOW` at all. Field data rides on the everyday build.
+13. L Peek chain (profile B, user clicks the "System tray" tile): request → revealed (count + tray hwnd) →
+    foreground → ended (reason, re-hide count) lines all present; with the taskbar not hidden (profile A) the
+    ignored line appears instead. The reported "does nothing" must be attributable to exactly one logged branch.
+    **DEFERRED** — needs a real click and the workstation was locked (`SendInput` goes to the secure desktop);
+    rides on the everyday build.
+14. L Tray clicks (profile B, user clicks): a v4 icon (e.g. OneDrive) and a legacy icon each produce one delivery
+    line with the correct `version`/`callback`/notification set/anchor; hovering produces no lines; icons that
+    send `NIM_SETVERSION` logged it at registration. For the Windows Security icon: its click line's `version`
+    field is the investigation's answer (0 ⇒ we missed its SETVERSION). **DEFERRED** — as 13; the Windows
+    Security click line's `version` field will be answered on the everyday build.
+15. L Idle silence: 5 idle minutes with the taskbar hidden produce no B1–B3 lines at all. **PASS** (profile B
+    5 minutes and profile A 13 minutes, zero B1–B3 lines).
+
+### Live-test plan (no everyday instance is touched)
+
+Session scratch: `%TEMP%\opencode\ki102-session\`, modelled on `mm-session`: `build\` (the branch published with
+`dotnet publish src/WinGnome -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o …\build`),
+`profile-a\` and `profile-b\`, and the copied tools `reset-upper.cmd` + `reset-upper-workarea.ps1` (resets the one
+non-primary monitor with `bounds.Top < 0` — DISPLAY2, `-447,-1440,2993,0` — to its full bounds with
+`SPI_SETWORKAREA`+`SPIF_SENDCHANGE`; refuses primary monitors and any monitor with `bounds.Top >= 0`; exits 1 on
+refusal), `capture-workareas.cmd` (`tools/Get-WorkAreas.ps1`), `start-/stop-/kill-test.cmd`,
+`restore-taskbar.cmd`, and one new `show-taskbar.cmd` (PowerShell `FindWindowEx("Shell_TrayWnd")` + `ShowWindow
+SW_SHOW` — fires the same `EVENT_OBJECT_SHOW` Explorer's flashes do, for criterion 12). Everything the agent runs
+is launched through `explorer.exe <path>` so it acts on the real session (KI-010); the everyday log/settings are
+only read through Explorer-launched copies.
+
+- **Profile A** (criteria 5–8, 10, and the artificial fight for exploratory step (i)): non-safe, taskbar
+  untouched — `{"General":{"HideWindowsTaskbar":false,"NativeTaskbarAutoHide":false}}`, `TopBar` on with
+  `Monitors:All`, `Margin:0`, `CornerRadius:0`, `Height:32`, `Dock:{"Enabled":false}`,
+  `WindowButtons:{"Enabled":false}`, `ShowTrayIcons:false`. With the taskbar visible Explorer applies granted
+  strips promptly (~0.3 s, spec 0010's steady-state measurement), so no start-up fallback write muddies the
+  artificial resets — the fallback is triggered *only* by `reset-upper.cmd`, exactly as in KI-099's verified
+  recovery-path session. Resets are spaced ~10–60 s apart so each shrink lands before the next reset.
+- **Profile B** (criteria 4, 12–15, and exploratory step (ii)): same but `HideWindowsTaskbar:true` and
+  `ShowTrayIcons:true` (start-up fallback, re-hide, peek, tray clicks).
+- Criterion 9 (`--selftest --safe`) needs no profile: the standard self-test command with its own scratch
+  `--settings-dir`, agent-driven.
+- **User-required steps** (runbook session, user at the machine): quit the everyday WinGnome (quick settings →
+  Quit; the agent verifies with `tasklist` and records the baseline capture) and restart it after the session;
+  click the peek tile and the tray icons (criteria 13–14); the optional exploratory steps below. Everything else —
+  launching/stopping instances, resets, captures, log reads, the 5-minute cool-down wait — is agent-driven.
+- **Two-instance rule:** profile-B runs and any profile-A run that writes work areas happen only while the
+  everyday instance is quit; two instances would each react to the resets (the everyday build still broadcasts),
+  invalidating criteria 5–7. Window buttons stay off in both profiles (KI-042).
+- **Session appearance (say so before starting):** every step runs with the everyday instance quit, so for the
+  whole session the Windows taskbar is visible and there is no GNOME shell — the desktop looks "broken" mid-session
+  and that is expected, not a test failure. The session's last step restarts the everyday instance through
+  `explorer.exe` (outside any sandbox, KI-010).
+- **Optional exploratory steps** (evidence for KI-102, not pass/fail): (i) during an artificial fight, run a
+  janitor-style 1×1 `ABM_NEW`+`ABM_REMOVE` nudge from a scratch tool and record whether strips return or reset
+  faster (direction 2); (ii) [PHYSICAL] with profile B running and both strips reserved, the user powers
+  DISPLAY2 off and on (or unplugs/replants) to try to reproduce the natural trigger — if Explorer recomputes
+  without the strips, the log now shows whether the silence + cool-down design ends the loop in the field. Results
+  go into KI-102 either way; a non-reproduction proves nothing and blocks nothing.
+
+### Tests and mutations (every new Core behaviour is seen failing)
+
+| # | Test (file) | Mutation that must turn it red |
+|---|---|---|
+| 1 | `Fight_TwoApplicationsWithinTheWindow_DoNotFight` (`WorkAreaFightDetectorTests.cs`, new) | `ApplicationLimit` 3→2 |
+| 2 | `Fight_ThirdApplicationWithinTheWindow_Fights` | `ApplicationLimit` 3→4 |
+| 3 | `Fight_ApplicationExactlyAtTheWindowEdge_LeavesTheWindow` (records at t, t+1 s, t+600 000 → not fighting; t+599 999 → fighting) | prune `>=`→`>` |
+| 4 | `Fight_ApplicationAfterTheWindowSlides_DropsTheOldest` (t, t+60 s, then t+600 001 → not fighting) | delete the prune loop |
+| 5 | `Fight_IsFightingAfterTheWindow_IsFalseWithoutRecording` | `IsFighting` skips pruning |
+| 6 | `Recovery_GiveUp_CarriesTheReArmDueTime` (`AppBarReservationTests.cs`) — asserts every post-exhaustion `GiveUp` step carries the stamped non-zero deadline (never `DueMs = 0`), which is what `CheckStrip` forwards verbatim | `GiveUp` returns `DueMs = 0` |
+| 7 | `Recovery_GiveUp_DoesNotSlideTheCoolDown` (second `GiveUp` keeps the first due time) | re-stamp `_reArmAtMs` on every `GiveUp` |
+| 8 | `Recovery_AfterTheCoolDown_StartsAFreshEpisode` (**the KI-102(b) regression test** — run against unfixed Core first and watch it fail: today `Update` at `due` returns `GiveUp`) | expiry `>=`→`>` off-by-one |
+| 9 | `Recovery_BeforeTheCoolDownEnds_StillGivesUp` (`due − 1 ms`) | delete the expiry branch (a before-due check falls through to a fresh `Wait`) |
+| 10 | `Recovery_ReservedDuringTheCoolDown_EndsItAtOnce` — also asserts `Reset()` cleared the deadline itself: a fresh episode driven to `GiveUp` afterwards stamps a **new** `DueMs` from the new time, not the stale one | `Reset()` leaves `_reArmAtMs` set |
+| 11 | `Recovery_Reset_ClearsTheCoolDown` (undock path; same stale-deadline assertion as row 10) | same |
+| 12 | Updated `Recovery_StillMissing_SetsTheWorkAreaThreeTimes_ThenGivesUp` (new `DueMs` on the `GiveUp` steps; the far-future `Update` now returns `Wait`) | any of the above |
+
+Correction from the run: the plan as drafted had the mutation column of rows 8/9 crossed — the expiry `>=`→`>`
+off-by-one kills row 8's test (it probes exactly at the deadline), and deleting the expiry branch kills row 9's
+(a before-due check then falls through to a fresh `Wait`). Both directions were proven red.
+
+App-layer wiring (broadcast choice, timer re-pointing, log lines) is interop and is covered by criteria 4–15 live,
+per AGENTS.md §3; where a live criterion has a cheap local mutation (e.g. `broadcast: !fighting` → `broadcast:
+true` must make criterion 5's "no re-check pass" observation fail), the session runs it once on a scratch build.
+
+### Work packages
+
+- **WP1 — Core fight detector + StripRecovery cool-down + tests** (one implementer, ~half a day, no dependencies).
+  Owns: `src/WinGnome.Core/Shell/WorkAreaFightDetector.cs` (new), `src/WinGnome.Core/Shell/AppBarReservation.cs`,
+  `tests/WinGnome.Core.Tests/Shell/WorkAreaFightDetectorTests.cs` (new),
+  `tests/WinGnome.Core.Tests/Shell/AppBarReservationTests.cs`. Done when the table's tests 1–12 are green; test 8
+  has been seen red against the pre-fix Core; test 6 asserts no post-exhaustion `GiveUp` step ever carries
+  `DueMs = 0` (the deadline `CheckStrip` forwards verbatim — the forwarding itself is WP2's checklist); tests
+  10–11 assert `Reset()` clears `_reArmAtMs`; and no other Core file changed.
+- **WP2 — App wiring (safety-critical)** (one implementer, ~half a day + session prep; after WP1). Owns:
+  `src/WinGnome/Services/WorkAreaController.cs`, `src/WinGnome/Interop/AppBar.cs` (fight-gated broadcast, re-arm
+  timer, corrected WARN/docs, B4's notification-name trigger). Checklist item the implementer must not get wrong:
+  `CheckStrip`'s `default:`/`GiveUp` branch forwards `step.DueMs` **verbatim** (never recomputes a deadline) and
+  re-points the *existing* one-shot `_recoveryTimer` at it; re-pointing must be idempotent under a forced-pass
+  storm — Core returns the same stamped deadline on every pre-expiry `GiveUp`
+  (`Recovery_GiveUp_DoesNotSlideTheCoolDown`), so re-scheduling can shorten the remaining interval but never push
+  the cool-down later. `dotnet build -c Release -warnaserror` and `dotnet test` green; no other file touched.
+- **WP3 — Diagnostic logging** (one implementer, ~half a day; parallel with WP1/WP2 — disjoint files). Owns:
+  `src/WinGnome/Infrastructure/ThrottledLog.cs` (moved from `Features/WindowButtons/`, gains `Info`), the six
+  WindowButtons call-site files (usings only), `src/WinGnome/Features/Taskbar/TaskbarFeature.cs`,
+  `src/WinGnome/Services/TaskbarController.cs` (`ShowWindows`/`HideWindows` return counts — additive),
+  `src/WinGnome/Features/TopBar/TopBarActions.cs` (one line), `src/WinGnome/Features/TopBar/Tray/TrayModel.cs`,
+  `src/WinGnome/Services/Tray/TrayHost.cs` (SETVERSION line). No behaviour changes beyond the return types.
+- **WP4 — Live verification + docs** (one implementer + the user's session; after WP1–3 merge-candidates exist).
+  Runs the live-test plan; then owns: `docs/KNOWN_ISSUES.md` (KI-102: fix summary, the two evidence readings
+  above, worst-case rates, the new silent-write degradation, exploratory-step results; close as *Fixed* with the
+  commit once criteria 4–15 pass; KI-099: cross-reference update in its risk paragraph **and** its limits bullet
+  "at most three actions per bar per missing-strip episode … then it gives up until the bar is docked afresh"
+  (~lines 643–644 of KNOWN_ISSUES.md), which the cool-down makes stale; a new S4 entry for
+  "silent writes leave already-maximised windows oversized until the next broadcast" if the session confirms it),
+  this spec (addendum status → Implemented; risk 12's KI-102 paragraph points at the addendum),
+  `docs/PLAN.md` (Core API table, Shell row: add `WorkAreaFightDetector`, replace "then give up" with the
+  cool-down), README (expected: no change — no new flags or settings; verify).
+
+Ordering: WP1 → WP2; WP3 in parallel; WP4 last. Commits stay separable (Core, app wiring, logging, docs) per
+AGENTS.md §7.
+
+### Risks and open questions
+
+1. **The provocation hypothesis is unconfirmed.** The fight's *first* reset preceded any fight write (reading 2),
+   so silence cannot prevent fight onset — only stop us from sustaining it. If Explorer keeps recomputing at the
+   same rate on its own, the design still degrades gracefully: bounded silent writes, automatic re-arm, strips
+   restored between Explorer's events, and the transition WARN + "(without a broadcast)" lines make the next field
+   occurrence measurable. The exploratory session step (ii) may add evidence.
+2. **Which notification accompanies Explorer's recompute** (`ABN_POSCHANGED` vs `ABN_STATECHANGE`) is unknown from
+   the old log; B4 answers it next time. If it is `ABN_STATECHANGE`, Explorer is re-applying the taskbar's
+   auto-hide state mid-run, which would point at TbExp/option 1 territory.
+3. **Oversized maximised windows after a silent fight** (Safety table): accepted, bounded, logged; a settle
+   broadcast was rejected (direction 1) — revisit only if field logs show it persisting.
+4. **Detector false positives**: three legitimate applications on one monitor inside 10 minutes (e.g. start-up
+   write + a quick unplug/replug pair) silence the fourth+ write of that window; the cost is one missed immediate
+   relayout, and the window self-heals. Accepted.
+5. **Cool-down length** (5 min) and **fight window** (10 min / 3 applications) are reasoned constants, not measured
+   ones; both live in Core as named consts so a field occurrence can argue with them.
+6. **User-visible give-up hint**: log-only for now (no OSD surface until spec 0017 exists); open question whether
+   a persistent give-up should ever raise an OS-level notification.
+7. **KI-102's "restart fixes it within ~4 s"** measured 5.1–5.9 s in `everyday-log4` — cosmetic, corrected in the
+   KI-102 update.
+
+### Review notes
+
+Advisor review (deepseek-v4-pro-0813, 2026-10-09): plan sound; both must-fix clarifications and all five
+nice-to-haves folded in; the silent-write premise remains a hypothesis whose failure mode is the bounded status
+quo, not a new failure.

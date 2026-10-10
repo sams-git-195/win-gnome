@@ -50,7 +50,12 @@ public enum StripRecoveryKind
     Shrink,
     /// <summary>Register the AppBar again now, then check again at <see cref="StripRecoveryStep.DueMs"/>.</summary>
     Reregister,
-    /// <summary>The attempts are used up; leave it (the next display change or Explorer restart starts afresh).</summary>
+    /// <summary>
+    /// The attempts are used up; the bar stops acting until the cool-down (<see cref="StripRecovery.ReArmDelayMs"/>)
+    /// has passed, after which the next check — the bar's own one-shot timer, a shell notification or a display
+    /// pass — starts a fresh episode; an undock, a re-dock or the strip being reserved ends it sooner.
+    /// <see cref="StripRecoveryStep.DueMs"/> carries the cool-down's deadline.
+    /// </summary>
     GiveUp,
 }
 
@@ -58,12 +63,14 @@ public readonly record struct StripRecoveryStep(StripRecoveryKind Kind, long Due
 
 /// <summary>
 /// What one bar does while its strip is missing from the work area. Explorer applies a strip within about 0.3 s in
-/// the steady state, so a bar waits <see cref="FirstActionMs"/> and then acts, at most <see cref="MaxAttempts"/> times
-/// with a growing gap, and gives up until it is docked afresh. The action is to set the work area directly
-/// (<see cref="WorkAreaFallback"/>) when that is allowed, and to register the AppBar again when it is not (safe mode,
-/// which changes no system state). Re-registering is no longer the normal action: the third live run showed it did
-/// not help while Explorer deferred its recompute, and may have restarted that deferral. Pure and clock-free: callers
-/// pass a monotonic time in milliseconds.
+/// the steady state, so a bar waits <see cref="FirstActionMs"/> and then acts, at most <see cref="MaxAttempts"/>
+/// times with a growing gap, then stops acting for a <see cref="ReArmDelayMs"/> cool-down, after which the next
+/// check starts a fresh bounded episode (an undock, a re-dock or the strip being reserved ends the cool-down
+/// sooner). The action is to set the work area directly (<see cref="WorkAreaFallback"/>) when that is allowed, and
+/// to register the AppBar again when it is not (safe mode, which changes no system state); the cool-down applies to
+/// both. Re-registering is no longer the normal action: the third live run showed it did not help while Explorer
+/// deferred its recompute, and may have restarted that deferral. Pure and clock-free: callers pass a monotonic time
+/// in milliseconds.
 /// </summary>
 public sealed class StripRecovery
 {
@@ -78,9 +85,13 @@ public sealed class StripRecovery
 
     public const int MaxAttempts = 3;
 
+    /// <summary>How long an exhausted bar stops acting before a check starts a fresh episode.</summary>
+    public const long ReArmDelayMs = 300_000;
+
     private long? _missingSinceMs;
     private int _attempts;
     private long _nextAttemptMs;
+    private long? _reArmAtMs;
 
     /// <summary>True between a missing strip being seen and the strip being reserved again.</summary>
     public bool IsMissing => _missingSinceMs is not null;
@@ -106,7 +117,19 @@ public sealed class StripRecovery
 
         if (_attempts >= MaxAttempts)
         {
-            return new StripRecoveryStep(StripRecoveryKind.GiveUp);
+            // The first give-up stamps the cool-down; later ones return the same deadline, so a forced-pass storm
+            // can re-point the bar's timer but never push the cool-down later (KI-102).
+            _reArmAtMs ??= nowMs + ReArmDelayMs;
+
+            if (nowMs < _reArmAtMs)
+            {
+                return new StripRecoveryStep(StripRecoveryKind.GiveUp, _reArmAtMs.Value);
+            }
+
+            _attempts = 0;
+            _reArmAtMs = null;
+            _nextAttemptMs = nowMs + FirstActionMs;
+            return new StripRecoveryStep(StripRecoveryKind.Wait, _nextAttemptMs);
         }
 
         if (nowMs < _nextAttemptMs)
@@ -125,5 +148,6 @@ public sealed class StripRecovery
         _missingSinceMs = null;
         _attempts = 0;
         _nextAttemptMs = 0;
+        _reArmAtMs = null;
     }
 }

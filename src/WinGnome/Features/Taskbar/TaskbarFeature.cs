@@ -109,7 +109,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
     /// </summary>
     private void SwitchTo(TaskbarMode target)
     {
-        EndPeek(rehide: false);
+        EndPeek(rehide: false, "taskbar mode changed");
         _rehideTimer.Stop();
         _recreated = false;
         switch (target)
@@ -143,7 +143,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
     {
         if (eventType == WinEventHook.EVENT_OBJECT_SHOW && IsHidden && !_peeking && TaskbarController.IsTaskbarWindow(hwnd))
         {
-            ScheduleRehide(NextRehideDelay());
+            ScheduleRehide(NextRehideDelay(), hwnd);
         }
     }
 
@@ -157,6 +157,11 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
 
         if (_recentRehides.Count < RehideBurstLimit)
         {
+            if (_backoffLogged)
+            {
+                Log.Info("Explorer stopped re-showing the taskbar; re-hiding at the normal rate again");
+            }
+
             _backoffLogged = false;
             return RehideDelay;
         }
@@ -200,19 +205,28 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
         }
 
         Log.Info("Explorer recreated the taskbar; applying the taskbar mode again");
-        EndPeek(rehide: false);
+        EndPeek(rehide: false, "Explorer recreated the taskbar");
         _recreated = true;
         _rehideTimer.Stop();
         ScheduleRehide(RecreatedDelay);
     }
 
-    private void ScheduleRehide(TimeSpan delay)
+    /// <summary>
+    /// Starts the re-hide timer if it is idle. <paramref name="hwnd"/> is the taskbar window Explorer showed, or 0
+    /// when the trigger was not a show event; only the show path logs, throttled because a burst re-runs this every
+    /// 250 ms and the suppressed count preserves the correlation.
+    /// </summary>
+    private void ScheduleRehide(TimeSpan delay, nint hwnd = 0)
     {
         // Start-if-idle (not restart): repeated show events must not postpone the re-hide indefinitely.
         if (!_rehideTimer.IsEnabled)
         {
             _rehideTimer.Interval = delay;
             _rehideTimer.Start();
+            if (hwnd != 0)
+            {
+                ThrottledLog.Info("taskbar-rehide-scheduled", $"Explorer showed taskbar window 0x{hwnd:X}; re-hiding in {delay.TotalMilliseconds:0} ms");
+            }
         }
     }
 
@@ -247,7 +261,8 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
             else if (IsHidden)
             {
                 _recentRehides.Enqueue(DateTime.UtcNow);
-                TaskbarController.HideWindows();
+                var hidden = TaskbarController.HideWindows();
+                ThrottledLog.Info("taskbar-rehide-executed", $"Re-hid {hidden} taskbar window(s) Explorer had shown");
             }
         }
         catch (Exception ex)
@@ -258,7 +273,13 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
 
     private void OnPeekRequested(object? sender, EventArgs e)
     {
-        if (!IsHidden || !StillOwnsTaskbar())
+        if (!IsHidden)
+        {
+            Log.Info($"Taskbar peek ignored: the taskbar is not hidden (mode {_mode})");
+            return;
+        }
+
+        if (!StillOwnsTaskbar())
         {
             return;
         }
@@ -268,9 +289,10 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
             _rehideTimer.Stop();
             _peeking = true;
             _peekStartedUtc = DateTime.UtcNow;
-            TaskbarController.ShowWindows();
+            var shown = TaskbarController.ShowWindows();
 
             var primary = TaskbarController.FindExplorerTray();
+            Log.Info($"Taskbar peek: showed {shown} taskbar window(s); Explorer's tray window is 0x{primary:X}");
             if (primary != 0)
             {
                 NativeMethods.SetWindowPos(primary, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
@@ -279,6 +301,14 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
                 // The taskbar is in auto-hide mode, so showing its window leaves it parked off-screen. Giving it the
                 // focus (what Win+T does) is the reliable way to make an auto-hide taskbar slide in.
                 WindowActivator.Activate(primary);
+
+                // After the activate, so the line says whether the slide-in trick actually got the taskbar the foreground.
+                var foreground = NativeMethods.GetForegroundWindow();
+                Log.Info($"Taskbar peek: foreground window is now 0x{foreground:X}{(foreground == primary ? " (the taskbar)" : string.Empty)}");
+            }
+            else
+            {
+                Log.Warn("Taskbar peek: Explorer's taskbar window was not found; the peek may stay invisible");
             }
 
             _peekTimer.Interval = PeekTimeout;
@@ -287,7 +317,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
         catch (Exception ex)
         {
             Log.Warn("Could not reveal the taskbar", ex);
-            EndPeek(rehide: true);
+            EndPeek(rehide: true, "reveal failed");
         }
     }
 
@@ -302,7 +332,7 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
         {
             if (!IsTaskbarRelated(hwnd))
             {
-                EndPeek(rehide: true);
+                EndPeek(rehide: true, $"foreground changed to 0x{hwnd:X}");
             }
         }
         catch (Exception ex)
@@ -318,20 +348,21 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
             if (IsCursorOverTaskbar())
             {
                 // Still in use: look again shortly instead of pulling it away from under the pointer.
+                ThrottledLog.Info("taskbar-peek-recheck", "Taskbar peek: the cursor is over the taskbar; re-checking in 1 s");
                 _peekTimer.Interval = PeekRecheck;
                 return;
             }
 
-            EndPeek(rehide: true);
+            EndPeek(rehide: true, "timeout");
         }
         catch (Exception ex)
         {
             Log.Warn("Taskbar peek: timeout check failed", ex);
-            EndPeek(rehide: true);
+            EndPeek(rehide: true, "timeout");
         }
     }
 
-    private void EndPeek(bool rehide)
+    private void EndPeek(bool rehide, string reason)
     {
         _peekTimer.Stop();
         if (!_peeking)
@@ -342,7 +373,12 @@ internal sealed class TaskbarFeature : IFeature, IEmergencyRestore
         _peeking = false;
         if (rehide && IsHidden && StillOwnsTaskbar())
         {
-            TaskbarController.HideWindows();
+            var hidden = TaskbarController.HideWindows();
+            Log.Info($"Taskbar peek ended ({reason}); re-hid {hidden} taskbar window(s)");
+        }
+        else
+        {
+            Log.Info($"Taskbar peek ended ({reason})");
         }
     }
 

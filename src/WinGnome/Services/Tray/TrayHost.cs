@@ -500,6 +500,12 @@ internal sealed class TrayHost : IDisposable
             }
 
             var change = _registry.Apply(command, shellAccepted);
+            if (command.Message == NotifyIconMessage.SetVersion && change.Accepted)
+            {
+                // Plain Log: this runs on the tray host's own thread, where ThrottledLog must not be used.
+                Log.Info($"Tray icon (owner 0x{command.Owner:X}, id {command.Id}) set callback version {command.Version}");
+            }
+
             if (change.Kind != TrayChangeKind.None)
             {
                 // A new icon image counts only if the copy worked (a stale handle keeps the previous image).

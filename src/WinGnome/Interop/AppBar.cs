@@ -67,6 +67,7 @@ internal sealed partial class AppBar : IDisposable
     private bool _registered;
     private bool _inCall;
     private bool _recheckPending;
+    private string _recheckTrigger = string.Empty; // Read only via _recheckPending, which is always set with it.
     private readonly StripRecovery _recovery = new();
     private DispatcherTimer? _recoveryTimer;
     private bool _gaveUp;
@@ -169,8 +170,9 @@ internal sealed partial class AppBar : IDisposable
     /// after the taskbar went auto-hide) and can recompute work areas without them (a monitor unplugged), so a missing
     /// strip is handled by <see cref="StripRecovery"/>: wait 1.5 s, then set the work area directly — or, where that
     /// isn't allowed, register the AppBar again (ABM_REMOVE, ABM_NEW and the docking sequence; a SETPOS of the
-    /// unchanged rectangle does not bring a strip back) — at most three times, 5 s and 20 s apart. A one-shot timer
-    /// runs only while a strip is missing. Returns true when it acted on a missing strip.
+    /// unchanged rectangle does not bring a strip back) — at most three times, 5 s and 20 s apart, then a
+    /// five-minute cool-down after which the checks resume. A one-shot timer runs only while a strip is missing.
+    /// Returns true when it acted on a missing strip.
     /// </summary>
     public bool EnsureReserved() => CheckStrip("a display pass");
 
@@ -196,6 +198,14 @@ internal sealed partial class AppBar : IDisposable
                 return false;
 
             case StripRecoveryKind.Wait:
+                if (_gaveUp)
+                {
+                    // Update only returns Wait after exhaustion once the cool-down has expired (or the episode is
+                    // fresh, when _gaveUp is already false), so this fires exactly once per cool-down.
+                    _gaveUp = false;
+                    Log.Info($"AppBar 0x{_hwnd:X}: cool-down over; checking the strip {Format(Bounds)} again");
+                }
+
                 if (!wasMissing)
                 {
                     Log.Info($"AppBar 0x{_hwnd:X}: after {trigger} the work area of monitor {Format(_monitor)} doesn't leave out the strip {Format(Bounds)}; leaving it to Explorer for {StripRecovery.FirstActionMs / 1000.0:0.#} s");
@@ -227,10 +237,13 @@ internal sealed partial class AppBar : IDisposable
                 if (!_gaveUp)
                 {
                     _gaveUp = true;
-                    Log.Warn($"AppBar 0x{_hwnd:X}: Explorer still hasn't reserved the strip {Format(Bounds)} after {StripRecovery.MaxAttempts} attempts; giving up until the next display change");
+                    Log.Warn($"AppBar 0x{_hwnd:X}: Explorer still hasn't reserved the strip {Format(Bounds)} after {StripRecovery.MaxAttempts} attempts; not acting again for {StripRecovery.ReArmDelayMs / 60000} minutes (a re-dock or Explorer applying the strip ends the cool-down at once)");
                 }
 
-                StopRecoveryTimer();
+                // GiveUp: re-point the one-shot timer at the cool-down's deadline, forwarded verbatim — Core stamps
+                // it once and returns the same deadline on every pre-expiry GiveUp, so a forced-pass storm can
+                // shorten the remaining interval but never push the cool-down later (KI-102).
+                StartRecoveryTimer(step.DueMs);
                 return false;
         }
     }
@@ -372,9 +385,11 @@ internal sealed partial class AppBar : IDisposable
     /// <summary>
     /// ABN_POSCHANGED: another AppBar came, went or moved. Only a QUERYPOS unless our slot really changed, because
     /// every SETPOS makes the shell notify every other bar on the edge, and N bars that always answer with a SETPOS
-    /// notify each other forever.
+    /// notify each other forever. <paramref name="trigger"/> is the notification's own name for the log lines: the
+    /// KI-102 evidence cannot say which notification accompanied Explorer's recomputes, and the next occurrence
+    /// should (spec 0010, B4).
     /// </summary>
-    private void OnPositionChanged()
+    private void OnPositionChanged(string trigger)
     {
         if (!_registered)
         {
@@ -409,7 +424,7 @@ internal sealed partial class AppBar : IDisposable
 
         // The slot may be unchanged while Explorer recomputed the work area without our strip (for example after the
         // taskbar's auto-hide state changed); StripRecovery decides when to act, so notifications can't loop.
-        CheckStrip("a shell notification");
+        CheckStrip(trigger);
     }
 
     /// <summary>True when a fresh read of the monitor's work area leaves the strip out (or the monitor can't be read).</summary>
@@ -458,7 +473,8 @@ internal sealed partial class AppBar : IDisposable
         if (_recheckPending)
         {
             _recheckPending = false;
-            _dispatcher.BeginInvoke(OnPositionChanged, DispatcherPriority.Background);
+            var trigger = _recheckTrigger;
+            _dispatcher.BeginInvoke(() => OnPositionChanged(trigger), DispatcherPriority.Background);
         }
     }
 
@@ -486,10 +502,11 @@ internal sealed partial class AppBar : IDisposable
             // ABN_STATECHANGE: the taskbar's auto-hide or always-on-top state changed, after which Explorer recomputes
             // work areas; the same recheck applies (it acts only when our slot or our strip is really wrong).
             case ABN_POSCHANGED or ABN_STATECHANGE when _inCall:
+                _recheckTrigger = NotificationName((int)wParam);
                 _recheckPending = true;
                 break;
             case ABN_POSCHANGED or ABN_STATECHANGE:
-                OnPositionChanged();
+                OnPositionChanged(NotificationName((int)wParam));
                 break;
             case ABN_FULLSCREENAPP:
                 FullScreenChanged?.Invoke(this, lParam != 0);
@@ -499,6 +516,9 @@ internal sealed partial class AppBar : IDisposable
         handled = true;
         return 0;
     }
+
+    private static string NotificationName(int notification) =>
+        notification == ABN_POSCHANGED ? "ABN_POSCHANGED" : "ABN_STATECHANGE";
 
     public void Dispose()
     {
