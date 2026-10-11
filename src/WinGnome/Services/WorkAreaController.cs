@@ -71,10 +71,28 @@ internal static class WorkAreaController
     /// the record could not be written first.
     /// </summary>
     /// <param name="owner">The bar's HWND; identifies the record when the bar undocks.</param>
-    public static bool TryShrink(nint owner, PixelRect monitor, Core.Shell.AppBarEdge edge, PixelRect strip)
+    public static bool TryShrink(nint owner, PixelRect monitor, Core.Shell.AppBarEdge edge, PixelRect strip) =>
+        TryWrite(owner, monitor, edge, strip, (workArea, _) =>
+            WorkAreaFallback.Shrink(edge, strip, workArea) is { } shrunk ? (workArea, shrunk) : null);
+
+    /// <summary>
+    /// KI-114: sets the edge of a work area that leaves out more than <paramref name="strip"/> back to the strip's,
+    /// from a fresh read. Recorded like a shrink, with the work area as it would be without the bar as the value to
+    /// give back, so exit and crash recovery release the strip rather than restore the doubled value. Returns false
+    /// without writing under the same conditions as <see cref="TryShrink"/>, or when the edge is no longer
+    /// over-reserved.
+    /// </summary>
+    public static bool TryCorrect(nint owner, PixelRect monitor, Core.Shell.AppBarEdge edge, PixelRect strip) =>
+        TryWrite(owner, monitor, edge, strip, (workArea, _) => WorkAreaFallback.Correction(edge, strip, workArea));
+
+    /// <param name="plan">From the fresh work area and the monitor's bounds: the value to record as the original and
+    /// the value to write, or null when there is nothing to do.</param>
+    private static bool TryWrite(nint owner, PixelRect monitor, Core.Shell.AppBarEdge edge, PixelRect strip,
+        Func<PixelRect, PixelRect, (PixelRect Original, PixelRect Target)?> plan)
     {
         try
         {
+            (nint Handle, string Key, PixelRect Old, PixelRect New) written;
             lock (Gate)
             {
                 if (!_enabled || _directory is null)
@@ -92,13 +110,13 @@ internal static class WorkAreaController
                 var bounds = info.rcMonitor.ToPixelRect();
                 if (bounds != monitor)
                 {
-                    return false; // Stale rectangle: shrinking here could take a strip on the wrong monitor.
+                    return false; // Stale rectangle: writing here could change a strip on the wrong monitor.
                 }
 
                 var workArea = info.rcWork.ToPixelRect();
-                if (WorkAreaFallback.Shrink(edge, strip, workArea) is not { } shrunk)
+                if (plan(workArea, bounds) is not { } change)
                 {
-                    return false; // Already reserved (the common case): one GetMonitorInfo and nothing written.
+                    return false; // Nothing to do (the common case): one GetMonitorInfo and nothing written.
                 }
 
                 if (!Budget(key, owner).TrySpend(Environment.TickCount64))
@@ -107,14 +125,14 @@ internal static class WorkAreaController
                     return false;
                 }
 
-                var record = new WorkAreaRecord(owner, key, bounds, workArea, shrunk);
+                var record = new WorkAreaRecord(owner, key, bounds, change.Original, change.Target);
 
-                // One record per bar and monitor: a re-shrink replaces this pair's old record and moves to the end,
+                // One record per bar and monitor: a re-write replaces this pair's old record and moves to the end,
                 // which is where the newest change to a monitor belongs in the unwind order. The snapshot is the
                 // rollback state: removing the new record alone would lose an old one the ledger replaced.
                 var before = Records.ToList();
                 ReplaceRecords(WorkAreaLedger.Add(before, record));
-                // An HWND can be recycled: whoever shrinks now is live again. The failure paths below deliberately
+                // An HWND can be recycled: whoever writes now is live again. The failure paths below deliberately
                 // leave the owner live rather than re-adding it to Released: a record an older bar left on this
                 // recycled HWND then waits for a later release, which is safe — the terminal paths (ReleaseAll, the
                 // next start's recovery) still restore it, and the plan only ever writes a value some record carried.
@@ -126,7 +144,7 @@ internal static class WorkAreaController
                     return false;
                 }
 
-                if (!SetWorkArea(shrunk, broadcast: false))
+                if (!SetWorkArea(change.Target, broadcast: false))
                 {
                     // Read before anything else runs: the marker write below would clobber the thread's last error.
                     var error = Marshal.GetLastWin32Error();
@@ -136,9 +154,19 @@ internal static class WorkAreaController
                     return false;
                 }
 
-                Log.Info($"{key}: work area set directly (without a broadcast) for the {edge} strip {Format(strip)}: {Format(workArea)} -> {Format(shrunk)}");
-                return true;
+                Log.Info($"{key}: work area set directly (without a broadcast) for the {edge} strip {Format(strip)}: {Format(workArea)} -> {Format(change.Target)}");
+                written = (handle, key, workArea, change.Target);
             }
+
+            // Outside the lock: it enumerates every top-level window. Without the broadcast Windows leaves windows
+            // maximised before the write where they were (KI-103), so they are moved here instead.
+            var moved = MaximisedWindowRefitter.Refit(written.Handle, written.Old, written.New);
+            if (moved > 0)
+            {
+                Log.Info($"{written.Key}: moved {moved} maximised window(s) to the new work-area edge");
+            }
+
+            return true;
         }
         catch (Exception ex)
         {

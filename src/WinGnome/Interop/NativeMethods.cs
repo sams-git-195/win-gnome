@@ -52,6 +52,7 @@ internal static partial class NativeMethods
     public const int GWLP_HWNDPARENT = -8;
 
     public const long WS_CAPTION = 0x00C00000;
+    public const long WS_THICKFRAME = 0x00040000;
     public const long WS_SYSMENU = 0x00080000;
     public const long WS_MINIMIZEBOX = 0x00020000;
     public const long WS_MAXIMIZEBOX = 0x00010000;

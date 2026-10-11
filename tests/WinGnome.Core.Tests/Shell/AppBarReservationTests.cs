@@ -333,6 +333,160 @@ public class AppBarReservationTests
             AppBarReservation.OnePixelThicker(AppBarEdge.Top, new PixelRect(-447, -1440, 2993, -1408)));
     }
 
+    [Theory]
+    [InlineData(AppBarEdge.Top, 0, 0, 2560, 40, 0, 80, 2560, 1600, true)]      // KI-114: reserved twice.
+    [InlineData(AppBarEdge.Top, 0, 0, 2560, 40, 0, 40, 2560, 1600, false)]     // Exactly the strip.
+    [InlineData(AppBarEdge.Top, 0, 0, 2560, 40, 0, 41, 2560, 1600, true)]      // One pixel more.
+    [InlineData(AppBarEdge.Top, 0, 0, 2560, 40, 0, 0, 2560, 1600, false)]      // Missing is not over-reserved.
+    [InlineData(AppBarEdge.Bottom, 0, 1530, 2560, 1600, 0, 40, 2560, 1490, true)]
+    [InlineData(AppBarEdge.Bottom, 0, 1530, 2560, 1600, 0, 40, 2560, 1530, false)]
+    [InlineData(AppBarEdge.Left, 0, 0, 60, 1600, 61, 0, 2560, 1600, true)]
+    [InlineData(AppBarEdge.Right, 2500, 0, 2560, 1600, 0, 0, 2499, 1600, true)]
+    [InlineData(AppBarEdge.Top, 0, 40, 2560, 40, 0, 80, 2560, 1600, false)]    // An empty strip never is.
+    public void IsOverReserved(AppBarEdge edge, int sl, int st, int sr, int sb, int wl, int wt, int wr, int wb, bool expected)
+    {
+        Assert.Equal(expected, AppBarReservation.IsOverReserved(edge, new PixelRect(sl, st, sr, sb), new PixelRect(wl, wt, wr, wb)));
+    }
+
+    private static readonly PixelRect Doubled = new(0, 80, 2560, 1600);
+
+    [Fact]
+    public void OverReservation_FirstSighting_Claims()
+    {
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Claim, 101_500), new StripRecovery().UpdateOverReservation(Doubled, 100_000));
+    }
+
+    [Fact]
+    public void OverReservation_StillThereAfterTheClaim_CorrectsOnce()
+    {
+        var recovery = new StripRecovery();
+        recovery.UpdateOverReservation(Doubled, 100_000);
+
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 101_500), recovery.UpdateOverReservation(Doubled, 101_499));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Correct), recovery.UpdateOverReservation(Doubled, 101_500));
+        recovery.SettleOverReservation();
+        // A legitimately stacked AppBar keeps the edge over-reserved: one claim and one look, not one every check.
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.None), recovery.UpdateOverReservation(Doubled, 1_000_000));
+    }
+
+    [Fact]
+    public void OverReservation_CorrectionNotSettled_IsTriedAgain()
+    {
+        // The budget refused the write: the next check corrects again instead of leaving the doubled band for good.
+        var recovery = new StripRecovery();
+        recovery.UpdateOverReservation(Doubled, 100_000);
+        recovery.UpdateOverReservation(Doubled, 101_500);
+
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Correct), recovery.UpdateOverReservation(Doubled, 106_500));
+    }
+
+    [Fact]
+    public void OverReservation_GoneAndBack_StartsAgain()
+    {
+        var recovery = new StripRecovery();
+        recovery.UpdateOverReservation(Doubled, 100_000);
+        recovery.UpdateOverReservation(Doubled, 101_500);
+        recovery.SettleOverReservation();
+        recovery.UpdateOverReservation(null, 200_000);
+
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Claim, 301_500), recovery.UpdateOverReservation(Doubled, 300_000));
+    }
+
+    [Fact]
+    public void OverReservation_DifferentValue_StartsAgain()
+    {
+        var recovery = new StripRecovery();
+        recovery.UpdateOverReservation(Doubled, 100_000);
+        recovery.UpdateOverReservation(Doubled, 101_500);
+        recovery.SettleOverReservation();
+
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Claim, 201_500), recovery.UpdateOverReservation(new PixelRect(0, 81, 2560, 1600), 200_000));
+    }
+
+    [Theory]
+    [InlineData(29_999, StripRecoveryKind.Wait)]
+    [InlineData(30_000, StripRecoveryKind.Claim)]
+    public void OverReservation_SharesTheClaimInterval(long nowMs, StripRecoveryKind expected)
+    {
+        // A missing-strip claim at 0 counts against an over-reservation claim.
+        var recovery = new StripRecovery();
+        recovery.Update(reserved: false, shrinkAllowed: true, 0);
+
+        Assert.Equal(new StripRecoveryStep(expected, nowMs + 1500), recovery.UpdateOverReservation(Doubled, nowMs));
+    }
+
+    [Fact]
+    public void OverReservation_ClaimSkippedForTheInterval_StillCorrects()
+    {
+        var recovery = new StripRecovery();
+        recovery.Update(reserved: false, shrinkAllowed: true, 0);
+        recovery.UpdateOverReservation(Doubled, 10_000);
+
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Correct), recovery.UpdateOverReservation(Doubled, 11_500));
+    }
+
+    [Fact]
+    public void OverReservation_Claim_DelaysTheNextMissingStripClaim()
+    {
+        var recovery = new StripRecovery();
+        recovery.UpdateOverReservation(Doubled, 0);
+
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 11_500), recovery.Update(reserved: false, shrinkAllowed: true, 10_000));
+    }
+
+    [Theory]
+    [InlineData(AppBarEdge.Top, 0, 0, 2560, 40, 0, 80, 2560, 1530, 0, 40, 2560, 80)]
+    [InlineData(AppBarEdge.Bottom, 0, 1530, 2560, 1600, 0, 40, 2560, 1490, 0, 1490, 2560, 1530)]
+    [InlineData(AppBarEdge.Left, 0, 0, 60, 1600, 120, 0, 2560, 1600, 60, 0, 120, 1600)]
+    [InlineData(AppBarEdge.Right, 2500, 0, 2560, 1600, 0, 0, 2440, 1600, 2440, 0, 2500, 1600)]
+    public void OverReservedGap_IsTheBandBeyondTheStrip(AppBarEdge edge, int sl, int st, int sr, int sb, int wl, int wt, int wr, int wb, int gl, int gt, int gr, int gb)
+    {
+        Assert.Equal(new PixelRect(gl, gt, gr, gb), AppBarReservation.OverReservedGap(edge, new PixelRect(sl, st, sr, sb), new PixelRect(wl, wt, wr, wb)));
+    }
+
+    [Theory]
+    [InlineData(0, 40, 2560, 80, true)]       // Another 40 px top AppBar exactly in the band.
+    [InlineData(-8, 32, 2568, 88, true)]      // The same with an 8 px frame.
+    [InlineData(-10, -10, 2570, 1610, false)] // A window maximised before the work area shrank (the live false positive).
+    [InlineData(0, 40, 2000, 80, false)]      // Does not span the band.
+    [InlineData(0, 41, 2560, 80, false)]      // Misses its first row.
+    [InlineData(0, 0, 2560, 120, true)]       // At the slack on both sides.
+    [InlineData(0, -1, 2560, 120, false)]     // One past it.
+    public void IsBandOccupant_TopBand(int l, int t, int r, int b, bool expected)
+    {
+        Assert.Equal(expected, AppBarReservation.IsBandOccupant(AppBarEdge.Top, new PixelRect(0, 40, 2560, 80), new PixelRect(l, t, r, b)));
+    }
+
+    [Theory]
+    [InlineData(60, 0, 120, 1600, true)]
+    [InlineData(-10, -10, 2570, 1610, false)]
+    public void IsBandOccupant_LeftBand(int l, int t, int r, int b, bool expected)
+    {
+        Assert.Equal(expected, AppBarReservation.IsBandOccupant(AppBarEdge.Left, new PixelRect(60, 0, 120, 1600), new PixelRect(l, t, r, b)));
+    }
+
+    [Theory]
+    [InlineData(AppBarEdge.Top, 0, 0, 2560, 40, 0, 40, 2560, 1530)]
+    [InlineData(AppBarEdge.Bottom, 0, 1500, 2560, 1600, 0, 80, 2560, 1500)]
+    [InlineData(AppBarEdge.Left, 0, 0, 60, 1600, 60, 80, 2560, 1530)]
+    [InlineData(AppBarEdge.Right, 2500, 0, 2560, 1600, 0, 80, 2500, 1530)]
+    public void FittedToStrip_MovesOnlyThatEdge(AppBarEdge edge, int sl, int st, int sr, int sb, int l, int t, int r, int b)
+    {
+        Assert.Equal(new PixelRect(l, t, r, b), AppBarReservation.FittedToStrip(edge, new PixelRect(sl, st, sr, sb), new PixelRect(0, 80, 2560, 1530)));
+    }
+
+    [Theory]
+    [InlineData(AppBarEdge.Top, 0, 0, 2560, 40, 60, 0, 2500, 1530)]
+    [InlineData(AppBarEdge.Bottom, 0, 1530, 2560, 1600, 60, 40, 2500, 1600)]
+    [InlineData(AppBarEdge.Left, 0, 0, 60, 1600, 0, 40, 2500, 1530)]
+    [InlineData(AppBarEdge.Right, 2500, 0, 2560, 1600, 60, 40, 2560, 1530)]
+    // A dock above a visible taskbar (1552-1600): the taskbar's strip stays out of the value given back.
+    [InlineData(AppBarEdge.Bottom, 0, 1472, 2560, 1552, 60, 40, 2500, 1552)]
+    public void WithoutStrip_MovesOnlyThatEdgeOutToTheStripsOuterEdge(AppBarEdge edge, int sl, int st, int sr, int sb, int l, int t, int r, int b)
+    {
+        Assert.Equal(new PixelRect(l, t, r, b), AppBarReservation.WithoutStrip(edge, new PixelRect(sl, st, sr, sb), new PixelRect(60, 40, 2500, 1530)));
+    }
+
     [Fact]
     public void EmptyStrip_IsAlwaysReserved()
     {

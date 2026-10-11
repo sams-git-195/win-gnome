@@ -29,6 +29,83 @@ public static class AppBarReservation
     }
 
     /// <summary>
+    /// True when <paramref name="workArea"/> leaves out more than <paramref name="strip"/> on <paramref name="edge"/>:
+    /// Explorer was seen to reserve a top bar's strip twice (work area 0,80 for a 40 px bar, KI-114). Another AppBar
+    /// stacked on the same edge looks the same, so this only says the edge is worth re-checking, not that it is wrong.
+    /// An empty strip is never over-reserved.
+    /// </summary>
+    public static bool IsOverReserved(AppBarEdge edge, PixelRect strip, PixelRect workArea)
+    {
+        if (strip.IsEmpty)
+        {
+            return false;
+        }
+
+        return edge switch
+        {
+            AppBarEdge.Top => workArea.Top > strip.Bottom,
+            AppBarEdge.Bottom => workArea.Bottom < strip.Top,
+            AppBarEdge.Left => workArea.Left > strip.Right,
+            _ => workArea.Right < strip.Left,
+        };
+    }
+
+    /// <summary>
+    /// The band an over-reserved work area leaves out beyond <paramref name="strip"/> on <paramref name="edge"/>,
+    /// across the work area's width (or height): where another AppBar stacked on that edge would sit.
+    /// </summary>
+    public static PixelRect OverReservedGap(AppBarEdge edge, PixelRect strip, PixelRect workArea) => edge switch
+    {
+        AppBarEdge.Top => new PixelRect(workArea.Left, strip.Bottom, workArea.Right, workArea.Top),
+        AppBarEdge.Bottom => new PixelRect(workArea.Left, workArea.Bottom, workArea.Right, strip.Top),
+        AppBarEdge.Left => new PixelRect(strip.Right, workArea.Top, workArea.Left, workArea.Bottom),
+        _ => new PixelRect(workArea.Right, workArea.Top, strip.Left, workArea.Bottom),
+    };
+
+    /// <summary>
+    /// Whether <paramref name="window"/> looks like another AppBar holding <paramref name="band"/>: it covers the whole
+    /// band and is about as thick as it (within <see cref="MaximisedWindowRefit.MaxOverhang"/> either side), not an app
+    /// window that merely reaches over it, such as one maximised before the work area shrank.
+    /// </summary>
+    public static bool IsBandOccupant(AppBarEdge edge, PixelRect band, PixelRect window)
+    {
+        if (window.Left > band.Left || window.Top > band.Top || window.Right < band.Right || window.Bottom < band.Bottom)
+        {
+            return false;
+        }
+
+        const int Slack = MaximisedWindowRefit.MaxOverhang;
+        return edge is AppBarEdge.Top or AppBarEdge.Bottom
+            ? window.Top >= band.Top - Slack && window.Bottom <= band.Bottom + Slack
+            : window.Left >= band.Left - Slack && window.Right <= band.Right + Slack;
+    }
+
+    /// <summary>
+    /// <paramref name="workArea"/> with only <paramref name="edge"/> moved back to <paramref name="strip"/>'s inner
+    /// edge: the value to correct an over-reserved work area to.
+    /// </summary>
+    public static PixelRect FittedToStrip(AppBarEdge edge, PixelRect strip, PixelRect workArea) => edge switch
+    {
+        AppBarEdge.Top => workArea with { Top = strip.Bottom },
+        AppBarEdge.Bottom => workArea with { Bottom = strip.Top },
+        AppBarEdge.Left => workArea with { Left = strip.Right },
+        _ => workArea with { Right = strip.Left },
+    };
+
+    /// <summary>
+    /// <paramref name="workArea"/> with only <paramref name="edge"/> moved out to <paramref name="strip"/>'s outer edge:
+    /// the work area as it would be without the bar, recorded as the value to give back on exit. The strip's outer
+    /// edge, not the monitor's: a visible taskbar or another AppBar beyond the bar keeps its strip.
+    /// </summary>
+    public static PixelRect WithoutStrip(AppBarEdge edge, PixelRect strip, PixelRect workArea) => edge switch
+    {
+        AppBarEdge.Top => workArea with { Top = strip.Top },
+        AppBarEdge.Bottom => workArea with { Bottom = strip.Bottom },
+        AppBarEdge.Left => workArea with { Left = strip.Left },
+        _ => workArea with { Right = strip.Right },
+    };
+
+    /// <summary>
     /// Whether a shell notification (ABN_POSCHANGED, ABN_STATECHANGE) moves the bar: only when the shell offers a
     /// different slot than the one the bar holds or last asked for. Answering every notification with a SETPOS lets N
     /// bars on one edge notify each other forever. A missing strip is <see cref="StripRecovery"/>'s business.
@@ -66,6 +143,11 @@ public enum StripRecoveryKind
     Claim,
     /// <summary>Set the monitor's work area directly now, then check again at <see cref="StripRecoveryStep.DueMs"/>.</summary>
     Shrink,
+    /// <summary>
+    /// The work area still leaves out more than the strip after a claim: set its edge back to the strip's directly
+    /// (KI-114), unless another AppBar's window occupies the extra band.
+    /// </summary>
+    Correct,
     /// <summary>Register the AppBar again now, then check again at <see cref="StripRecoveryStep.DueMs"/>.</summary>
     Reregister,
     /// <summary>
@@ -125,6 +207,9 @@ public sealed class StripRecovery
     private long _nextAttemptMs;
     private long? _reArmAtMs;
     private long? _lastClaimMs; // Survives Reset: it bounds claims across episodes.
+    private PixelRect? _overFor;
+    private long _overSinceMs;
+    private bool _overCorrected;
 
     /// <summary>True between a missing strip being seen and the strip being reserved again.</summary>
     public bool IsMissing => _missingSinceMs is not null;
@@ -172,6 +257,55 @@ public sealed class StripRecovery
         _nextAttemptMs = nowMs + (_attempts == 1 ? SecondActionMs : ThirdActionMs);
         return new StripRecoveryStep(shrinkAllowed ? StripRecoveryKind.Shrink : StripRecoveryKind.Reregister, _nextAttemptMs);
     }
+
+    /// <summary>
+    /// What the bar does about a work area that leaves out more than its strip (KI-114; pass the work area when
+    /// <see cref="AppBarReservation.IsOverReserved"/> says so, null otherwise). Per distinct over-reserved value: claim
+    /// once (within <see cref="ClaimIntervalMs"/> of any other claim it only waits), so Explorer can recompute from the
+    /// AppBars it really holds; if the same value is still there <see cref="FirstActionMs"/> later, correct it, on every
+    /// check until the caller <see cref="SettleOverReservation">settles</see> it. After that the value is left alone,
+    /// so a legitimately stacked AppBar costs one claim and one look, not one every check.
+    /// </summary>
+    public StripRecoveryStep UpdateOverReservation(PixelRect? overReservedWorkArea, long nowMs)
+    {
+        if (overReservedWorkArea is not { } workArea)
+        {
+            _overFor = null;
+            return new StripRecoveryStep(StripRecoveryKind.None);
+        }
+
+        if (workArea != _overFor)
+        {
+            _overFor = workArea;
+            _overSinceMs = nowMs;
+            _overCorrected = false;
+            if (_lastClaimMs is { } last && nowMs - last < ClaimIntervalMs)
+            {
+                return new StripRecoveryStep(StripRecoveryKind.Wait, nowMs + FirstActionMs);
+            }
+
+            _lastClaimMs = nowMs;
+            return new StripRecoveryStep(StripRecoveryKind.Claim, nowMs + FirstActionMs);
+        }
+
+        if (_overCorrected)
+        {
+            return new StripRecoveryStep(StripRecoveryKind.None);
+        }
+
+        if (nowMs - _overSinceMs < FirstActionMs)
+        {
+            return new StripRecoveryStep(StripRecoveryKind.Wait, _overSinceMs + FirstActionMs);
+        }
+
+        return new StripRecoveryStep(StripRecoveryKind.Correct);
+    }
+
+    /// <summary>
+    /// The over-reserved value was dealt with (corrected, or found to be another AppBar's): no more looks at it. Not
+    /// called when a correction was refused (budget) or failed, so the next check corrects again.
+    /// </summary>
+    public void SettleOverReservation() => _overCorrected = true;
 
     private StripRecoveryStep StartEpisode(long nowMs)
     {

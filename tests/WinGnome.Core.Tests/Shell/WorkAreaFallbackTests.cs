@@ -135,4 +135,27 @@ public class WorkAreaFallbackTests
 
         Assert.Null(WorkAreaFallback.Shrink(AppBarEdge.Top, high, new PixelRect(0, 40, 2560, 1540)));
     }
+
+    [Fact]
+    public void Correction_DoubledTopStrip_RestoresTheStripEdgeAndRecordsTheWorkAreaWithoutTheBar()
+    {
+        Assert.Equal((new PixelRect(0, 0, 2560, 1530), new PixelRect(0, 40, 2560, 1530)),
+            WorkAreaFallback.Correction(AppBarEdge.Top, new PixelRect(0, 0, 2560, 40), new PixelRect(0, 80, 2560, 1530)));
+    }
+
+    [Fact]
+    public void Correction_DockAboveAVisibleTaskbar_GivesBackOnlyTheDocksStrip()
+    {
+        // Taskbar 1552-1600, dock 1472-1552, Explorer reserved the dock twice (bottom 1392).
+        Assert.Equal((new PixelRect(0, 0, 2560, 1552), new PixelRect(0, 0, 2560, 1472)),
+            WorkAreaFallback.Correction(AppBarEdge.Bottom, new PixelRect(0, 1472, 2560, 1552), new PixelRect(0, 0, 2560, 1392)));
+    }
+
+    [Theory]
+    [InlineData(40)] // Exactly the strip.
+    [InlineData(0)]  // Missing, not over-reserved: Shrink's business.
+    public void Correction_NotOverReserved_IsNull(int workTop)
+    {
+        Assert.Null(WorkAreaFallback.Correction(AppBarEdge.Top, new PixelRect(0, 0, 2560, 40), new PixelRect(0, workTop, 2560, 1530)));
+    }
 }

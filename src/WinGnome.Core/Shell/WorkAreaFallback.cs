@@ -34,4 +34,21 @@ public static class WorkAreaFallback
 
         return shrunk.IsEmpty ? null : shrunk;
     }
+
+    /// <summary>
+    /// KI-114: for a work area that leaves out more than <paramref name="strip"/> on <paramref name="edge"/>, the value
+    /// to record as the original (the work area as it would be without the bar, <see cref="AppBarReservation.WithoutStrip"/>)
+    /// and the value to write (the edge back on the strip's, <see cref="AppBarReservation.FittedToStrip"/>); null when
+    /// the edge is not over-reserved or the result would be empty.
+    /// </summary>
+    public static (PixelRect Original, PixelRect Target)? Correction(AppBarEdge edge, PixelRect strip, PixelRect workArea)
+    {
+        if (!AppBarReservation.IsOverReserved(edge, strip, workArea))
+        {
+            return null;
+        }
+
+        var target = AppBarReservation.FittedToStrip(edge, strip, workArea);
+        return target.IsEmpty ? null : (AppBarReservation.WithoutStrip(edge, strip, workArea), target);
+    }
 }

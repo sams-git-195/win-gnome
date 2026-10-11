@@ -211,7 +211,11 @@ internal sealed partial class AppBar : IDisposable
         }
 
         var wasMissing = _recovery.IsMissing;
-        var step = _recovery.Update(IsStripReserved(), WorkAreaController.CanShrink, Environment.TickCount64);
+        var now = Environment.TickCount64;
+        var edge = (Core.Shell.AppBarEdge)(int)_edge;
+        var workArea = ReadWorkArea();
+        var reserved = workArea is not { } live || AppBarReservation.IsReserved(edge, Bounds, live);
+        var step = _recovery.Update(reserved, WorkAreaController.CanShrink, now);
         switch (step.Kind)
         {
             case StripRecoveryKind.None:
@@ -222,7 +226,7 @@ internal sealed partial class AppBar : IDisposable
                     Log.Info($"AppBar 0x{_hwnd:X}: the strip {Format(Bounds)} is reserved again (seen after {trigger})");
                 }
 
-                return false;
+                return CheckOverReservation(trigger, edge, workArea, now);
 
             case StripRecoveryKind.Wait:
                 StartRecoveryTimer(step.DueMs);
@@ -306,6 +310,78 @@ internal sealed partial class AppBar : IDisposable
         }
 
         Reclaimed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// KI-114: Explorer can leave out more than the strip (a top bar's 40 px seen reserved twice, work area 0,80). First
+    /// a claim, so Explorer can recompute from the AppBars it really holds; if the same value is still there 1.5 s
+    /// later the edge is set back to the strip's directly, unless a window covers the extra band, which is what
+    /// another AppBar stacked on this edge looks like. Returns true when it acted.
+    /// </summary>
+    private bool CheckOverReservation(string trigger, Core.Shell.AppBarEdge edge, PixelRect? workArea, long now)
+    {
+        var over = workArea is { } seen && AppBarReservation.IsOverReserved(edge, Bounds, seen) ? workArea : null;
+        var step = _recovery.UpdateOverReservation(over, now);
+        switch (step.Kind)
+        {
+            case StripRecoveryKind.Claim:
+                Log.Info($"AppBar 0x{_hwnd:X}: after {trigger} the work area {Format(over!.Value)} leaves out more than the strip {Format(Bounds)}; claiming it again");
+                _dispatcher.BeginInvoke(Claim, DispatcherPriority.Background);
+                StartRecoveryTimer(step.DueMs);
+                return true;
+
+            case StripRecoveryKind.Wait:
+                StartRecoveryTimer(step.DueMs);
+                return false;
+
+            case StripRecoveryKind.Correct:
+                var gap = AppBarReservation.OverReservedGap(edge, Bounds, over!.Value);
+                if (BandOccupant(edge, gap) is { } occupant)
+                {
+                    Log.Info($"AppBar 0x{_hwnd:X}: the work area {Format(over.Value)} leaves out more than the strip {Format(Bounds)}, but window 0x{occupant:X} holds the band {Format(gap)} (another AppBar, presumably); leaving it");
+                    _recovery.SettleOverReservation();
+                    return false;
+                }
+
+                // WorkAreaController logs the change itself. A refused or failed write (the budget, a display change
+                // under way) is tried again on the next check, which this timer guarantees.
+                if (WorkAreaController.TryCorrect(_hwnd, _monitor, edge, Bounds))
+                {
+                    _recovery.SettleOverReservation();
+                    return true;
+                }
+
+                StartRecoveryTimer(now + StripRecovery.SecondActionMs);
+                return false;
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// A visible top-level window of another process that looks like an AppBar holding <paramref name="band"/>
+    /// (<see cref="AppBarReservation.IsBandOccupant"/>), or null. Every window is looked at, not just the one on top
+    /// at one point, so a popup or a small window over the band cannot hide one.
+    /// </summary>
+    private static nint? BandOccupant(Core.Shell.AppBarEdge edge, PixelRect band)
+    {
+        var ownProcess = (uint)Environment.ProcessId;
+        nint? found = null;
+        NativeMethods.EnumWindows((hwnd, _) =>
+        {
+            if (NativeMethods.IsWindowVisible(hwnd) && !NativeMethods.IsZoomed(hwnd) && !NativeMethods.IsCloaked(hwnd)
+                && AppBarReservation.IsBandOccupant(edge, band, NativeMethods.GetWindowBounds(hwnd))
+                && NativeMethods.GetProcessId(hwnd) != ownProcess)
+            {
+                found = hwnd;
+                return false;
+            }
+
+            return true;
+        }, 0);
+
+        return found;
     }
 
     /// <summary>Registers again and re-docks in the same slot; see <see cref="EnsureReserved"/>.</summary>
@@ -520,17 +596,20 @@ internal sealed partial class AppBar : IDisposable
         CheckStrip(trigger);
     }
 
-    /// <summary>True when a fresh read of the monitor's work area leaves the strip out (or the monitor can't be read).</summary>
-    private bool IsStripReserved()
+    /// <summary>
+    /// A fresh read of the monitor's work area, or null when the monitor is gone or changed (a display change is on
+    /// its way and the coordinator re-docks, so the strip counts as reserved meanwhile).
+    /// </summary>
+    private PixelRect? ReadWorkArea()
     {
         var monitor = NativeMethods.MonitorFromRect(RECT.From(_monitor), NativeMethods.MONITOR_DEFAULTTONULL);
         if (monitor == 0)
         {
-            return true;
+            return null;
         }
 
         var (bounds, workArea) = NativeMethods.GetMonitorRects(monitor);
-        return bounds != _monitor || AppBarReservation.IsReserved((Core.Shell.AppBarEdge)(int)_edge, Bounds, workArea);
+        return bounds == _monitor ? workArea : null;
     }
 
     /// <summary>True when the cached monitor rectangle is still exactly a live monitor's rectangle.</summary>
