@@ -960,8 +960,8 @@ a strip on a work area someone else already shrank; two top bars on one monitor 
 | KI-055 | S4 | Top bar | The Wi-Fi icon didn't show signal strength | f519cb5 (`ConnectionProfile.GetSignalBars`, no location consent needed; read on network changes plus a 45 s one-shot timer armed only while on Wi-Fi) |
 | KI-065 | S4 | Settings | Quick settings rows and the gear opened Windows Settings pages instead of the matching native panel | f5dcf13 (`TopBarActions` via `ShowSettings`; `--settings-panel` forwarded to a running instance; Win+I waits for shell-mode hotkeys, spec 0013) |
 | KI-100 | S3 | Dock | A pinned Docker Desktop showed a second, unpinned icon while running | c842f5d (launcher-child rule in `AppPathMatch.IsSameInstall`; see below) |
-| KI-113 | S4 | Top bar | Claiming or re-registering the top bar's slot raised the bar without its blur backdrop | 2026-10-11 (`AppBar.Reclaimed`; restack on `Moved` too; see below) |
-| KI-115 | S3 | Dock | An always-visible dock's strip was never reserved when Explorer ignored its first SETPOS | 2026-10-11 (check 500 ms after every dock; see below) |
+| KI-113 | S4 | Top bar | Claiming or re-registering the top bar's slot raised the bar without its blur backdrop | d3ebbaf (`AppBar.Reclaimed`; restack on `Moved` too; see below) |
+| KI-115 | S3 | Dock | An always-visible dock's strip was never reserved when Explorer ignored its first SETPOS | d3ebbaf (check 500 ms after every dock; see below) |
 | KI-102 | S3 | Top bar, Dock | Explorer keeps recomputing work areas without the strips after an everyday display pass, and the fallback's give-up lasts the run | f402e2e, 0300eed, 73a3c5d (fight detector, cool-down, silent writes; diagnostics in d9f85da; see below). 2026-10-11: superseded in part by the KI-099 claim; every direct set is now silent and the fight detector is removed |
 
 ### KI-100
