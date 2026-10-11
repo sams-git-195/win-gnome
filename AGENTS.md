@@ -236,6 +236,10 @@ or something failed, say so with the output.
   conversation.** Permission to push once is not permission to push again later. Batch local commits and
   push when asked, so CI runs once per batch instead of once per commit.
 - Never force-push `main`, rewrite published history, or skip hooks (`--no-verify`).
+- `main` is protected on GitHub: a pull request into it needs an approving review from the code owner (the repo
+  owner, see `.github/CODEOWNERS`), and force-pushes and deleting `main` are blocked for everyone. The owner's
+  account can bypass the review (GitHub never lets an account approve its own PR), which is how solo work and agents
+  using that account still push to `main`.
 
 ---
 
