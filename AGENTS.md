@@ -237,7 +237,8 @@ or something failed, say so with the output.
   push when asked, so CI runs once per batch instead of once per commit.
 - Never force-push `main`, rewrite published history, or skip hooks (`--no-verify`).
 - `main` is protected on GitHub: a pull request into it needs an approving review from the code owner (the repo
-  owner, see `.github/CODEOWNERS`), and force-pushes and deleting `main` are blocked for everyone. The owner's
+  owner, see `.github/CODEOWNERS`) and a passing `build` check from CI on a branch that is up to date with `main`,
+  and force-pushes and deleting `main` are blocked for everyone. The owner's
   account can bypass the review (GitHub never lets an account approve its own PR), which is how solo work and agents
   using that account still push to `main`.
 
