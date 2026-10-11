@@ -227,8 +227,8 @@ or something failed, say so with the output.
 
 ## 7. Git and CI
 
-- Solo work commits to `main`. Agents working in parallel each use their own branch or worktree and merge
-  back to `main` when their work passes QA.
+- Work on a branch (`main` takes changes only through pull requests, see below). Agents working in parallel each
+  use their own branch or worktree and merge back to `main` through a PR when their work passes QA.
 - Commit messages follow the existing log: a short imperative summary (≤ 72 characters, no trailing full
   stop), a blank line, then the why and any notable details.
 - Never commit build output (`bin/`, `obj/`, `publish/`), logs, settings profiles or secrets.
@@ -236,11 +236,13 @@ or something failed, say so with the output.
   conversation.** Permission to push once is not permission to push again later. Batch local commits and
   push when asked, so CI runs once per batch instead of once per commit.
 - Never force-push `main`, rewrite published history, or skip hooks (`--no-verify`).
-- `main` is protected on GitHub: a pull request into it needs an approving review from the code owner (the repo
-  owner, see `.github/CODEOWNERS`) and a passing `build` check from CI on a branch that is up to date with `main`,
-  and force-pushes and deleting `main` are blocked for everyone. The owner's
-  account can bypass the review (GitHub never lets an account approve its own PR), which is how solo work and agents
-  using that account still push to `main`.
+- `main` is protected by two GitHub rulesets. **Nobody can push to it directly, the owner included**: every change
+  goes through a pull request whose `build` check (CI) passes on a branch that is up to date with `main`, and
+  force-pushes and deleting `main` are blocked. A pull request also needs an approving review from the code owner
+  (the repo owner, see `.github/CODEOWNERS`); the owner's account may skip that review only when merging a pull
+  request (GitHub never lets an account approve its own), which is how solo work and agents using that account
+  merge. So work on a branch, and when the user asks you to push, push the branch, open the PR, wait for CI and
+  merge it only if the user asked for the merge too.
 
 ---
 
