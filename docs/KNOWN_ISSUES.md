@@ -18,7 +18,7 @@ detail section below the Resolved table when the measured evidence behind the fi
 KI-102).
 
 IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-112 all
-have entries now). The next free ID is **KI-115**; grep the specs for `KI-0` before allocating one.
+have entries now). The next free ID is **KI-116**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
@@ -79,7 +79,6 @@ have entries now). The next free ID is **KI-115**; grep the specs for `KI-0` bef
 | [KI-110](#ki-110) | S4 | Settings | Bluetooth panel v1 doesn't pair, discover, connect or show battery, and its radio and Remove Device paths aren't verified live | Open |
 | [KI-111](#ki-111) | S4 | Settings | Wi-Fi profile leftovers: a crash mid-connect can leave a just-created or overwritten profile saved, and a denied all-user write falls back to a per-user profile | Open |
 | [KI-112](#ki-112) | S4 | Taskbar | The secondary taskbar's empty window region is a race with Explorer, so a flash can still get through | Open |
-| [KI-113](#ki-113) | S4 | Top bar | Claiming or re-registering the top bar's slot raises the bar without its blur backdrop | Open |
 | [KI-114](#ki-114) | S4 | Top bar, Dock | Explorer briefly reserved the top strip twice (work area 0,80) after a direct set | Open |
 
 ### KI-003
@@ -655,7 +654,8 @@ persisted to the user's profile. Limits, all deliberate:
   write, so the taskbar's strip and other AppBars' strips survive and two bars on one edge stack.
 - Bounded three times: at most three actions per bar per missing-strip episode (1.5 s, 5 s, 20 s apart, then a
   five-minute cool-down after which the checks resume; a re-dock or the strip being reserved ends it at once) and
-  three applications per monitor per 60 s. Every direct set is silent (without the broadcast; KI-103). A refusal
+  ten applications per bar and monitor per 60 s (three per monitor until 2026-10-11, when a top bar and an
+  always-visible dock used up one budget between them, and then their own three each, in Explorer's start-up churn, KI-115). Every direct set is silent (without the broadcast; KI-103). A refusal
   is logged, so a third-party tool that also sets work areas cannot be fought in a loop.
 - Recorded before it is changed, in `workareas.state` in the settings directory (written aside and moved into place,
   so a crash cannot truncate it): **no record, no shrink**. At most one record per bar and monitor: a re-shrink
@@ -925,16 +925,6 @@ peek suspends the guard and removes the regions on all taskbars, so Explorer's p
 secondary draws before the region is re-applied. Candidate fix: during a peek remove the region only from the
 window being peeked (the primary), and keep the secondary's region applied throughout.
 
-### KI-113
-**Claiming or re-registering the top bar's slot raises the bar without its blur backdrop** · S4 · Top bar · Open
-
-`AppBar.Apply` moves the bar with `HWND_TOPMOST`, which raises it alone. Docking and the display pass call
-`TopBarWindow.RaiseToTop()` afterwards to bring the backdrop back directly beneath; a claim or re-registration
-started by a shell notification or the recovery timer does not, so another topmost window could end up between the
-bar and its backdrop until the next display pass. Raised by the Opus review of the KI-099 claim (2026-10-11); the
-re-register path already had it. *Fix direction:* raise an event from `AppBar` after any SETPOS and have
-`TopBarInstance` call `RaiseToTop()`.
-
 ### KI-114
 **Explorer briefly reserved the top strip twice (work area 0,80) after a direct set** · S4 · Top bar, Dock · Open
 
@@ -943,6 +933,11 @@ the primary's work area became 0,80,2560,1600 for 13 s, then 0,40 again, with no
 It looks as if Explorer subtracted our strip from a work area that already left it out. Seen once, before the
 KI-099 claim shipped; windows maximised in those 13 s would stop 40 px short. Watch for it in the log
 ("Displays re-checked … work 0,80").
+*Seen again 2026-10-11 16:13:33:* a `--selftest --safe` run started while the everyday instance was up (against
+AGENTS.md, which says to turn off every feature a test profile isn't testing); its top bar's after-dock claim had
+Explorer apply its strip on top of the everyday bar's directly set one, the work area read 0,80,2560,1527 and the
+self-test failed its "work area restored" check (exit 1). Run alone, the self-test passes. So Explorer does stack
+a strip on a work area someone else already shrank; two top bars on one monitor is the reproducible case.
 
 ## Resolved
 
@@ -965,6 +960,8 @@ KI-099 claim shipped; windows maximised in those 13 s would stop 40 px short. Wa
 | KI-055 | S4 | Top bar | The Wi-Fi icon didn't show signal strength | f519cb5 (`ConnectionProfile.GetSignalBars`, no location consent needed; read on network changes plus a 45 s one-shot timer armed only while on Wi-Fi) |
 | KI-065 | S4 | Settings | Quick settings rows and the gear opened Windows Settings pages instead of the matching native panel | f5dcf13 (`TopBarActions` via `ShowSettings`; `--settings-panel` forwarded to a running instance; Win+I waits for shell-mode hotkeys, spec 0013) |
 | KI-100 | S3 | Dock | A pinned Docker Desktop showed a second, unpinned icon while running | c842f5d (launcher-child rule in `AppPathMatch.IsSameInstall`; see below) |
+| KI-113 | S4 | Top bar | Claiming or re-registering the top bar's slot raised the bar without its blur backdrop | 2026-10-11 (`AppBar.Reclaimed`; restack on `Moved` too; see below) |
+| KI-115 | S3 | Dock | An always-visible dock's strip was never reserved when Explorer ignored its first SETPOS | 2026-10-11 (check 500 ms after every dock; see below) |
 | KI-102 | S3 | Top bar, Dock | Explorer keeps recomputing work areas without the strips after an everyday display pass, and the fallback's give-up lasts the run | f402e2e, 0300eed, 73a3c5d (fight detector, cool-down, silent writes; diagnostics in d9f85da; see below). 2026-10-11: superseded in part by the KI-099 claim; every direct set is now silent and the fight detector is removed |
 
 ### KI-100
@@ -1175,3 +1172,35 @@ field occurrence measurable; B4's notification names landed. Two field observati
 same way: Explorer reset **both** work areas to full bounds in response to a scripted taskbar `ShowWindow` (the
 wipe trigger is real and reproducible), and the instance rebuilt both correctly, logging one "after
 ABN_POSCHANGED" trigger line — the first field sighting of B4's notification names.
+
+### KI-113
+**Claiming or re-registering the top bar's slot raised the bar without its blur backdrop** · S4 · Top bar · Fixed (see the Resolved table)
+
+`AppBar.Apply` moves the bar with `HWND_TOPMOST`, which raises it alone. Docking and the display pass call
+`TopBarWindow.RaiseToTop()` afterwards to bring the backdrop back directly beneath; a claim or re-registration
+started by a shell notification or the recovery timer does not, so another topmost window could end up between the
+bar and its backdrop until the next display pass. Raised by the Opus review of the KI-099 claim (2026-10-11); the
+re-register path already had it.
+*Fixed 2026-10-11:* `AppBar` raises `Reclaimed` after a claim or re-registration, and `TopBarInstance` restacks the
+backdrop on it and on `Moved` (a shell move raised the bar alone too).
+
+### KI-115
+**An always-visible dock's strip was never reserved when Explorer ignored its first SETPOS** · S3 · Dock · Fixed (see the Resolved table)
+
+User report 2026-10-11: with the dock set to *Always visible* (bottom edge, taskbar hidden), maximised windows covered
+it. The log showed "Dock laid out … AlwaysVisible" at 16:02:53 and nothing else: the work area stayed
+0,40,2560,1600 (the top bar's strip only). Explorer had ignored the dock AppBar's SETPOS, and nothing checked the strip
+after docking; checks ran only on a shell notification, a display pass or the recovery timer, and none came. The
+claim (KI-099) from another process — SETPOS 0,1526,2560,1600 then 0,1527,2560,1600 for the reservation window —
+had Explorer apply 0,40,2560,1527 within 0.5 s. *Fixed 2026-10-11:* `AppBar.Dock` arms its own one-shot check
+`StripRecovery.AfterDockCheckMs` (500 ms) after every dock (logged as "after the check after docking"), so a strip
+Explorer did not apply starts the usual claim-then-silent-set recovery. It is a separate timer because the display
+pass docks and then checks at once, and a check that finds the strip still reserved stops the recovery timer. A
+re-dock to a different slot (edge, thickness or monitor) resets a running episode, cool-down included; the 30 s claim
+interval still holds. Applies to the top bar too.
+Live run of the fix (16:11:48 start, top bar and always-visible dock): both strips reserved by 16:11:51.97
+(work area 0,40,2560,1527). Explorer then reset the work area to full at 16:12:04; the two start-up writes and the
+dock's re-set used up the shared per-monitor budget and the top bar's re-set was refused, so the budget is now per
+bar and monitor. A second run (16:14:11) showed Explorer resetting the work area at +13 s, +25 s and +28 s and the
+bars running out of three writes each, the top bar giving up for five minutes at 16:15:24; the budget is now ten
+writes a minute per bar, which those silent writes (answering Explorer, not provoking it) can afford.

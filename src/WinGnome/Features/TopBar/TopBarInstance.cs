@@ -51,6 +51,7 @@ internal sealed class TopBarInstance : IDisposable
         _appBar = new AppBar(_window);
         _appBar.FullScreenChanged += OnFullScreenChanged;
         _appBar.Moved += OnAppBarMoved;
+        _appBar.Reclaimed += OnAppBarReclaimed;
         _appBar.Detached += OnAppBarDetached;
         _source = HwndSource.FromHwnd(hwnd);
         _source?.AddHook(WndProc);
@@ -191,8 +192,24 @@ internal sealed class TopBarInstance : IDisposable
     /// <summary>The shell restacked the bar (another top AppBar came or went).</summary>
     private void OnAppBarMoved(object? sender, EventArgs e)
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        // Moving raised the bar alone, as docking does.
+        _window.RaiseToTop();
         _viewModel.Tray.BarBounds = _appBar.Bounds;
         BoundsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Claiming the slot again raised the bar alone; bring its blur backdrop back directly beneath it (KI-113).</summary>
+    private void OnAppBarReclaimed(object? sender, EventArgs e)
+    {
+        if (!_disposed)
+        {
+            _window.RaiseToTop();
+        }
     }
 
     private void OnAppBarDetached(object? sender, EventArgs e)
@@ -256,6 +273,7 @@ internal sealed class TopBarInstance : IDisposable
         _source?.RemoveHook(WndProc);
         _appBar.FullScreenChanged -= OnFullScreenChanged;
         _appBar.Moved -= OnAppBarMoved;
+        _appBar.Reclaimed -= OnAppBarReclaimed;
         _appBar.Detached -= OnAppBarDetached;
         _appBar.Dispose();
         _window.Shutdown();

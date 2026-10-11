@@ -17,7 +17,8 @@ namespace WinGnome.Services;
 /// <remarks>
 /// Static and plain Win32, with one lock spanning read-compute-write, so the crash path can use it from any thread and
 /// two bars on one monitor can stack instead of overwriting each other. Everything is bounded twice:
-/// <see cref="WorkAreaBudget"/> per monitor and <see cref="StripRecovery"/> per bar (with its cool-down). A shrink is
+/// <see cref="WorkAreaBudget"/> per bar and monitor (a top bar and a dock share a monitor, and one bar's writes must
+/// not use up the other's) and <see cref="StripRecovery"/> per bar (with its cool-down). A shrink is
 /// written without the <c>WM_SETTINGCHANGE</c> broadcast: Explorer answers that broadcast by recomputing the work area
 /// without our strip, within about 0.4 s on every start-up seen on build 26200, while a silent write stays until
 /// Explorer's own next recompute (KI-102). The cost is KI-103: windows maximised before the write keep covering the
@@ -31,7 +32,7 @@ internal static class WorkAreaController
 
     private static readonly object Gate = new();
     private static readonly List<WorkAreaRecord> Records = [];
-    private static readonly Dictionary<string, WorkAreaBudget> Budgets = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<(string Monitor, nint Owner), WorkAreaBudget> Budgets = [];
     private static readonly HashSet<long> Released = [];
 
     private static string? _directory;
@@ -100,9 +101,9 @@ internal static class WorkAreaController
                     return false; // Already reserved (the common case): one GetMonitorInfo and nothing written.
                 }
 
-                if (!Budget(key).TrySpend(Environment.TickCount64))
+                if (!Budget(key, owner).TrySpend(Environment.TickCount64))
                 {
-                    Log.Warn($"Not setting {key}'s work area directly: {WorkAreaBudget.MaxApplications} applications in the last {WorkAreaBudget.WindowMs / 1000} s already");
+                    Log.Warn($"Not setting {key}'s work area directly for AppBar 0x{owner:X}: {WorkAreaBudget.DefaultMaxApplications} applications for it in the last {WorkAreaBudget.WindowMs / 1000} s already");
                     return false;
                 }
 
@@ -309,8 +310,9 @@ internal static class WorkAreaController
         Released.RemoveWhere(owner => Records.TrueForAll(record => record.Owner != owner));
         if (layout.Monitors.Count > 0)
         {
-            // Not on an empty layout: a failed read must not reset every monitor's budget.
-            foreach (var key in Budgets.Keys.Where(key => layout.Find(key) is null).ToList())
+            // Not on an empty layout: a failed read must not reset every monitor's budget. A destroyed bar's budget
+            // goes too (bars are recreated on display changes, so their HWNDs come and go).
+            foreach (var key in Budgets.Keys.Where(key => layout.Find(key.Monitor) is null || !NativeMethods.IsWindow(key.Owner)).ToList())
             {
                 Budgets.Remove(key);
             }
@@ -360,8 +362,10 @@ internal static class WorkAreaController
         Records.AddRange(records);
     }
 
-    private static WorkAreaBudget Budget(string key)
+    private static WorkAreaBudget Budget(string monitor, nint owner)
     {
+        // Device names compare case-insensitively elsewhere; normalise so one monitor has one key.
+        var key = (monitor.ToUpperInvariant(), owner);
         if (!Budgets.TryGetValue(key, out var budget))
         {
             budget = new WorkAreaBudget();

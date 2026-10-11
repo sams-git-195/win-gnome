@@ -7,7 +7,7 @@ public class WorkAreaBudgetTests
     [Fact]
     public void TrySpend_ThreeInsideTheWindow_TheFourthIsRefused()
     {
-        var budget = new WorkAreaBudget();
+        var budget = new WorkAreaBudget(maxApplications: 3);
 
         Assert.True(budget.TrySpend(0));
         Assert.True(budget.TrySpend(1000));
@@ -19,7 +19,7 @@ public class WorkAreaBudgetTests
     [Fact]
     public void TrySpend_ClockDoesNotMove_StillRefusesTheFourth()
     {
-        var budget = new WorkAreaBudget();
+        var budget = new WorkAreaBudget(maxApplications: 3);
 
         Assert.True(budget.TrySpend(500));
         Assert.True(budget.TrySpend(500));
@@ -33,7 +33,7 @@ public class WorkAreaBudgetTests
     [InlineData(60_001, true)]  // And after.
     public void TrySpend_WindowBoundary(long nowMs, bool expected)
     {
-        var budget = new WorkAreaBudget();
+        var budget = new WorkAreaBudget(maxApplications: 3);
         budget.TrySpend(0);
         budget.TrySpend(1000);
         budget.TrySpend(2000);
@@ -44,7 +44,7 @@ public class WorkAreaBudgetTests
     [Fact]
     public void TrySpend_WindowSlides_OneApplicationLeavesItPerSecond()
     {
-        var budget = new WorkAreaBudget();
+        var budget = new WorkAreaBudget(maxApplications: 3);
         budget.TrySpend(0);
         budget.TrySpend(1000);
         budget.TrySpend(2000);
@@ -59,7 +59,7 @@ public class WorkAreaBudgetTests
     [Fact]
     public void TrySpend_RefusedApplication_DoesNotExtendTheWindow()
     {
-        var budget = new WorkAreaBudget();
+        var budget = new WorkAreaBudget(maxApplications: 3);
         budget.TrySpend(0);
         budget.TrySpend(0);
         budget.TrySpend(0);
@@ -67,5 +67,18 @@ public class WorkAreaBudgetTests
 
         // The refusal was not recorded, so the window still empties 60 s after the three real applications.
         Assert.True(budget.TrySpend(60_000));
+    }
+
+    [Fact]
+    public void TrySpend_Default_AllowsTenInsideTheWindow_RefusesTheEleventh()
+    {
+        var budget = new WorkAreaBudget();
+        for (var second = 0; second < 10; second++)
+        {
+            Assert.True(budget.TrySpend(second * 1000));
+        }
+
+        Assert.False(budget.TrySpend(10_000));
+        Assert.Equal(10, budget.Spent);
     }
 }

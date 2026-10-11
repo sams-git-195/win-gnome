@@ -100,6 +100,12 @@ public sealed class StripRecovery
     /// <summary>How long after claiming the slot again the bar acts on a strip that is still missing.</summary>
     public const long FirstActionMs = 1_500;
 
+    /// <summary>
+    /// How long after docking the bar checks its strip. Explorer applies a granted strip within about 0.3 s in the steady
+    /// state; when it defers (start-up, ~35 s) the check claims early, which costs one SETPOS within the claim interval.
+    /// </summary>
+    public const long AfterDockCheckMs = 500;
+
     /// <summary>The shortest gap between two claims, across episodes; an episode starting sooner only waits.</summary>
     public const long ClaimIntervalMs = 30_000;
 

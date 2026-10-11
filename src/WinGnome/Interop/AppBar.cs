@@ -70,6 +70,7 @@ internal sealed partial class AppBar : IDisposable
     private string _recheckTrigger = string.Empty; // Read only via _recheckPending, which is always set with it.
     private readonly StripRecovery _recovery = new();
     private DispatcherTimer? _recoveryTimer;
+    private DispatcherTimer? _dockCheckTimer;
     private bool _gaveUp;
 
     /// <param name="window">Window that must already have a handle.</param>
@@ -87,6 +88,12 @@ internal sealed partial class AppBar : IDisposable
 
     /// <summary>Raised when the shell moved the bar on its own (ABN_POSCHANGED: another AppBar came or went).</summary>
     public event EventHandler? Moved;
+
+    /// <summary>
+    /// Raised after the bar claimed its slot again or registered again on its own (a missing strip), which moved its
+    /// window to the top of the topmost band; owners that keep a window directly beneath the bar restack it.
+    /// </summary>
+    public event EventHandler? Reclaimed;
 
     /// <summary>
     /// Raised after the bar undocked itself because the monitor it was docked on no longer exists with the same
@@ -149,6 +156,15 @@ internal sealed partial class AppBar : IDisposable
     /// </summary>
     public PixelRect Dock(AppBarEdge edge, int thicknessPx, PixelRect monitor)
     {
+        if (_recovery.IsMissing && (edge, Math.Max(1, thicknessPx), monitor) != (_edge, _thickness, _monitor))
+        {
+            // A different slot is a new strip: its check starts a fresh episode (the claim interval still holds)
+            // instead of inheriting the old strip's attempts or cool-down.
+            _recovery.Reset();
+            _gaveUp = false;
+            StopRecoveryTimer();
+        }
+
         _edge = edge;
         _thickness = Math.Max(1, thicknessPx);
         _monitor = monitor;
@@ -161,6 +177,16 @@ internal sealed partial class AppBar : IDisposable
 
             Apply(_registered ? QueryRect() : ProposedRect());
         });
+
+        // Nothing else re-checks the strip after docking unless a notification or a display pass happens to follow,
+        // and Explorer can ignore a fresh SETPOS (seen for an always-visible dock, whose strip then never arrived,
+        // KI-115). Its own timer: a check that finds the strip still reserved right after docking (the display pass
+        // docks and then checks) stops the recovery timer, and must not cancel this one. Re-docking re-arms it.
+        if (_registered)
+        {
+            StartDockCheckTimer();
+        }
+
         return Bounds;
     }
 
@@ -278,6 +304,8 @@ internal sealed partial class AppBar : IDisposable
         {
             Moved?.Invoke(this, EventArgs.Empty);
         }
+
+        Reclaimed?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Registers again and re-docks in the same slot; see <see cref="EnsureReserved"/>.</summary>
@@ -295,6 +323,8 @@ internal sealed partial class AppBar : IDisposable
         {
             Moved?.Invoke(this, EventArgs.Empty);
         }
+
+        Reclaimed?.Invoke(this, EventArgs.Empty);
     }
 
     private void StartRecoveryTimer(long dueMs)
@@ -312,6 +342,27 @@ internal sealed partial class AppBar : IDisposable
 
     private void StopRecoveryTimer() => _recoveryTimer?.Stop();
 
+    private void StartDockCheckTimer()
+    {
+        if (_dockCheckTimer is null)
+        {
+            _dockCheckTimer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(StripRecovery.AfterDockCheckMs),
+            };
+            _dockCheckTimer.Tick += OnDockCheckTimer;
+        }
+
+        _dockCheckTimer.Stop();
+        _dockCheckTimer.Start();
+    }
+
+    private void OnDockCheckTimer(object? sender, EventArgs e)
+    {
+        _dockCheckTimer?.Stop();
+        CheckStrip("the check after docking");
+    }
+
     private void OnRecoveryTimer(object? sender, EventArgs e)
     {
         _recoveryTimer?.Stop();
@@ -326,6 +377,7 @@ internal sealed partial class AppBar : IDisposable
         _recovery.Reset();
         _gaveUp = false;
         StopRecoveryTimer();
+        _dockCheckTimer?.Stop();
         Unregister();
 
         // After ABM_REMOVE: give back a work area we set directly for this bar, newest first while it is still the
@@ -568,6 +620,12 @@ internal sealed partial class AppBar : IDisposable
         {
             _recoveryTimer.Tick -= OnRecoveryTimer;
             _recoveryTimer = null;
+        }
+
+        if (_dockCheckTimer is not null)
+        {
+            _dockCheckTimer.Tick -= OnDockCheckTimer;
+            _dockCheckTimer = null;
         }
 
         _source?.RemoveHook(WndProc);

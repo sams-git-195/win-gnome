@@ -1,15 +1,20 @@
 namespace WinGnome.Core.Shell;
 
 /// <summary>
-/// How often one monitor's work area may be set directly: a sliding window of <see cref="MaxApplications"/> per
+/// How often one bar may set a monitor's work area directly: a sliding window of <see cref="MaxApplications"/> per
 /// <see cref="WindowMs"/>. Explorer recomputes work areas on its own, so a third-party tool (or an Explorer that
-/// keeps reverting us) must not be answerable with an unbounded number of writes. Pure and clock-free: callers pass a monotonic time in milliseconds.
+/// keeps reverting us) must not be answerable with an unbounded number of writes. The writes are silent and answer
+/// Explorer's resets rather than provoke them, and in the first minute after start-up Explorer reset the work area
+/// every few seconds (KI-115), so the default allows <see cref="DefaultMaxApplications"/>. Pure and clock-free:
+/// callers pass a monotonic time in milliseconds.
 /// </summary>
-public sealed class WorkAreaBudget
+public sealed class WorkAreaBudget(int maxApplications = WorkAreaBudget.DefaultMaxApplications)
 {
-    public const int MaxApplications = 3;
+    public const int DefaultMaxApplications = 10;
 
     public const long WindowMs = 60_000;
+
+    public int MaxApplications { get; } = maxApplications;
 
     private readonly Queue<long> _spends = new();
 
