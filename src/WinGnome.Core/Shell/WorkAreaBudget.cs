@@ -2,9 +2,8 @@ namespace WinGnome.Core.Shell;
 
 /// <summary>
 /// How often one monitor's work area may be set directly: a sliding window of <see cref="MaxApplications"/> per
-/// <see cref="WindowMs"/>. Setting the work area broadcasts <c>WM_SETTINGCHANGE</c>, and Explorer recomputes work
-/// areas on its own, so a third-party tool (or an Explorer that keeps reverting us) must not be answerable with an
-/// unbounded number of writes. Pure and clock-free: callers pass a monotonic time in milliseconds.
+/// <see cref="WindowMs"/>. Explorer recomputes work areas on its own, so a third-party tool (or an Explorer that
+/// keeps reverting us) must not be answerable with an unbounded number of writes. Pure and clock-free: callers pass a monotonic time in milliseconds.
 /// </summary>
 public sealed class WorkAreaBudget
 {

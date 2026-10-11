@@ -18,7 +18,7 @@ detail section below the Resolved table when the measured evidence behind the fi
 KI-102).
 
 IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-112 all
-have entries now). The next free ID is **KI-113**; grep the specs for `KI-0` before allocating one.
+have entries now). The next free ID is **KI-115**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
@@ -79,6 +79,8 @@ have entries now). The next free ID is **KI-113**; grep the specs for `KI-0` bef
 | [KI-110](#ki-110) | S4 | Settings | Bluetooth panel v1 doesn't pair, discover, connect or show battery, and its radio and Remove Device paths aren't verified live | Open |
 | [KI-111](#ki-111) | S4 | Settings | Wi-Fi profile leftovers: a crash mid-connect can leave a just-created or overwritten profile saved, and a denied all-user write falls back to a per-user profile | Open |
 | [KI-112](#ki-112) | S4 | Taskbar | The secondary taskbar's empty window region is a race with Explorer, so a flash can still get through | Open |
+| [KI-113](#ki-113) | S4 | Top bar | Claiming or re-registering the top bar's slot raises the bar without its blur backdrop | Open |
+| [KI-114](#ki-114) | S4 | Top bar, Dock | Explorer briefly reserved the top strip twice (work area 0,80) after a direct set | Open |
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -645,15 +647,15 @@ still had the primary's work area at its full bounds when observed at 20:28) and
 monitor is unplugged, so maximised windows cover the bar and the strip is left unreserved. Re-registering the AppBar
 did not help and may restart the deferral (three live sessions, spec 0010).
 
-Since outcome B of spec 0010, a bar whose granted strip is still missing 1.5 s after a check sets that monitor's work
+Since outcome B of spec 0010, a bar whose granted strip is still missing 1.5 s after it first claimed its slot again (see the
+2026-10-11 update below) sets that monitor's work
 area itself with the documented `SystemParametersInfo(SPI_SETWORKAREA)`, never `SPIF_UPDATEINIFILE`, so nothing is
 persisted to the user's profile. Limits, all deliberate:
 - Only the bar's own edge moves, and always from a **fresh** `GetMonitorInfo` read taken inside the same lock as the
   write, so the taskbar's strip and other AppBars' strips survive and two bars on one edge stack.
 - Bounded three times: at most three actions per bar per missing-strip episode (1.5 s, 5 s, 20 s apart, then a
   five-minute cool-down after which the checks resume; a re-dock or the strip being reserved ends it at once) and
-  three applications per monitor per 60 s. Since the KI-102 fix a third bound applies: its fight detector makes
-  direct sets from the fourth application on a monitor within 10 minutes silent (without the broadcast). A refusal
+  three applications per monitor per 60 s. Every direct set is silent (without the broadcast; KI-103). A refusal
   is logged, so a third-party tool that also sets work areas cannot be fought in a loop.
 - Recorded before it is changed, in `workareas.state` in the settings directory (written aside and moved into place,
   so a crash cannot truncate it): **no record, no shrink**. At most one record per bar and monitor: a re-shrink
@@ -709,17 +711,43 @@ which would say whether the cheaper option 1 in the spec could complement or rep
 That verified stability had a time limit: 15 minutes after B6's clean start the same instance lost both strips
 again and the fallback fought Explorer's own recomputes to a terminal give-up — see KI-102.
 *Workaround:* none needed; without it the strip simply arrives late or not at all.
+*Update 2026-10-11 (user report: maximised windows sat behind the top bar):* every start-up in the everyday log
+ended the same way: three direct sets with the broadcast, each reset to the full monitor by Explorer within ~0.4 s,
+then the five-minute cool-down, during which every newly maximised window covered the bar. Probing the live
+instance (one monitor, taskbar hidden) showed **Explorer had lost the bar's rectangle, not its registration**:
+`ABM_NEW` for the bar's HWND returned 0 (already registered), yet a test AppBar on the left edge got the work area
+60,0,2560,1600 within 0.5 s, i.e. without our strip; the same test AppBar also stacked correctly under a second test
+bar, so Explorer's AppBar handling itself worked. Explorer recomputes only when a SETPOS **changes** a bar's
+rectangle: a SETPOS of the unchanged 0,0,2560,40 applied the strip in 2 of 8 tries, a SETPOS of 0,0,2560,41
+followed by 0,0,2560,40 in 4 of 4, each within 0.5 s and held (watched for 5 s, and for minutes in the first
+case). A *silent* direct write held for 60 s+ and in the log until Explorer's own next recompute.
+Fix: (1) a bar whose strip goes missing first **claims its slot again** — one SETPOS one pixel thicker, then its own
+rectangle (`StripRecoveryKind.Claim`, `AppBarReservation.OnePixelThicker`) — so Explorer itself applies the strip
+and broadcasts the change, which also moves already-maximised windows clear; at most one claim per bar per 30 s
+across episodes (`StripRecovery.ClaimIntervalMs`), so two bars, or a bar and an Explorer that keeps dropping the
+strip, cannot claim in turn for ever; the claim runs on the next dispatcher turn so it never nests in another bar's
+`SHAppBarMessage` call. (2) Every direct set is now **silent** (KI-103); the fight detector is gone. During the
+start-up deferral the claim does not take, and the silent set 1.5 s later does: verified live on the everyday
+instance at 15:02:02, strip reserved 15:02:06.85 and still in place, a WinForms window maximised afterwards at
+-10,30,2570,1610 (frame top at 40).
+Side effects of the one-pixel-thicker claim, accepted (at most once per bar per 30 s): Explorer applies a 41 px strip
+and then the 40 px one, so maximised windows re-lay out twice and are briefly 1 px short of the bar; and an AppBar
+Explorer trims around ours (a left or right dock) may be told to move by 1 px and back, possibly while our call is
+still in progress (its `_inCall` is its own). Neither was seen in the live run, which had no side dock.
 
 ### KI-103
 **Silent work-area writes leave already-maximised windows oversized until the next broadcast** · S4 · Top bar, Dock · By design
 
-During a fight — from the fourth direct set on a monitor within 10 minutes — WinGnome writes the work area without
-`SPIF_SENDCHANGE` (KI-102's fight detector) to starve the loop in which Explorer's broadcast-provoked recomputes
-dropped the strips it had granted. The work area itself is correct, and *newly* maximised windows read it live and
+Since 2026-10-11 every direct set writes the work area without `SPIF_SENDCHANGE` (before that, from the fourth on a
+monitor within 10 minutes, KI-102's fight detector): Explorer answers the broadcast by recomputing the work area
+without the strips it granted, within ~0.4 s on every start-up seen. A claim (KI-099 update) has Explorer apply the
+strip and broadcast it itself, so a silent set is now the fallback for when the claim does not take, mostly the
+start-up deferral. The work area itself is correct, and *newly* maximised windows read it live and
 stop short of the bar; but windows maximised **before** a silent write keep spanning the bar's strip until *some*
-work-area broadcast reaches them — ours after 10 quiet minutes, Explorer's, or a re-maximise. Bounded (the window
-slides clear) and logged: the transition WARN names the monitor, and every silent applied line carries
-" (without a broadcast)".
+work-area broadcast reaches them — Explorer's own (including the one a successful claim produces) or a
+re-maximise. WinGnome no longer broadcasts a shrink at all, so nothing on our side bounds how long that lasts. Logged: every applied line carries "(without a broadcast)". A window cannot be told to re-fit on
+its own: sending it `WM_SETTINGCHANGE(SPI_SETWORKAREA)` directly leaves it where it is (measured); moving it with
+`SetWindowPos` keeps it maximised and was considered, but not shipped.
 *Reason:* the alternative — broadcasting every write — provably fed the KI-102 fight (18 direct sets over
 ~7 minutes, ending with the work areas full for the rest of the run, when **every** maximised window covers the
 whole monitor *and* the bar). Trade-off analysis: spec 0010's addendum, direction 1; the degradation was accepted
@@ -897,6 +925,25 @@ peek suspends the guard and removes the regions on all taskbars, so Explorer's p
 secondary draws before the region is re-applied. Candidate fix: during a peek remove the region only from the
 window being peeked (the primary), and keep the secondary's region applied throughout.
 
+### KI-113
+**Claiming or re-registering the top bar's slot raises the bar without its blur backdrop** · S4 · Top bar · Open
+
+`AppBar.Apply` moves the bar with `HWND_TOPMOST`, which raises it alone. Docking and the display pass call
+`TopBarWindow.RaiseToTop()` afterwards to bring the backdrop back directly beneath; a claim or re-registration
+started by a shell notification or the recovery timer does not, so another topmost window could end up between the
+bar and its backdrop until the next display pass. Raised by the Opus review of the KI-099 claim (2026-10-11); the
+re-register path already had it. *Fix direction:* raise an event from `AppBar` after any SETPOS and have
+`TopBarInstance` call `RaiseToTop()`.
+
+### KI-114
+**Explorer briefly reserved the top strip twice (work area 0,80) after a direct set** · S4 · Top bar, Dock · Open
+
+2026-10-11 14:51:40, while a work area of 0,40,2560,1600 set directly was in effect and Explorer re-showed its taskbar,
+the primary's work area became 0,80,2560,1600 for 13 s, then 0,40 again, with nothing in WinGnome's log in between.
+It looks as if Explorer subtracted our strip from a work area that already left it out. Seen once, before the
+KI-099 claim shipped; windows maximised in those 13 s would stop 40 px short. Watch for it in the log
+("Displays re-checked … work 0,80").
+
 ## Resolved
 
 | ID | Severity | Area | Summary | Fixed in |
@@ -918,7 +965,7 @@ window being peeked (the primary), and keep the secondary's region applied throu
 | KI-055 | S4 | Top bar | The Wi-Fi icon didn't show signal strength | f519cb5 (`ConnectionProfile.GetSignalBars`, no location consent needed; read on network changes plus a 45 s one-shot timer armed only while on Wi-Fi) |
 | KI-065 | S4 | Settings | Quick settings rows and the gear opened Windows Settings pages instead of the matching native panel | f5dcf13 (`TopBarActions` via `ShowSettings`; `--settings-panel` forwarded to a running instance; Win+I waits for shell-mode hotkeys, spec 0013) |
 | KI-100 | S3 | Dock | A pinned Docker Desktop showed a second, unpinned icon while running | c842f5d (launcher-child rule in `AppPathMatch.IsSameInstall`; see below) |
-| KI-102 | S3 | Top bar, Dock | Explorer keeps recomputing work areas without the strips after an everyday display pass, and the fallback's give-up lasts the run | f402e2e, 0300eed, 73a3c5d (fight detector, cool-down, silent writes; diagnostics in d9f85da; see below) |
+| KI-102 | S3 | Top bar, Dock | Explorer keeps recomputing work areas without the strips after an everyday display pass, and the fallback's give-up lasts the run | f402e2e, 0300eed, 73a3c5d (fight detector, cool-down, silent writes; diagnostics in d9f85da; see below). 2026-10-11: superseded in part by the KI-099 claim; every direct set is now silent and the fight detector is removed |
 
 ### KI-100
 **A pinned Docker Desktop showed a second, unpinned icon while running** · S3 · Dock · Fixed in c842f5d

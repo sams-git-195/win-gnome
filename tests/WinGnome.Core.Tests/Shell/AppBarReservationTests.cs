@@ -100,12 +100,12 @@ public class AppBarReservationTests
     }
 
     [Fact]
-    public void Recovery_MissingStrip_WaitsBeforeActing()
+    public void Recovery_MissingStrip_ClaimsTheSlotAgain_ThenWaitsBeforeActing()
     {
-        // Explorer applies a strip within about 0.3 s in the steady state, so acting at once would only race it.
+        // Explorer can lose the rectangle a registered bar claimed; one ABM_SETPOS has it apply the strip again.
         var recovery = new StripRecovery();
 
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 1500), recovery.Update(reserved: false, shrinkAllowed: true, 0));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Claim, 1500), recovery.Update(reserved: false, shrinkAllowed: true, 0));
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 1500), recovery.Update(reserved: false, shrinkAllowed: true, 1499));
         Assert.True(recovery.IsMissing);
     }
@@ -132,15 +132,15 @@ public class AppBarReservationTests
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Shrink, 46500), recovery.Update(reserved: false, shrinkAllowed: true, 26500));
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp, 346_500), recovery.Update(reserved: false, shrinkAllowed: true, 46500));
         // Long after the cool-down ended: the check starts a fresh episode instead of giving up forever (KI-102).
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 10_001_500), recovery.Update(reserved: false, shrinkAllowed: true, 10_000_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Claim, 10_001_500), recovery.Update(reserved: false, shrinkAllowed: true, 10_000_000));
     }
 
     [Fact]
     public void Recovery_ShrinkNotAllowed_RegistersAgainInstead()
     {
-        // Safe mode changes no system state, so re-registering is the only tool it has.
+        // Safe mode changes no system state, so claiming the slot and re-registering are the only tools it has.
         var recovery = new StripRecovery();
-        recovery.Update(reserved: false, shrinkAllowed: false, 0);
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Claim, 1500), recovery.Update(reserved: false, shrinkAllowed: false, 0));
 
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Reregister, 6500), recovery.Update(reserved: false, shrinkAllowed: false, 1500));
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Reregister, 26500), recovery.Update(reserved: false, shrinkAllowed: false, 6500));
@@ -161,6 +161,41 @@ public class AppBarReservationTests
     }
 
     [Fact]
+    public void Recovery_ChecksWhileMissing_ClaimOnlyOncePerEpisode()
+    {
+        // Our SETPOS makes Explorer notify every AppBar, ours included; the check that notification runs must not
+        // claim again, or bars answering each other's notifications would loop.
+        var recovery = new StripRecovery();
+        recovery.Update(reserved: false, shrinkAllowed: true, 0);
+
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 1500), recovery.Update(reserved: false, shrinkAllowed: true, 1));
+    }
+
+    [Theory]
+    [InlineData(29_999, StripRecoveryKind.Wait)]  // A new episode one millisecond inside the interval only waits.
+    [InlineData(30_000, StripRecoveryKind.Claim)] // Exactly the interval after the last claim: claims again.
+    public void Recovery_StripLostAgainSoonAfterAClaim_DoesNotClaimAgain(long nowMs, StripRecoveryKind expected)
+    {
+        // Two bars whose claims each make Explorer drop the other's strip must not claim in turn for ever.
+        var recovery = new StripRecovery();
+        recovery.Update(reserved: false, shrinkAllowed: true, 0);
+        recovery.Update(reserved: true, shrinkAllowed: true, 500);
+
+        Assert.Equal(new StripRecoveryStep(expected, nowMs + 1500), recovery.Update(reserved: false, shrinkAllowed: true, nowMs));
+    }
+
+    [Fact]
+    public void Recovery_StripLostAgainSoonAfterAClaim_StillSetsTheWorkAreaOnSchedule()
+    {
+        var recovery = new StripRecovery();
+        recovery.Update(reserved: false, shrinkAllowed: true, 0);
+        recovery.Update(reserved: true, shrinkAllowed: true, 500);
+        recovery.Update(reserved: false, shrinkAllowed: true, 10_000);
+
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Shrink, 16_500), recovery.Update(reserved: false, shrinkAllowed: true, 11_500));
+    }
+
+    [Fact]
     public void Recovery_StripReservedAgain_StartsAfreshNextTime()
     {
         var recovery = new StripRecovery();
@@ -168,7 +203,7 @@ public class AppBarReservationTests
         recovery.Update(reserved: false, shrinkAllowed: true, 1500);
         recovery.Update(reserved: true, shrinkAllowed: true, 2000);
 
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 101_500), recovery.Update(reserved: false, shrinkAllowed: true, 100_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Claim, 101_500), recovery.Update(reserved: false, shrinkAllowed: true, 100_000));
     }
 
     [Fact]
@@ -185,7 +220,7 @@ public class AppBarReservationTests
         recovery.Reset();
 
         Assert.False(recovery.IsMissing);
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 501_500), recovery.Update(reserved: false, shrinkAllowed: true, 500_000));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Claim, 501_500), recovery.Update(reserved: false, shrinkAllowed: true, 500_000));
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Shrink, 506_500), recovery.Update(reserved: false, shrinkAllowed: true, 501_500));
     }
 
@@ -234,7 +269,7 @@ public class AppBarReservationTests
 
         // The KI-102(b) regression: at the deadline the next check starts a fresh, fully bounded episode instead
         // of giving up for the rest of the run.
-        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Wait, 348_000), recovery.Update(reserved: false, shrinkAllowed: true, 346_500));
+        Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Claim, 348_000), recovery.Update(reserved: false, shrinkAllowed: true, 346_500));
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Shrink, 353_000), recovery.Update(reserved: false, shrinkAllowed: true, 348_000));
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Shrink, 373_000), recovery.Update(reserved: false, shrinkAllowed: true, 353_000));
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.Shrink, 393_000), recovery.Update(reserved: false, shrinkAllowed: true, 373_000));
@@ -279,6 +314,23 @@ public class AppBarReservationTests
         recovery.Update(reserved: false, shrinkAllowed: true, 1_006_500);
         recovery.Update(reserved: false, shrinkAllowed: true, 1_026_500);
         Assert.Equal(new StripRecoveryStep(StripRecoveryKind.GiveUp, 1_346_500), recovery.Update(reserved: false, shrinkAllowed: true, 1_046_500));
+    }
+
+    [Theory]
+    [InlineData(AppBarEdge.Top, 0, 0, 2560, 40, 0, 0, 2560, 41)]
+    [InlineData(AppBarEdge.Bottom, 0, 1540, 2560, 1600, 0, 1539, 2560, 1600)]
+    [InlineData(AppBarEdge.Left, 0, 0, 60, 1600, 0, 0, 61, 1600)]
+    [InlineData(AppBarEdge.Right, 2500, 0, 2560, 1600, 2499, 0, 2560, 1600)]
+    public void OnePixelThicker_GrowsAwayFromTheEdge(AppBarEdge edge, int l, int t, int r, int b, int el, int et, int er, int eb)
+    {
+        Assert.Equal(new PixelRect(el, et, er, eb), AppBarReservation.OnePixelThicker(edge, new PixelRect(l, t, r, b)));
+    }
+
+    [Fact]
+    public void OnePixelThicker_MonitorAboveThePrimary()
+    {
+        Assert.Equal(new PixelRect(-447, -1440, 2993, -1407),
+            AppBarReservation.OnePixelThicker(AppBarEdge.Top, new PixelRect(-447, -1440, 2993, -1408)));
     }
 
     [Fact]

@@ -1213,3 +1213,21 @@ AGENTS.md §7.
 Advisor review (deepseek-v4-pro-0813, 2026-10-09): plan sound; both must-fix clarifications and all five
 nice-to-haves folded in; the silent-write premise remains a hypothesis whose failure mode is the bounded status
 quo, not a new failure.
+
+## Addendum 2026-10-11: Explorer loses the bar's rectangle — claim the slot again
+
+User report: maximised windows sat behind the top bar. The everyday log showed every start-up ending in three
+broadcast direct sets, each reset by Explorer within ~0.4 s, then the five-minute cool-down. Live probes (KNOWN_ISSUES
+KI-099 update) found the bar still registered but its rectangle no longer counted by Explorer, and that Explorer
+recomputes only when a SETPOS **changes** a bar's rectangle. That squares with the earlier "a SETPOS of the unchanged
+rectangle does not bring a strip back" (rule 5, B-runs): the rectangle was unchanged, so Explorer ignored it.
+
+What changed:
+- `StripRecovery` starts each missing-strip episode with `Claim` instead of `Wait` (due at +1.5 s as before): the bar
+  sends a SETPOS one pixel thicker (`AppBarReservation.OnePixelThicker`) and then its own rectangle, so Explorer applies
+  the strip and broadcasts the change itself. At most one claim per bar per 30 s across episodes
+  (`ClaimIntervalMs`); a sooner episode only waits. This reverses the rejection of a SETPOS re-assert in the KI-102
+  evaluation above for the first step of an episode, bounded by the interval. The claim runs on the next dispatcher
+  turn, never nested inside another bar's `SHAppBarMessage` call.
+- Every direct set is silent; `WorkAreaFightDetector` is removed. The cost is KI-103 for windows maximised before a
+  silent set, now mostly at start-up, where the claim does not take during Explorer's deferral.

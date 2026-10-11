@@ -168,10 +168,11 @@ internal sealed partial class AppBar : IDisposable
     /// Checks that the monitor's work area still leaves the strip out (display passes call this; shell notifications
     /// and the bar's own one-shot timer use the same check). Explorer applies strips late on its own (seen ~35 s
     /// after the taskbar went auto-hide) and can recompute work areas without them (a monitor unplugged), so a missing
-    /// strip is handled by <see cref="StripRecovery"/>: wait 1.5 s, then set the work area directly — or, where that
-    /// isn't allowed, register the AppBar again (ABM_REMOVE, ABM_NEW and the docking sequence; a SETPOS of the
-    /// unchanged rectangle does not bring a strip back) — at most three times, 5 s and 20 s apart, then a
-    /// five-minute cool-down after which the checks resume. A one-shot timer runs only while a strip is missing.
+    /// strip is handled by <see cref="StripRecovery"/>: claim the slot again at once (Explorer can lose the rectangle a
+    /// registered bar claimed), and if the strip is still missing 1.5 s later set the work area directly — or, where that
+    /// isn't allowed, register the AppBar again (ABM_REMOVE, ABM_NEW and the docking sequence; while Explorer defers its
+    /// layout pass a SETPOS of the unchanged rectangle does not bring a strip back) — at most three times, 5 s and 20 s
+    /// apart, then a five-minute cool-down after which the checks resume. A one-shot timer runs only while a strip is missing.
     /// Returns true when it acted on a missing strip.
     /// </summary>
     public bool EnsureReserved() => CheckStrip("a display pass");
@@ -198,21 +199,24 @@ internal sealed partial class AppBar : IDisposable
                 return false;
 
             case StripRecoveryKind.Wait:
+                StartRecoveryTimer(step.DueMs);
+                return false;
+
+            case StripRecoveryKind.Claim:
                 if (_gaveUp)
                 {
-                    // Update only returns Wait after exhaustion once the cool-down has expired (or the episode is
-                    // fresh, when _gaveUp is already false), so this fires exactly once per cool-down.
+                    // Update only starts an episode after exhaustion once the cool-down has expired (or the episode
+                    // is fresh, when _gaveUp is already false), so this fires exactly once per cool-down.
                     _gaveUp = false;
                     Log.Info($"AppBar 0x{_hwnd:X}: cool-down over; checking the strip {Format(Bounds)} again");
                 }
 
-                if (!wasMissing)
-                {
-                    Log.Info($"AppBar 0x{_hwnd:X}: after {trigger} the work area of monitor {Format(_monitor)} doesn't leave out the strip {Format(Bounds)}; leaving it to Explorer for {StripRecovery.FirstActionMs / 1000.0:0.#} s");
-                }
-
+                Log.Info($"AppBar 0x{_hwnd:X}: after {trigger} the work area of monitor {Format(_monitor)} doesn't leave out the strip {Format(Bounds)}; claiming it again");
+                // On the next dispatcher turn: a check can run inside a notification that reached us while another
+                // bar in this process is still inside its own SHAppBarMessage call, and must not nest a SETPOS in it.
+                _dispatcher.BeginInvoke(Claim, DispatcherPriority.Background);
                 StartRecoveryTimer(step.DueMs);
-                return false;
+                return true;
 
             case StripRecoveryKind.Shrink:
             {
@@ -245,6 +249,34 @@ internal sealed partial class AppBar : IDisposable
                 // shorten the remaining interval but never push the cool-down later (KI-102).
                 StartRecoveryTimer(step.DueMs);
                 return false;
+        }
+    }
+
+    /// <summary>
+    /// Claims the bar's slot again without re-registering, so Explorer recomputes the work area with the strip and
+    /// broadcasts the change itself (maximised windows then move clear of the bar). A SETPOS of the rectangle Explorer
+    /// already holds changes nothing and is ignored, so the bar first claims a strip one pixel thicker, then its own:
+    /// on build 26200 a plain SETPOS applied the strip in 2 of 8 tries (only, it seems, when Explorer had lost the
+    /// rectangle), the pair within 0.5 s in 4 of 4.
+    /// </summary>
+    private void Claim()
+    {
+        if (!_registered)
+        {
+            return; // Undocked since the claim was queued.
+        }
+
+        var before = Bounds;
+        Guarded(() =>
+        {
+            var rect = QueryRect();
+            SetPos(AppBarReservation.OnePixelThicker((Core.Shell.AppBarEdge)(int)_edge, rect));
+            Apply(rect);
+        });
+
+        if (Bounds != before)
+        {
+            Moved?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -350,6 +382,14 @@ internal sealed partial class AppBar : IDisposable
         };
     }
 
+    private void SetPos(PixelRect rect)
+    {
+        var data = NewData();
+        data.uEdge = (uint)_edge;
+        data.rc = RECT.From(rect);
+        Send(ABM_SETPOS, ref data);
+    }
+
     /// <summary>Claims <paramref name="rect"/> (SETPOS when registered), moves the window there and tells the shell.</summary>
     private void Apply(PixelRect rect)
     {
@@ -385,7 +425,8 @@ internal sealed partial class AppBar : IDisposable
     /// <summary>
     /// ABN_POSCHANGED: another AppBar came, went or moved. Only a QUERYPOS unless our slot really changed, because
     /// every SETPOS makes the shell notify every other bar on the edge, and N bars that always answer with a SETPOS
-    /// notify each other forever. <paramref name="trigger"/> is the notification's own name for the log lines: the
+    /// notify each other forever; a missing strip may claim the slot again, but <see cref="StripRecovery"/> bounds
+    /// that to one SETPOS per 30 s. <paramref name="trigger"/> is the notification's own name for the log lines: the
     /// KI-102 evidence cannot say which notification accompanied Explorer's recomputes, and the next occurrence
     /// should (spec 0010, B4).
     /// </summary>
@@ -423,7 +464,7 @@ internal sealed partial class AppBar : IDisposable
         }
 
         // The slot may be unchanged while Explorer recomputed the work area without our strip (for example after the
-        // taskbar's auto-hide state changed); StripRecovery decides when to act, so notifications can't loop.
+        // taskbar's auto-hide state changed); StripRecovery decides when to act (claims included), so notifications can't loop.
         CheckStrip(trigger);
     }
 
