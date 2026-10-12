@@ -43,6 +43,17 @@ public static class CaptionButtonGeometry
     }
 
     /// <summary>
+    /// How many rows the patch must reach above a probed buttons rectangle to cover the whole native button band:
+    /// up to the inside edge of the border. Used when the probe saw only the top resize border above the buttons
+    /// (<see cref="CaptionHitTestProbe.IsResizeBorderAbove"/>). The circles stay centred on the probed rows.
+    /// </summary>
+    /// <param name="buttonsTop">Screen y of the probed buttons' top (already inside the border).</param>
+    /// <param name="frameTop">Top of the visible frame.</param>
+    /// <param name="border">Border thickness in physical pixels (0 when maximised).</param>
+    public static int PatchTopExtension(int buttonsTop, int frameTop, int border) =>
+        Math.Max(0, buttonsTop - (frameTop + Math.Max(0, border)));
+
+    /// <summary>
     /// How far, in DIPs, a maximised window extends past its monitor on each side: the sizing frame plus the padded
     /// border, as GetSystemMetricsForDpi reports them in physical pixels for the window's own DPI. A window that
     /// draws its own caption pads its content by this much so nothing is cut off while maximised.

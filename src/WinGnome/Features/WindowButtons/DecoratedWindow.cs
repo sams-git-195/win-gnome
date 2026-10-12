@@ -45,6 +45,9 @@ internal sealed class DecoratedWindow : IDisposable
     // the frame's right edge, so the overlay covers them rather than DWM's whole rectangle.
     private double? _ownButtonsWidthDip;
 
+    /// <summary>The width in DIPs of the window's own buttons once found (see <see cref="SetOwnButtonsWidth"/>), else null.</summary>
+    public double? OwnButtonsWidthDip => _ownButtonsWidthDip;
+
     // Set when a click guard found the probed buttons gone: hidden until a new probe arrives (SetProbe).
     private bool _probeSuspended;
 
@@ -219,7 +222,7 @@ internal sealed class DecoratedWindow : IDisposable
         // Same size as when the layout was built, so the overlay just moves with the frame. A layout implies that
         // the surfaces exist (see Rebuild).
         _buttons!.Place(_layout.Bounds.Offset(metrics.Frame.Left - _anchor.Frame.Left, metrics.Buttons.Top - _anchor.Buttons.Top));
-        _mask?.Place(metrics.Buttons);
+        _mask?.Place(metrics.Buttons with { Top = metrics.Buttons.Top - metrics.PatchTopExtension });
         if (!_shown)
         {
             // Stack the hidden surfaces first so they never flash above windows that cover the target, then once
@@ -338,7 +341,7 @@ internal sealed class DecoratedWindow : IDisposable
         var canMinimize = (style & NativeMethods.WS_MINIMIZEBOX) != 0;
         var canMaximize = (style & NativeMethods.WS_MAXIMIZEBOX) != 0;
         _layout = CaptionDecorationRules.HasButtonTrio(canMinimize, canMaximize) && !IsDpiVirtualized(metrics.Dpi)
-            ? CaptionButtonLayout.Compute(metrics.Buttons, metrics.Frame, metrics.Scale, _style.Settings)
+            ? CaptionButtonLayout.Compute(metrics.Buttons, metrics.Frame, metrics.Scale, _style.Settings, metrics.PatchTopExtension)
             : null;
         if (_layout is null || !EnsureSurfaces())
         {

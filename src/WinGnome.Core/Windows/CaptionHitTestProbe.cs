@@ -47,6 +47,9 @@ public static class CaptionHitTestProbe
     public const double MaxTopGap = 8;
 
     private const int HtCaption = 2;
+    private const int HtTop = 12;
+    private const int HtTopLeft = 13;
+    private const int HtTopRight = 14;
 
     /// <summary>
     /// The screen x of every sample along the probed row, right to left, starting one pixel inside the frame.
@@ -209,6 +212,33 @@ public static class CaptionHitTestProbe
         }
 
         return bottom == codes.Count ? null : (top, bottom);
+    }
+
+    /// <summary>
+    /// True when every row above the close zone (the first <paramref name="top"/> samples of a column probe) is
+    /// the window's top resize border (HTTOP and its corners), so the app's buttons visibly reach the frame top
+    /// and only the border's hit-test rows hide that (Windows Settings answers HTTOP for rows 1 to 5). The first
+    /// row may answer anything: it is the 1 px window border.
+    /// An HTCLIENT or HTCAPTION gap is the app's own bar, not button area.
+    /// </summary>
+    public static bool IsResizeBorderAbove(IReadOnlyList<int> codes, int top)
+    {
+        ArgumentNullException.ThrowIfNull(codes);
+        if (top <= 0 || top > codes.Count)
+        {
+            return false;
+        }
+
+        // Row 0 is the window's 1 px border, which Settings answers with HTCLIENT.
+        for (var row = 1; row < top; row++)
+        {
+            if (codes[row] is not (HtTop or HtTopLeft or HtTopRight))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>

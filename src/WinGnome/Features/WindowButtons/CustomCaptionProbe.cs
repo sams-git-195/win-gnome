@@ -25,7 +25,12 @@ internal enum ProbeSource
 /// frame. Only valid while the frame keeps the size and DPI it had when probed.
 /// </summary>
 /// <param name="Relative">The buttons, relative to the frame's top-left corner, in physical pixels.</param>
-internal readonly record struct ProbedCaption(PixelRect Relative, int FrameWidth, int FrameHeight, uint Dpi, ProbeSource Source)
+/// <param name="CoversTopBorder">
+/// True when only the top resize border sits above the buttons' hit-test zone (Windows Settings), so the native
+/// buttons are drawn up to the frame top and the patch must cover that too (<see cref="CaptionButtonGeometry.PatchTopExtension"/>).
+/// </param>
+internal readonly record struct ProbedCaption(
+    PixelRect Relative, int FrameWidth, int FrameHeight, uint Dpi, ProbeSource Source, bool CoversTopBorder = false)
 {
     /// <summary>What the click guard expects over each button.</summary>
     public ProbeLayout Layout => Source switch
@@ -101,7 +106,8 @@ internal static class CustomCaptionProbe
             {
                 return TryHitTestColumn(hwnd, frame, columnX, scale, clock, out var columnCodes)
                     && CaptionHitTestProbe.FindCloseExtent(columnCodes, maxTopGap) is { } extent
-                    ? Result(frame, groupLeft, extent, dpi, fromChild ? ProbeSource.ChildHitTest : ProbeSource.HitTest)
+                    ? Result(frame, groupLeft, extent, dpi, fromChild ? ProbeSource.ChildHitTest : ProbeSource.HitTest,
+                        CaptionHitTestProbe.IsResizeBorderAbove(columnCodes, extent.Top))
                     : null;
             }
 
@@ -181,10 +187,11 @@ internal static class CustomCaptionProbe
         }
     }
 
-    private static ProbedCaption Result(PixelRect frame, int groupLeft, (int Top, int Bottom) extent, uint dpi, ProbeSource source)
+    private static ProbedCaption Result(
+        PixelRect frame, int groupLeft, (int Top, int Bottom) extent, uint dpi, ProbeSource source, bool coversTopBorder = false)
     {
         var buttons = CaptionHitTestProbe.ButtonsRect(frame, groupLeft, extent);
-        return new ProbedCaption(buttons.Offset(-frame.Left, -frame.Top), frame.Width, frame.Height, dpi, source);
+        return new ProbedCaption(buttons.Offset(-frame.Left, -frame.Top), frame.Width, frame.Height, dpi, source, coversTopBorder);
     }
 
     private static bool TryHitTestRow(
