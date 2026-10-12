@@ -89,4 +89,15 @@ public class CaptionDecorationRulesTests
     {
         Assert.Equal(expected, CaptionDecorationRules.IsDpiVirtualized(windowDpi, monitorDpi));
     }
+
+    [Theory]
+    [InlineData("ApplicationFrameWindow", true)] // Windows Settings and other UWP frames
+    [InlineData("applicationframewindow", false)] // class names are case-sensitive
+    [InlineData("CabinetWClass", false)]
+    [InlineData("SDL_app", false)]
+    [InlineData(null, false)]
+    public void ProbesWhenUnreported_OnlyUwpFrames(string? className, bool expected)
+    {
+        Assert.Equal(expected, CaptionDecorationRules.ProbesWhenUnreported(className));
+    }
 }

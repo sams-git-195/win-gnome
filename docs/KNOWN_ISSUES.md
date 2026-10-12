@@ -18,7 +18,7 @@ detail section below the Resolved table when the measured evidence behind the fi
 KI-102).
 
 IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-112 all
-have entries now). The next free ID is **KI-116**; grep the specs for `KI-0` before allocating one.
+have entries now). The next free ID is **KI-117**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
@@ -78,6 +78,7 @@ have entries now). The next free ID is **KI-116**; grep the specs for `KI-0` bef
 | [KI-110](#ki-110) | S4 | Settings | Bluetooth panel v1 doesn't pair, discover, connect or show battery, and its radio and Remove Device paths aren't verified live | Open |
 | [KI-111](#ki-111) | S4 | Settings | Wi-Fi profile leftovers: a crash mid-connect can leave a just-created or overwritten profile saved, and a denied all-user write falls back to a per-user profile | Open |
 | [KI-112](#ki-112) | S4 | Taskbar | The secondary taskbar's empty window region is a race with Explorer, so a flash can still get through | Open |
+| [KI-116](#ki-116) | S4 | Window buttons | A patch fitted to an app's own buttons (Steam) is measured once per decoration | Open |
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -116,7 +117,13 @@ report them to DWM (`DWMWA_CAPTION_BUTTON_BOUNDS` is empty or stale). Since 652c
 maximise and minimise zones: this works for apps that support Snap Layouts, such as Claude desktop
 (spec 0005). Spec 0009 (branch, 2026-10-09) adds VS Code and Docker Desktop (short gaps between zones, every
 `Chrome_WidgetWin_*` class probed), asks the deepest child window under each point, and, behind a second
-setting, recognises GitHub Desktop's HTML buttons from a built-in profile of their width. Clicks on probed
+setting, recognises GitHub Desktop's HTML buttons from a built-in profile of their width. UWP frames
+(`ApplicationFrameWindow`, such as Windows Settings) report an empty DWM rectangle but answer the button codes,
+so with the custom-title-bar setting on they are probed too (2026-10-12); with it off, Settings keeps its own
+buttons. Apps that hide the Windows title bar but still report full-size DWM buttons while drawing smaller ones
+(Steam: DWM says 148 DIPs, its own buttons are 96) are asked once, off the UI thread, for the HTCLIENT run
+beside a drag strip at the right edge, and the patch shrinks to it (never below the circles' width); an app
+whose row isn't client-then-caption keeps the full DWM-sized patch. Clicks on probed
 windows are checked against a fresh hit test first, so a stale or wrong decoration drops the click instead of
 sending a command. Still undecorated:
 - **Dia** answers `HTMAXBUTTON` only over its maximise button (from its Windows App SDK non-client child) and
@@ -904,6 +911,16 @@ the 50 ms re-hide; by 18:59 both windows were back to empty regions. Likely caus
 peek suspends the guard and removes the regions on all taskbars, so Explorer's post-peek auto-hide slide on the
 secondary draws before the region is re-applied. Candidate fix: during a peek remove the region only from the
 window being peeked (the primary), and keep the secondary's region applied throughout.
+
+### KI-116
+**A patch fitted to an app's own buttons (Steam) is measured once per decoration** · S4 · Window buttons · Open
+
+Windows that hide the Windows title bar but report full-size DWM caption buttons are hit-tested once when they're
+decorated, and the patch is narrowed to the width of the app's own buttons from the frame's right edge (see
+KI-007). The width isn't measured again, so if the app later changes its buttons' size (a different view, a
+scaling change it handles itself) the patch keeps the old width until the window is decorated again (closed and
+reopened, or WinGnome restarted). The patch never gets narrower than the circles need, nor wider than DWM's
+rectangle. The edge is rounded towards the drag strip by up to one 2 px sample, so the patch may cover a pixel of it.
 
 ## Resolved
 

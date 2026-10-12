@@ -31,6 +31,13 @@ public static class CaptionDecorationRules
     /// </summary>
     public const string WindowsAppSdkCaptionControlsClass = "ReunionWindowingCaptionControls";
 
+    /// <summary>
+    /// The frame ApplicationFrameHost draws around UWP apps (Windows Settings). It draws its caption buttons in a
+    /// child window and usually reports an empty DWM caption-button rectangle, but answers HTMINBUTTON,
+    /// HTMAXBUTTON and HTCLOSE over them.
+    /// </summary>
+    private const string UwpFrameClass = "ApplicationFrameWindow";
+
     /// <summary>Apps that draw their caption buttons in HTML, with the width of one button in DIPs.</summary>
     private static readonly WebButtonProfile[] WebButtonProfiles =
     [
@@ -49,6 +56,13 @@ public static class CaptionDecorationRules
     /// </summary>
     public static bool CanProbeSkippedClass(string? className) =>
         IsSkippedClass(className) && !string.Equals(className, "Ghost", StringComparison.Ordinal);
+
+    /// <summary>
+    /// True when a window of this class that DWM reports no caption buttons for may be probed instead
+    /// (<see cref="CaptionHitTestProbe"/>), with the experimental custom-title-bar setting on. Windows that do
+    /// report buttons are decorated from DWM as usual.
+    /// </summary>
+    public static bool ProbesWhenUnreported(string? className) => string.Equals(className, UwpFrameClass, StringComparison.Ordinal);
 
     /// <summary>
     /// The width in DIPs of each caption button an app draws in HTML, for the few apps WinGnome knows (spec 0009).
