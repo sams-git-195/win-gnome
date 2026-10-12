@@ -18,7 +18,12 @@ namespace WinGnome.Features.WindowButtons;
 /// <param name="Dpi">GetDpiForWindow of the target.</param>
 /// <param name="Border">Visible window border thickness in physical pixels (0 when maximised).</param>
 /// <param name="IsMaximized">IsZoomed of the target, read once so the border and the layout always agree.</param>
-internal readonly record struct CaptionMetrics(PixelRect Frame, PixelRect Buttons, uint Dpi, int Border, bool IsMaximized)
+/// <param name="PatchTopExtension">
+/// Rows above <paramref name="Buttons"/> that the patch also covers because the native buttons are drawn there
+/// too (see <see cref="CaptionButtonGeometry.PatchTopExtension"/>); 0 unless a probe found them.
+/// </param>
+internal readonly record struct CaptionMetrics(
+    PixelRect Frame, PixelRect Buttons, uint Dpi, int Border, bool IsMaximized, int PatchTopExtension = 0)
 {
     private static readonly int RectSize = Marshal.SizeOf<RECT>();
 
@@ -82,7 +87,9 @@ internal readonly record struct CaptionMetrics(PixelRect Frame, PixelRect Button
         var buttons = probe.Relative.Offset(frame.Left, frame.Top);
         var isMaximized = NativeMethods.IsZoomed(hwnd);
         var border = isMaximized ? 0 : ReadBorder(hwnd);
-        metrics = new CaptionMetrics(frame, CaptionButtonGeometry.InsideBorder(buttons, frame, border), dpi, border, isMaximized);
+        var inside = CaptionButtonGeometry.InsideBorder(buttons, frame, border);
+        var extension = probe.CoversTopBorder ? CaptionButtonGeometry.PatchTopExtension(inside.Top, frame.Top, border) : 0;
+        metrics = new CaptionMetrics(frame, inside, dpi, border, isMaximized, extension);
         return true;
     }
 

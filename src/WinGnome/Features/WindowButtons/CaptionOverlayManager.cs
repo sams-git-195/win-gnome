@@ -62,6 +62,11 @@ internal sealed class CaptionOverlayManager : IDisposable
     private readonly Dictionary<nint, CaptionProbeThrottle> _throttles = [];
     private readonly DeadlineTimer _probeTimer;
 
+    // Windows decorated from DWM whose own buttons were not found yet, how often each was asked again
+    // (see OwnButtonsRetry), and when the next ask is due.
+    private readonly Dictionary<nint, int> _ownButtonsRetries = [];
+    private readonly DeadlineTimer _ownButtonsTimer;
+
     // Decorated windows moved or resized by code, waiting to be re-sampled once they hold still.
     private readonly DeadlineTimer _resampleTimer;
     private readonly HashSet<DecoratedWindow> _pendingSamples = [];
@@ -85,6 +90,7 @@ internal sealed class CaptionOverlayManager : IDisposable
         _restackTimer = new DispatcherTimer(RestackDelays[0], DispatcherPriority.Normal, OnRestackTimer, dispatcher) { IsEnabled = false };
         _probeTimer = new DeadlineTimer(dispatcher, DispatcherPriority.Background, OnProbeDue);
         _resampleTimer = new DeadlineTimer(dispatcher, DispatcherPriority.Background, OnResampleDue);
+        _ownButtonsTimer = new DeadlineTimer(dispatcher, DispatcherPriority.Background, OnOwnButtonsRetryDue);
     }
 
     /// <summary>Number of windows currently decorated.</summary>
@@ -159,6 +165,7 @@ internal sealed class CaptionOverlayManager : IDisposable
         _restackTimer.Stop();
         _probeTimer.Dispose();
         _resampleTimer.Dispose();
+        _ownButtonsTimer.Dispose();
         _scratch.Clear();
         _scratch.AddRange(_windows.Keys);
         foreach (var hwnd in _scratch)
@@ -263,9 +270,15 @@ internal sealed class CaptionOverlayManager : IDisposable
     private void StartOwnButtonsProbe(nint hwnd, CaptionMetrics metrics)
     {
         var clientOrigin = default(POINT);
-        if (!_windows.TryGetValue(hwnd, out var window) || !NativeMethods.ClientToScreen(hwnd, ref clientOrigin)
-            || !CaptionButtonGeometry.ClientCoversCaption(clientOrigin.Y, metrics.Buttons))
+        if (!_windows.TryGetValue(hwnd, out var window) || !NativeMethods.ClientToScreen(hwnd, ref clientOrigin))
         {
+            return;
+        }
+
+        if (!CaptionButtonGeometry.ClientCoversCaption(clientOrigin.Y, metrics.Buttons))
+        {
+            // Normal title bar; a window that is still setting up its frame may cover it later.
+            ScheduleOwnButtonsRetry(hwnd);
             return;
         }
 
@@ -285,14 +298,49 @@ internal sealed class CaptionOverlayManager : IDisposable
         }
 
         // The decoration may have been dropped (or the handle recycled) meanwhile.
-        if (!_started || left is not { } ownLeft || !_windows.TryGetValue(window.Target, out var current) || current != window)
+        if (!_started || !_windows.TryGetValue(window.Target, out var current) || current != window)
         {
             return;
         }
 
+        if (left is not { } ownLeft)
+        {
+            // Steam restored from the tray has its frame before its web UI has drawn the buttons.
+            ScheduleOwnButtonsRetry(window.Target);
+            return;
+        }
+
+        _ownButtonsRetries.Remove(window.Target);
         var widthDip = (probed.Frame.Right - ownLeft) / probed.Scale;
         Log.Info($"Window 0x{window.Target:X} draws its own caption buttons {widthDip:0} DIPs wide (frame {probed.Frame.Width}x{probed.Frame.Height} px, DWM buttons {probed.Buttons.Width} px); fitting its window buttons to them");
         window.SetOwnButtonsWidth(widthDip);
+    }
+
+    private void ScheduleOwnButtonsRetry(nint hwnd)
+    {
+        _ownButtonsRetries.TryGetValue(hwnd, out var retry);
+        if (OwnButtonsRetry.DelayMs(retry) is not { } delay)
+        {
+            _ownButtonsRetries.Remove(hwnd);
+            return;
+        }
+
+        _ownButtonsRetries[hwnd] = retry + 1;
+        _ownButtonsTimer.Set(hwnd, delay);
+    }
+
+    private void OnOwnButtonsRetryDue(nint hwnd)
+    {
+        // Re-measure: the window may be minimised, resized or gone since the last ask.
+        if (_started && _windows.TryGetValue(hwnd, out var window) && window.OwnButtonsWidthDip is null
+            && !NativeMethods.IsIconic(hwnd) && CaptionMetrics.TryRead(hwnd, out var metrics))
+        {
+            StartOwnButtonsProbe(hwnd, metrics);
+        }
+        else if (_started && _windows.ContainsKey(hwnd))
+        {
+            ScheduleOwnButtonsRetry(hwnd);
+        }
     }
 
     private void Decorate(nint hwnd, ProbedCaption? probe)
@@ -710,6 +758,8 @@ internal sealed class CaptionOverlayManager : IDisposable
 
         _pendingSamples.Remove(window);
         _resampleTimer.Remove(hwnd);
+        _ownButtonsTimer.Remove(hwnd);
+        _ownButtonsRetries.Remove(hwnd);
         window.RemovalRequested -= OnRemovalRequested;
         window.SampleRequested -= OnSampleRequested;
         window.ReprobeRequested -= OnReprobeRequested;

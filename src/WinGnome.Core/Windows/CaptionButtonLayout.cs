@@ -37,17 +37,24 @@ public static class CaptionButtonLayout
     /// <param name="windowScreen">Screen rectangle of the window.</param>
     /// <param name="dpiScale">Physical pixels per DIP (1.0 = 96 dpi).</param>
     /// <param name="settings">User settings (side, order, diameter, spacing).</param>
-    public static CaptionOverlayLayout? Compute(PixelRect nativeButtonsScreen, PixelRect windowScreen, double dpiScale, WindowButtonSettings settings)
+    /// <param name="patchTopExtension">
+    /// Rows in physical pixels the overlay reaches above <paramref name="nativeButtonsScreen"/> to cover native
+    /// button area the hit-test probe could not see (<see cref="CaptionButtonGeometry.PatchTopExtension"/>). The
+    /// circles stay centred on <paramref name="nativeButtonsScreen"/>.
+    /// </param>
+    public static CaptionOverlayLayout? Compute(
+        PixelRect nativeButtonsScreen, PixelRect windowScreen, double dpiScale, WindowButtonSettings settings, int patchTopExtension = 0)
     {
         ArgumentNullException.ThrowIfNull(settings);
         CaptionButtonKind[] order = settings.Order == ButtonOrder.CloseMinimizeMaximize
             ? [CaptionButtonKind.Close, CaptionButtonKind.Minimize, CaptionButtonKind.Maximize]
             : [CaptionButtonKind.Minimize, CaptionButtonKind.Maximize, CaptionButtonKind.Close];
-        return Compute(nativeButtonsScreen, windowScreen, dpiScale, settings, order);
+        return Compute(nativeButtonsScreen, windowScreen, dpiScale, settings, order, Math.Max(0, patchTopExtension));
     }
 
     private static CaptionOverlayLayout? Compute(
-        PixelRect nativeButtonsScreen, PixelRect windowScreen, double dpiScale, WindowButtonSettings settings, CaptionButtonKind[] order)
+        PixelRect nativeButtonsScreen, PixelRect windowScreen, double dpiScale, WindowButtonSettings settings, CaptionButtonKind[] order,
+        int patchTopExtension)
     {
         if (nativeButtonsScreen.IsEmpty || !double.IsFinite(dpiScale) || dpiScale <= 0)
         {
@@ -66,11 +73,11 @@ public static class CaptionButtonLayout
         {
             var left = windowScreen.Left + RoundToInt(LeftInset * dpiScale);
             var width = (int)Math.Ceiling(((Padding * 2) + naturalGroup) * dpiScale);
-            bounds = new PixelRect(left, nativeButtonsScreen.Top, left + width, nativeButtonsScreen.Bottom);
+            bounds = new PixelRect(left, nativeButtonsScreen.Top - patchTopExtension, left + width, nativeButtonsScreen.Bottom);
         }
         else
         {
-            bounds = nativeButtonsScreen;
+            bounds = nativeButtonsScreen with { Top = nativeButtonsScreen.Top - patchTopExtension };
         }
 
         var widthDip = bounds.Width / dpiScale;
@@ -96,7 +103,8 @@ public static class CaptionButtonLayout
         var firstCenter = isLeft
             ? Padding + (diameter / 2)
             : widthDip - Padding - group + (diameter / 2);
-        var centerY = heightDip / 2;
+        // Centred on the probed rows, not on the extension above them.
+        var centerY = (heightDip / 2) + (patchTopExtension / (2 * dpiScale));
 
         var slots = new CaptionButtonSlot[count];
         for (var i = 0; i < count; i++)
@@ -167,7 +175,7 @@ public static class CaptionButtonLayout
 
         var native = new PixelRect(Math.Max(0, bar.Right - HeaderBarNativeButtonsWidth), 0, bar.Right, bar.Bottom);
         return closeOnly
-            ? Compute(native, bar, 1.0, settings, [CaptionButtonKind.Close])
+            ? Compute(native, bar, 1.0, settings, [CaptionButtonKind.Close], 0)
             : Compute(native, bar, 1.0, settings);
     }
 

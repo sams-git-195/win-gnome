@@ -915,6 +915,9 @@ window being peeked (the primary), and keep the secondary's region applied throu
 ### KI-116
 **A patch fitted to an app's own buttons (Steam) is measured once per decoration** · S4 · Window buttons · Open
 
+If the first hit test finds no buttons (Steam restored from the tray has its frame before its web UI draws them)
+it is repeated after 1, 3, 10 and 30 s (`OwnButtonsRetry`), then the window keeps DWM's rectangle.
+
 Windows that hide the Windows title bar but report full-size DWM caption buttons are hit-tested once when they're
 decorated, and the patch is narrowed to the width of the app's own buttons from the frame's right edge (see
 KI-007). The width isn't measured again, so if the app later changes its buttons' size (a different view, a
