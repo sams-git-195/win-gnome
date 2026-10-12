@@ -116,7 +116,13 @@ report them to DWM (`DWMWA_CAPTION_BUTTON_BOUNDS` is empty or stale). Since 652c
 maximise and minimise zones: this works for apps that support Snap Layouts, such as Claude desktop
 (spec 0005). Spec 0009 (branch, 2026-10-09) adds VS Code and Docker Desktop (short gaps between zones, every
 `Chrome_WidgetWin_*` class probed), asks the deepest child window under each point, and, behind a second
-setting, recognises GitHub Desktop's HTML buttons from a built-in profile of their width. Clicks on probed
+setting, recognises GitHub Desktop's HTML buttons from a built-in profile of their width. UWP frames
+(`ApplicationFrameWindow`, such as Windows Settings) report an empty DWM rectangle but answer the button codes,
+so with the custom-title-bar setting on they are probed too (2026-10-12); with it off, Settings keeps its own
+buttons. Apps that hide the Windows title bar but still report full-size DWM buttons while drawing smaller ones
+(Steam: DWM says 148 DIPs, its own buttons are 96) are asked once, off the UI thread, for the HTCLIENT run
+beside a drag strip at the right edge, and the patch shrinks to it (never below the circles' width); an app
+whose row isn't client-then-caption keeps the full DWM-sized patch. Clicks on probed
 windows are checked against a fresh hit test first, so a stale or wrong decoration drops the click instead of
 sending a command. Still undecorated:
 - **Dia** answers `HTMAXBUTTON` only over its maximise button (from its Windows App SDK non-client child) and

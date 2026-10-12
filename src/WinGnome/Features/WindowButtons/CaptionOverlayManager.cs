@@ -233,12 +233,66 @@ internal sealed class CaptionOverlayManager : IDisposable
 
         // Windows that report no caption buttons (Chrome-style title bars, fullscreen) are re-checked on the next
         // window-list change rather than remembered: leaving fullscreen brings the buttons back.
-        if (!WindowFilter.CanDecorate(info, _style.Settings.ExcludedProcesses) || !CaptionMetrics.TryRead(info.Handle, out _))
+        if (!WindowFilter.CanDecorate(info, _style.Settings.ExcludedProcesses))
         {
             return;
         }
 
+        if (!CaptionMetrics.TryRead(info.Handle, out var metrics))
+        {
+            // UWP frames (Windows Settings) report no buttons to DWM but answer the button hit-test codes. The
+            // probe's throttle stops this from re-probing a failed frame on every window-list change.
+            if (_style.Settings.DecorateCustomTitleBars && CaptionDecorationRules.ProbesWhenUnreported(info.ClassName)
+                && (NativeMethods.GetExStyle(info.Handle) & NativeMethods.WS_EX_LAYOUTRTL) == 0)
+            {
+                OnProbeDue(info.Handle);
+            }
+
+            return;
+        }
+
         Decorate(info.Handle, probe: null);
+        StartOwnButtonsProbe(info.Handle, metrics);
+    }
+
+    /// <summary>
+    /// Asks a window decorated from DWM whose client area covers its caption (it removed its title bar and draws
+    /// its own) where its own buttons start, once per decoration, so the overlay can shrink to them (Steam).
+    /// Windows with a normal title bar have real native buttons under DWM's rectangle and are never asked.
+    /// </summary>
+    private void StartOwnButtonsProbe(nint hwnd, CaptionMetrics metrics)
+    {
+        var clientOrigin = default(POINT);
+        if (!_windows.TryGetValue(hwnd, out var window) || !NativeMethods.ClientToScreen(hwnd, ref clientOrigin)
+            || !CaptionButtonGeometry.ClientCoversCaption(clientOrigin.Y, metrics.Buttons))
+        {
+            return;
+        }
+
+        // WM_NCHITTEST goes to another process: never from the dispatcher (see CustomCaptionProbe).
+        Task.Run(() =>
+        {
+            var left = CustomCaptionProbe.ProbeOwnButtonsLeft(hwnd, metrics.Frame, metrics.Buttons, metrics.Dpi, out var error);
+            _dispatcher.BeginInvoke(() => OnOwnButtonsProbed(window, metrics, left, error));
+        });
+    }
+
+    private void OnOwnButtonsProbed(DecoratedWindow window, CaptionMetrics probed, int? left, string? error)
+    {
+        if (error is not null)
+        {
+            ThrottledLog.Warn("probe", $"Probing the own caption buttons of 0x{window.Target:X} failed: {error}");
+        }
+
+        // The decoration may have been dropped (or the handle recycled) meanwhile.
+        if (left is not { } ownLeft || !_windows.TryGetValue(window.Target, out var current) || current != window)
+        {
+            return;
+        }
+
+        var widthDip = (probed.Frame.Right - ownLeft) / probed.Scale;
+        Log.Info($"Window 0x{window.Target:X} draws its own caption buttons {widthDip:0} DIPs wide; fitting its window buttons to them");
+        window.SetOwnButtonsWidth(widthDip);
     }
 
     private void Decorate(nint hwnd, ProbedCaption? probe)

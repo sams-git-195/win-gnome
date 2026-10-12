@@ -140,6 +140,31 @@ internal static class CustomCaptionProbe
     }
 
     /// <summary>
+    /// For a window decorated from DWM whose client area covers its caption: the screen x where its own, smaller
+    /// buttons start inside <paramref name="nativeButtons"/> (<see cref="OwnCaptionButtons"/>), or null when the
+    /// row does not show them. Thread-pool thread: never throws and never logs; a failure comes back in
+    /// <paramref name="error"/>.
+    /// </summary>
+    public static int? ProbeOwnButtonsLeft(nint hwnd, PixelRect frame, PixelRect nativeButtons, uint dpi, out string? error)
+    {
+        error = null;
+        try
+        {
+            var scale = dpi > 0 ? dpi / 96.0 : 1.0;
+            var xs = CaptionHitTestProbe.RowSamples(frame, scale);
+            return TryHitTestRow(hwnd, xs, CaptionHitTestProbe.RowY(frame, scale), System.Diagnostics.Stopwatch.StartNew(), out var codes, out _)
+                ? OwnCaptionButtons.FindLeft(xs, codes, nativeButtons, scale)
+                : null;
+        }
+        catch (Exception ex)
+        {
+            // Thread-pool thread: an exception here would otherwise be lost with the task.
+            error = ex.Message;
+            return null;
+        }
+    }
+
+    /// <summary>
     /// The click guard's single question: what <paramref name="hwnd"/> (or its deepest child there) answers at
     /// a screen point now. Thread-pool thread; null when it did not answer in time.
     /// </summary>

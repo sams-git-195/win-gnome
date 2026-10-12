@@ -41,6 +41,10 @@ internal sealed class DecoratedWindow : IDisposable
     private ProbedCaption? _previousProbe;
     private bool _reprobeRequested;
 
+    // Set for a window decorated from DWM that draws its own, narrower buttons (Steam): their width in DIPs from
+    // the frame's right edge, so the overlay covers them rather than DWM's whole rectangle.
+    private double? _ownButtonsWidthDip;
+
     // Set when a click guard found the probed buttons gone: hidden until a new probe arrives (SetProbe).
     private bool _probeSuspended;
 
@@ -113,6 +117,22 @@ internal sealed class DecoratedWindow : IDisposable
         _probe = probe;
         _reprobeRequested = false;
         _probeSuspended = false;
+        _layoutKey = default;
+        UpdatePlacement();
+    }
+
+    /// <summary>
+    /// Narrows the overlay to the window's own buttons, <paramref name="widthDip"/> wide from the frame's right
+    /// edge (see <see cref="OwnCaptionButtons"/>). Only used while the window is decorated from DWM.
+    /// </summary>
+    public void SetOwnButtonsWidth(double widthDip)
+    {
+        if (_disposed || _probe is not null)
+        {
+            return;
+        }
+
+        _ownButtonsWidthDip = widthDip;
         _layoutKey = default;
         UpdatePlacement();
     }
@@ -268,7 +288,18 @@ internal sealed class DecoratedWindow : IDisposable
     {
         if (_probe is not { } probe)
         {
-            return CaptionMetrics.TryRead(Target, out metrics);
+            if (!CaptionMetrics.TryRead(Target, out metrics))
+            {
+                return false;
+            }
+
+            if (_ownButtonsWidthDip is { } width)
+            {
+                var ownLeft = metrics.Frame.Right - (int)Math.Round(width * metrics.Scale, MidpointRounding.AwayFromZero);
+                metrics = metrics with { Buttons = CaptionButtonLayout.TrimToOwnButtons(metrics.Buttons, ownLeft, metrics.Scale, _style.Settings) };
+            }
+
+            return true;
         }
 
         if (_probeSuspended)

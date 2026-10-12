@@ -204,4 +204,55 @@ public class CaptionButtonLayoutTests
             Assert.True(layout.Buttons[i].CenterX - layout.Buttons[i - 1].CenterX >= layout.Diameter);
         }
     }
+
+    [Fact]
+    public void TrimToOwnButtons_SteamAt125_StartsAtItsOwnButtons()
+    {
+        // DWM reports 185 px; Steam's own buttons start 112 px left of DWM's right edge. The circles need
+        // (12 + 14 + 8 + 14 + 8 + 14 + 12) = 82 DIPs = 102.5 px, so the trimmed strip is Steam's 112 px.
+        var native = new PixelRect(807, 0, 992, 37);
+
+        Assert.Equal(new PixelRect(880, 0, 992, 37), CaptionButtonLayout.TrimToOwnButtons(native, 880, 1.25, Settings()));
+    }
+
+    [Fact]
+    public void TrimToOwnButtons_OwnButtonsNarrowerThanTheCircles_KeepsRoomForTheCircles()
+    {
+        // 82 DIPs at 100 %: the strip never gets narrower than the circles and their padding.
+        Assert.Equal(new PixelRect(1156, 50, 1238, 82), CaptionButtonLayout.TrimToOwnButtons(Native, 1200, 1, Settings()));
+    }
+
+    [Fact]
+    public void TrimToOwnButtons_LargerCircles_NeedMoreRoom()
+    {
+        var settings = Settings();
+        settings.Diameter = 20;
+        settings.Spacing = 10;
+
+        // 12 + 3 * 20 + 2 * 10 + 12 = 104 DIPs at 150 % = 156 px.
+        var native = new PixelRect(0, 0, 207, 48);
+        Assert.Equal(new PixelRect(51, 0, 207, 48), CaptionButtonLayout.TrimToOwnButtons(native, 150, 1.5, settings));
+    }
+
+    [Theory]
+    [InlineData(1000)] // left of DWM's rectangle
+    [InlineData(1100)] // at its left edge
+    public void TrimToOwnButtons_NeverWidensTheNativeRectangle(int ownLeft)
+    {
+        Assert.Equal(Native, CaptionButtonLayout.TrimToOwnButtons(Native, ownLeft, 1, Settings()));
+    }
+
+    [Fact]
+    public void TrimToOwnButtons_NativeNarrowerThanTheCircles_IsUnchanged()
+    {
+        var native = new PixelRect(1180, 50, 1238, 82); // 58 px
+
+        Assert.Equal(native, CaptionButtonLayout.TrimToOwnButtons(native, 1200, 1, Settings()));
+    }
+
+    [Fact]
+    public void TrimToOwnButtons_InvalidScale_IsUnchanged()
+    {
+        Assert.Equal(Native, CaptionButtonLayout.TrimToOwnButtons(Native, 1200, 0, Settings()));
+    }
 }

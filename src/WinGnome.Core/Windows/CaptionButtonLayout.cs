@@ -24,6 +24,9 @@ public static class CaptionButtonLayout
     /// <summary>Smallest circle diameter in DIPs the layout will shrink to.</summary>
     public const double MinDiameter = 8;
 
+    /// <summary>Number of circles in a full minimise/maximise/close group.</summary>
+    private const int ButtonCount = 3;
+
     /// <summary>Width in DIPs of the native minimise, maximise and close buttons of a standard Windows 11 caption.</summary>
     private const int HeaderBarNativeButtonsWidth = 138;
 
@@ -102,6 +105,36 @@ public static class CaptionButtonLayout
         }
 
         return new CaptionOverlayLayout(bounds, diameter, slots);
+    }
+
+    /// <summary>
+    /// Narrows <paramref name="nativeButtons"/> from the left to start at <paramref name="ownLeft"/>, where a window
+    /// that draws its own, smaller buttons has them (<see cref="OwnCaptionButtons"/>), but never below the width the
+    /// circles need with their padding, and never wider than it was.
+    /// </summary>
+    /// <param name="nativeButtons">Screen rectangle DWM reports for the native buttons.</param>
+    /// <param name="ownLeft">Screen x of the left edge of the app's own buttons.</param>
+    /// <param name="dpiScale">Physical pixels per DIP (1.0 = 96 dpi).</param>
+    /// <param name="settings">User settings (diameter, spacing).</param>
+    public static PixelRect TrimToOwnButtons(PixelRect nativeButtons, int ownLeft, double dpiScale, WindowButtonSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        if (!double.IsFinite(dpiScale) || dpiScale <= 0)
+        {
+            return nativeButtons;
+        }
+
+        var needed = (int)Math.Ceiling(NaturalWidth(settings, ButtonCount) * dpiScale);
+        var left = Math.Max(nativeButtons.Left, Math.Min(ownLeft, nativeButtons.Right - needed));
+        return nativeButtons with { Left = left };
+    }
+
+    /// <summary>Width in DIPs of <paramref name="count"/> circles at their configured size, with padding on both sides.</summary>
+    private static double NaturalWidth(WindowButtonSettings settings, int count)
+    {
+        var diameter = Math.Max(MinDiameter, double.IsFinite(settings.Diameter) ? settings.Diameter : MinDiameter);
+        var spacing = Math.Max(0, double.IsFinite(settings.Spacing) ? settings.Spacing : 0);
+        return (Padding * 2) + (count * diameter) + ((count - 1) * spacing);
     }
 
     /// <summary>
