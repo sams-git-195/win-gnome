@@ -18,7 +18,7 @@ detail section below the Resolved table when the measured evidence behind the fi
 KI-102).
 
 IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-112 all
-have entries now). The next free ID is **KI-116**; grep the specs for `KI-0` before allocating one.
+have entries now). The next free ID is **KI-117**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
@@ -78,6 +78,7 @@ have entries now). The next free ID is **KI-116**; grep the specs for `KI-0` bef
 | [KI-110](#ki-110) | S4 | Settings | Bluetooth panel v1 doesn't pair, discover, connect or show battery, and its radio and Remove Device paths aren't verified live | Open |
 | [KI-111](#ki-111) | S4 | Settings | Wi-Fi profile leftovers: a crash mid-connect can leave a just-created or overwritten profile saved, and a denied all-user write falls back to a per-user profile | Open |
 | [KI-112](#ki-112) | S4 | Taskbar | The secondary taskbar's empty window region is a race with Explorer, so a flash can still get through | Open |
+| [KI-116](#ki-116) | S4 | Window buttons | A patch fitted to an app's own buttons (Steam) is measured once per decoration | Open |
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -910,6 +911,16 @@ the 50 ms re-hide; by 18:59 both windows were back to empty regions. Likely caus
 peek suspends the guard and removes the regions on all taskbars, so Explorer's post-peek auto-hide slide on the
 secondary draws before the region is re-applied. Candidate fix: during a peek remove the region only from the
 window being peeked (the primary), and keep the secondary's region applied throughout.
+
+### KI-116
+**A patch fitted to an app's own buttons (Steam) is measured once per decoration** · S4 · Window buttons · Open
+
+Windows that hide the Windows title bar but report full-size DWM caption buttons are hit-tested once when they're
+decorated, and the patch is narrowed to the width of the app's own buttons from the frame's right edge (see
+KI-007). The width isn't measured again, so if the app later changes its buttons' size (a different view, a
+scaling change it handles itself) the patch keeps the old width until the window is decorated again (closed and
+reopened, or WinGnome restarted). The patch never gets narrower than the circles need, nor wider than DWM's
+rectangle. The edge is rounded towards the drag strip by up to one 2 px sample, so the patch may cover a pixel of it.
 
 ## Resolved
 

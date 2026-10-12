@@ -111,4 +111,14 @@ public sealed class OwnCaptionButtonsTests
         Assert.Null(OwnCaptionButtons.FindLeft([], [], SteamNative, 1.25));
         Assert.Null(OwnCaptionButtons.FindLeft([999, 997], [Client], SteamNative, 1.25));
     }
+
+    [Theory]
+    [InlineData(5, 880)]  // 10 px of border codes: within 8 DIPs at 125 %
+    [InlineData(6, null)] // 12 px: the client run is not at the frame's edge
+    public void FindLeft_GapToTheFrameEdgeIsLimited(int borderSamples, int? expected)
+    {
+        var (xs, codes) = Row((Border, borderSamples), (Client, 60 - borderSamples), (Caption, 5));
+
+        Assert.Equal(expected, OwnCaptionButtons.FindLeft(xs, codes, SteamNative, 1.25));
+    }
 }

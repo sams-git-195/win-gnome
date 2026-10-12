@@ -285,13 +285,13 @@ internal sealed class CaptionOverlayManager : IDisposable
         }
 
         // The decoration may have been dropped (or the handle recycled) meanwhile.
-        if (left is not { } ownLeft || !_windows.TryGetValue(window.Target, out var current) || current != window)
+        if (!_started || left is not { } ownLeft || !_windows.TryGetValue(window.Target, out var current) || current != window)
         {
             return;
         }
 
         var widthDip = (probed.Frame.Right - ownLeft) / probed.Scale;
-        Log.Info($"Window 0x{window.Target:X} draws its own caption buttons {widthDip:0} DIPs wide; fitting its window buttons to them");
+        Log.Info($"Window 0x{window.Target:X} draws its own caption buttons {widthDip:0} DIPs wide (frame {probed.Frame.Width}x{probed.Frame.Height} px, DWM buttons {probed.Buttons.Width} px); fitting its window buttons to them");
         window.SetOwnButtonsWidth(widthDip);
     }
 
