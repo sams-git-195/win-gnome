@@ -277,8 +277,6 @@ internal sealed class CaptionOverlayManager : IDisposable
 
         if (!CaptionButtonGeometry.ClientCoversCaption(clientOrigin.Y, metrics.Buttons))
         {
-            // Normal title bar; a window that is still setting up its frame may cover it later.
-            ScheduleOwnButtonsRetry(hwnd);
             return;
         }
 

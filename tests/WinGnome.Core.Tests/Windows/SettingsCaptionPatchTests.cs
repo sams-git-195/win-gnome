@@ -20,6 +20,9 @@ public class SettingsCaptionPatchTests
         { [2, 2, 2, 20], 3, false },
         { [20, 20], 0, false },
         { [12, 12], 5, false },
+        { [1, 12, 12], 3, true },
+        { [12, 12, 12], 3, true },
+        { [12, 12, 12], 4, false },
     };
 
     [Theory]
