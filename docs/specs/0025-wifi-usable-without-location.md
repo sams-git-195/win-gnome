@@ -59,7 +59,7 @@ The panel stops depending on location for anything that doesn't need it. Top to 
    | User "Let apps access your location" off, or desktop apps off | "Location access is off for desktop apps" | *Open Location Settings*, *Show networks in Windows* |
    | WinGnome's own desktop-app entry `Deny` | "WinGnome isn't allowed to use your location" | *Open Location Settings*, *Show networks in Windows* |
    | Not asked yet (capability `UserPromptRequired`, nothing above) | "Windows needs your permission to show nearby networks" | *Show nearby networks* (as today: the first gated call raises Windows' prompt) |
-   | A gated call returns `ERROR_ACCESS_DENIED` despite the above | hedged text as today | *Open Location Settings*, *Show networks in Windows* |
+   | A gated call returns `ERROR_ACCESS_DENIED` while the reason above is "nothing" or "not asked yet" (the reads were wrong) | "Windows needs location access to show nearby networks" — subtitle: "Turn on location access for WinGnome (and for desktop apps) in Windows Settings, then press Refresh. Turning Wi-Fi on or off and disconnecting still work." The call isn't repeated until *Refresh*. | *Open Location Settings*, *Show networks in Windows* |
 
    *Show networks in Windows* opens `ms-settings:network-wifi` (Windows' page lists and connects to networks itself
    and works with the taskbar hidden; `ms-availablenetworks:` is not used, see Risks).
@@ -130,9 +130,10 @@ today, no WLAN, NLM, location or registry reads.
   `WifiProfileKind` (`open`/`none` → Open, `OWE` → Owe, `open`+`WEP` → Wep, `WPAPSK` → WpaPsk, `WPA2PSK` → Wpa2Psk,
   `WPA3SAE` → Wpa3Sae, `WPA`/`WPA2`/`WPA3`/`WPA3ENT*`/OneX → HandOff, unknown → HandOff), case-insensitive.
 - **New `WifiSavedNetworkList.cs`**: `WifiSavedProfile(string ProfileName, WifiProfileSummary? Summary, bool
-  IsGroupPolicy, bool IsPerUser)`; `Build(saved, byte[]? currentSsid, IReadOnlyList<WifiNetworkRow>? visible)` →
-  `WifiSavedNetworkRow(ProfileName, Name, Ssid, Kind, AutoConnect, IsConnected, CanEdit, int? SignalLevel, string
-  Subtitle)`. Connected = summary SSID bytes equal `currentSsid` (first match only, by profile order); signal from the
+  IsGroupPolicy, bool IsPerUser)`; `Build(saved, byte[]? currentSsid, string? currentProfileName,
+  IReadOnlyList<WifiNetworkRow>? visible)` → `WifiSavedNetworkRow(ProfileName, Name, Ssid, Kind, AutoConnect, IsConnected,
+  CanEdit, int? SignalLevel, string Subtitle)`. Connected = the profile named `currentProfileName` (ordinal, then ignoring
+  case); without one, the profile whose SSID bytes equal `currentSsid`, only when exactly one does; signal from the
   visible row with the same SSID; order connected, then name (ordinal-ignore-case, then ordinal); a profile whose XML
   couldn't be read still lists with its name, kind HandOff and no switch.
 
@@ -216,7 +217,8 @@ loaded by `RadioClient`.
    networks*; the log has no `WlanGetAvailableNetworkList` refusal and Windows shows no location dialog. → manual QA.
 10. *Connect automatically* off on a saved, not-connected profile → `netsh wlan show profile name="<it>"` shows
     *Connection mode: Connect manually*; on again → *automatically*; the network still connects afterwards (key
-    intact). → manual QA (user).
+    intact). The same on the *connected* profile (the switch in Current network): the connection survives or
+    re-associates within a few seconds, and the switch shows the new value. → manual QA (user).
 11. *Connect* on an in-range saved network switches to it; on an out-of-range one shows "isn't reachable right now";
     *Disconnect* and *Forget* work from the current-network group. → manual QA (user).
 12. *Show networks in Windows* opens Windows' Wi-Fi page with WinGnome's dock mode on (taskbar hidden) and connecting
@@ -244,12 +246,11 @@ loaded by `RadioClient`.
 - Saved profiles on other adapters: the panel still uses the first Wi-Fi interface (three "Intel Wi-Fi 7" entries
   exist here, two *Not Present*; `WlanEnumInterfaces` only returns present ones).
 - **Open question for the user:** should the policy notice include the exact registry value and a *Copy* button so
-  an administrator can remove it, or only the plain sentence? Assumed: plain sentence plus the value name
-  ("Turn off location", `DisableLocation`) in the subtitle, no command.
+  an administrator can remove it, or only the plain sentence? Implemented: the plain sentence in the Behaviour table,
+  without the value name and without a command.
 - KNOWN_ISSUES: revise **KI-108** (gate now from policy and consent reads; nearby list impossible under policy; hand-off
   to Windows); **KI-109** drop *Saved Networks*; new **KI-117** (S4): auto-connect edit rewrites the profile XML,
-  group-policy profiles are read-only, the connected row is matched by SSID bytes (two profiles for one SSID mark only
-  the first).
+  group-policy profiles are read-only, the connected row is matched by profile name (SSID only when unambiguous).
 
 ## Implementation notes
 Where the implementation differs from or adds to the design above:
@@ -260,6 +261,11 @@ Where the implementation differs from or adds to the design above:
 - *Connect automatically* is a `VerifiedSwitch` per saved row (as in the Privacy and Notifications panels) rather than an
   `AutoConnectCommand`; the Current network group binds the connected row's switch, so both show the same state. Rows are
   kept across reloads by profile name, so a write in flight isn't overtaken by a WLAN-event re-read.
+- Review fixes: the connected row is matched by the profile Windows connected with (WLAN current connection, else
+  `ConnectionProfile.ProfileName`), the SSID only when unambiguous; the Forget prompt names the profile when it differs
+  from the network ("Forget "Home" (saved as "Home 2")?"); the key-replace overwrite keeps the profile's scope
+  (`WifiProfileScopes`); `WifiLocationDecision` holds only `CallGated`; a refused profile list shows "Windows didn't share
+  the saved networks. Press Refresh to try again, or see them in Windows Settings." instead of "No saved networks."
 - `WlanSnapshot.AccessDenied` became `ListRead` and `ListRefused`. A gated call refused despite the gate isn't repeated in
   that panel visit until *Refresh* (each refusal can re-raise Windows' dialog).
 - Not built: hiding the switch with "Change in Windows Settings" if the overwrite turns out to be refused (KI-117); the

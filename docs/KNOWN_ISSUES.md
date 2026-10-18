@@ -79,7 +79,7 @@ have entries now). The next free ID is **KI-119**; grep the specs for `KI-0` bef
 | [KI-111](#ki-111) | S4 | Settings | Wi-Fi profile leftovers: a crash mid-connect can leave a just-created or overwritten profile saved, and a denied all-user write falls back to a per-user profile | Open |
 | [KI-112](#ki-112) | S4 | Taskbar | The secondary taskbar's empty window region is a race with Explorer, so a flash can still get through | Open |
 | [KI-116](#ki-116) | S4 | Window buttons | A patch fitted to an app's own buttons (Steam) is measured once per decoration | Open |
-| [KI-117](#ki-117) | S4 | Settings | Saved Wi-Fi networks: *Connect automatically* rewrites the profile XML, Group Policy profiles are read-only, the connected row is matched by SSID, and the writes aren't verified live | Open |
+| [KI-117](#ki-117) | S4 | Settings | Saved Wi-Fi networks: *Connect automatically* rewrites the profile XML, Group Policy profiles are read-only, and the writes (including on the connected profile) aren't verified live | Open |
 | [KI-118](#ki-118) | S4 | Settings | Wi-Fi panel without location: first adapter only, bars only when Wi-Fi carries the internet connection, Windows' Wi-Fi page with the taskbar hidden unverified | Open |
 
 ### KI-003
@@ -930,7 +930,7 @@ reopened, or WinGnome restarted). The patch never gets narrower than the circles
 rectangle. The edge is rounded towards the drag strip by up to one 2 px sample, so the patch may cover a pixel of it.
 
 ### KI-117
-**Saved Wi-Fi networks: *Connect automatically* rewrites the profile XML, Group Policy profiles are read-only, the connected row is matched by SSID, and the writes aren't verified live** · S4 · Settings · Open
+**Saved Wi-Fi networks: *Connect automatically* rewrites the profile XML, Group Policy profiles are read-only, and the writes (including on the connected profile) aren't verified live** · S4 · Settings · Open
 
 The *Connect automatically* switch (spec 0025) reads the profile with `WlanGetProfile` (key encrypted, never the plain-text
 flag), changes only the `connectionMode` element (Core `WifiProfileXml.WithConnectionMode`) and writes it back with
@@ -938,14 +938,19 @@ flag), changes only the `connectionMode` element (Core `WifiProfileXml.WithConne
 replaces a profile in one step, so a refusal or a crash leaves the old or the new one; the switch then re-reads and the banner
 shows. Not verified live, because it changes the user's real profiles: that a standard user may overwrite an all-user profile
 holding a protected key (granted access `0x70023` says yes), that the network still connects afterwards with its key intact, and
-that *Connect* from Saved Networks isn't gated under the location policy (Microsoft's list says it isn't). If the overwrite turns
+that *Connect* from Saved Networks isn't gated under the location policy (Microsoft's list says it isn't). Overwriting the
+profile of the network the PC is connected to (the switch in Current network, which stays offered) is also unverified: Windows
+may re-associate or briefly drop the connection. If the overwrite turns
 out to be refused, the switch should be hidden with a "Change in Windows Settings" note (not built). Group Policy profiles
 (`WLAN_PROFILE_GROUP_POLICY`) show no switch and no *Forget* (Windows refuses both), and so do profiles whose XML can't be read.
-The connected row is the first saved profile whose SSID bytes equal the connection's; a second profile for the same SSID isn't
-marked. The connection's SSID comes from `WlanConnectionProfileDetails.GetConnectedSsid()` as UTF-8 when the WLAN query is
-gated, so a non-UTF-8 SSID may not match its profile (the Current network row then shows the name without the security).
-The older key-replace overwrite after a rejected password (KI-111) still writes an all-user profile even when the saved one is
-per-user.
+The connected row is the profile Windows connected with (the WLAN current connection's profile name, or
+`ConnectionProfile.ProfileName` when that query is gated); only when neither names a saved profile does the SSID decide, and then
+only if exactly one profile has those bytes, so two profiles for one network leave the Current network row without *Forget* or
+the switch rather than risk the wrong profile. That `ConnectionProfile.ProfileName` is the WLAN profile name (and not, say, the
+SSID) is documented behaviour but unverified here with two profiles for one SSID. The connection's SSID comes from
+`WlanConnectionProfileDetails.GetConnectedSsid()` as UTF-8 when the WLAN query is gated, so a non-UTF-8 SSID may not match its
+profile by bytes. *Fixed in `a7e2c03`:* the key-replace overwrite after a rejected password (KI-111) used to write a per-user
+profile back as all-user; it now keeps the profile's scope (`WifiProfileScopes`) and refuses Group Policy profiles.
 
 ### KI-118
 **Wi-Fi panel without location: first adapter only, bars only when Wi-Fi carries the internet connection, Windows' Wi-Fi page with the taskbar hidden unverified** · S4 · Settings · Open
