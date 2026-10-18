@@ -18,20 +18,43 @@
         <TextBlock Text="No Wi-Fi adapter found." Style="{DynamicResource RowSubtitleText}" Margin="4,0,0,20"
                    Visibility="{Binding ShowsNoAdapter, Converter={x:Static c:Converters.BoolToVisibility}}" />
 
+        <c:SettingsGroup Header="Current Network"
+                         Visibility="{Binding ShowsCurrentNetwork, Converter={x:Static c:Converters.BoolToVisibility}}">
+            <c:SettingsRow Title="{Binding CurrentNetworkName}" Subtitle="{Binding CurrentNetworkSubtitle}">
+                <TextBlock Text="{Binding CurrentSignalGlyph}" FontFamily="{StaticResource IconFont}" FontSize="16" Margin="0,0,10,0"
+                           VerticalAlignment="Center" Style="{DynamicResource RowSubtitleText}" AutomationProperties.Name="Signal strength"
+                           Visibility="{Binding ShowsCurrentSignal, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                <c:SettingsRow.Details>
+                    <StackPanel>
+                        <Grid Margin="0,8,0,0" Visibility="{Binding ShowsCurrentProfileOptions, Converter={x:Static c:Converters.BoolToVisibility}}">
+                            <TextBlock Text="Connect automatically" Style="{DynamicResource RowTitleText}" VerticalAlignment="Center" />
+                            <CheckBox Style="{DynamicResource SettingsToggle}" HorizontalAlignment="Right"
+                                      IsChecked="{Binding CurrentSaved.AutoConnect.IsOn}" IsEnabled="{Binding CurrentSaved.AutoConnect.IsInteractive}"
+                                      AutomationProperties.Name="Connect automatically" />
+                        </Grid>
+                        <WrapPanel>
+                            <Button Content="Disconnect" Style="{DynamicResource SettingsButton}" Margin="0,8,8,0" Command="{Binding DisconnectCommand}" />
+                            <Button Content="Forget" Style="{DynamicResource SettingsButton}" Margin="0,8,8,0"
+                                    Command="{Binding ForgetCommand}" CommandParameter="{Binding CurrentSaved}"
+                                    Visibility="{Binding ShowsCurrentProfileOptions, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                        </WrapPanel>
+                    </StackPanel>
+                </c:SettingsRow.Details>
+            </c:SettingsRow>
+        </c:SettingsGroup>
+
         <c:SettingsGroup Header="Visible Networks"
                          Visibility="{Binding ShowsLocationNotice, Converter={x:Static c:Converters.BoolToVisibility}}">
             <c:SettingsRow Title="{Binding LocationNoticeTitle}" Subtitle="{Binding LocationNoticeSubtitle}">
                 <StackPanel>
                     <Button Content="Show nearby networks" Style="{DynamicResource SettingsButton}" Command="{Binding ShowNearbyCommand}"
                             Visibility="{Binding OfferShowNearby, Converter={x:Static c:Converters.BoolToVisibility}}" />
-                    <Button Content="Open Location Settings" Style="{DynamicResource SettingsButton}" Command="{Binding OpenLocationSettingsCommand}"
+                    <Button Content="Show networks in Windows" Style="{DynamicResource SettingsButton}" Command="{Binding ShowWindowsListCommand}"
+                            Visibility="{Binding OffersWindowsList, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                    <Button Content="Open Location Settings" Style="{DynamicResource SettingsButton}" Command="{Binding OpenLocationSettingsCommand}" Margin="0,6,0,0"
                             Visibility="{Binding OffersLocationSettings, Converter={x:Static c:Converters.BoolToVisibility}}" />
                 </StackPanel>
             </c:SettingsRow>
-        </c:SettingsGroup>
-
-        <c:SettingsGroup Visibility="{Binding ShowsConnectedWithoutName, Converter={x:Static c:Converters.BoolToVisibility}}">
-            <c:SettingsRow Title="Connected" Subtitle="Windows doesn't share the network's name without location access." />
         </c:SettingsGroup>
 
         <c:SettingsGroup Header="Visible Networks" ItemsSource="{Binding Networks}"
@@ -71,6 +94,42 @@
                      Visibility="{Binding IsLoading, Converter={x:Static c:Converters.BoolToVisibility}}" />
         <TextBlock Text="No networks found." Style="{DynamicResource RowSubtitleText}" Margin="4,0,0,20"
                    Visibility="{Binding ShowsEmptyListNote, Converter={x:Static c:Converters.BoolToVisibility}}" />
+
+        <c:SettingsGroup Header="Saved Networks" ItemsSource="{Binding SavedNetworks}"
+                         Visibility="{Binding ShowsSavedNetworks, Converter={x:Static c:Converters.BoolToVisibility}}">
+            <c:SettingsGroup.ItemTemplate>
+                <DataTemplate>
+                    <c:SettingsRow Title="{Binding Name}" Subtitle="{Binding Subtitle}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding SignalGlyph}" FontFamily="{StaticResource IconFont}" FontSize="16" Margin="0,0,10,0"
+                                       VerticalAlignment="Center" Style="{DynamicResource RowSubtitleText}" AutomationProperties.Name="Signal strength"
+                                       Visibility="{Binding HasSignal, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                            <Button Content="Connect" Style="{DynamicResource SettingsButton}"
+                                    Command="{Binding DataContext.ConnectSavedCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}"
+                                    Visibility="{Binding CanConnect, Converter={x:Static c:Converters.BoolToVisibility}}" />
+                        </StackPanel>
+                        <c:SettingsRow.Details>
+                            <StackPanel Visibility="{Binding CanEdit, Converter={x:Static c:Converters.BoolToVisibility}}">
+                                <Grid Margin="0,8,0,0">
+                                    <TextBlock Text="Connect automatically" Style="{DynamicResource RowTitleText}" VerticalAlignment="Center" />
+                                    <CheckBox Style="{DynamicResource SettingsToggle}" HorizontalAlignment="Right"
+                                              IsChecked="{Binding AutoConnect.IsOn}" IsEnabled="{Binding AutoConnect.IsInteractive}"
+                                              AutomationProperties.Name="{Binding Name, StringFormat=Connect automatically to {0}}" />
+                                </Grid>
+                                <WrapPanel>
+                                    <Button Content="Forget" Style="{DynamicResource SettingsButton}" Margin="0,8,8,0"
+                                            Command="{Binding DataContext.ForgetCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </c:SettingsRow.Details>
+                    </c:SettingsRow>
+                </DataTemplate>
+            </c:SettingsGroup.ItemTemplate>
+        </c:SettingsGroup>
+        <TextBlock Text="No saved networks." Style="{DynamicResource RowSubtitleText}" Margin="4,0,0,20"
+                   Visibility="{Binding ShowsNoSavedNote, Converter={x:Static c:Converters.BoolToVisibility}}" />
 
         <c:SettingsGroup>
             <c:SettingsRow Title="Refresh" Subtitle="Looks for networks again.">

@@ -19,27 +19,18 @@ public enum WifiLocationAccess
 public readonly record struct WifiLocationDecision(bool CallGated, bool ShowNotice, bool OfferShowNearby);
 
 /// <summary>
-/// Decides, from the access state, whether the location-gated Wi-Fi calls may run. A denied state must not be probed
+/// Decides, from the gate's reason, whether the location-gated Wi-Fi calls may run. A denied state must not be probed
 /// again (each refused call can re-raise Windows' "Location has been turned off" dialog and light the location
 /// icon), and an unasked state must not raise the consent prompt by itself, only when the user presses the button.
 /// </summary>
 public static class WifiLocationPolicy
 {
-    /// <param name="access">What Windows reports.</param>
-    /// <param name="userAskedForNetworks">True after the user pressed "Show nearby networks" in this panel visit.</param>
-    public static WifiLocationDecision Decide(WifiLocationAccess access, bool userAskedForNetworks) => access switch
-    {
-        WifiLocationAccess.Allowed or WifiLocationAccess.Unknown => new(true, false, false),
-        WifiLocationAccess.UserPromptRequired when userAskedForNetworks => new(true, false, false),
-        WifiLocationAccess.UserPromptRequired => new(false, true, true),
-        _ => new(false, true, false),
-    };
-
     /// <summary>
-    /// The same decision from the gate's reason: only <see cref="WifiLocationBlock.None"/>, or <see cref="WifiLocationBlock.NotAsked"/>
-    /// after the user pressed the button, may call. Every other reason is known from the registry, so no call is made
-    /// to confirm it.
+    /// Only <see cref="WifiLocationBlock.None"/>, or <see cref="WifiLocationBlock.NotAsked"/> after the user pressed the
+    /// button, may call. Every other reason is known from the registry, so no call is made to confirm it.
     /// </summary>
+    /// <param name="block">The reason <see cref="WifiLocationGate.Evaluate"/> found.</param>
+    /// <param name="userAskedForNetworks">True after the user pressed "Show nearby networks" in this panel visit.</param>
     public static WifiLocationDecision Decide(WifiLocationBlock block, bool userAskedForNetworks) => block switch
     {
         WifiLocationBlock.None => new(true, false, false),

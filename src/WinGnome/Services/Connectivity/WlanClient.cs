@@ -10,20 +10,26 @@ namespace WinGnome.Services.Connectivity;
 
 /// <summary>What one read of the first Wi-Fi adapter found.</summary>
 /// <param name="HasAdapter">False when there is no Wi-Fi adapter or the WLAN service isn't running.</param>
-/// <param name="AccessDenied">True when Windows refused the network list (location access off or denied, or policy).</param>
+/// <param name="ListRead">True when the network list was asked for and Windows gave it.</param>
+/// <param name="ListRefused">True when the network list was asked for and Windows refused it (location access, policy).</param>
 /// <param name="Networks">The scan results, one entry per profile and security setup.</param>
 /// <param name="Profiles">The names of every saved profile.</param>
+/// <param name="SavedProfiles">Every saved profile with its parsed XML (never the key) and flags, in Windows' order.</param>
 /// <param name="CurrentSsid">The connected network's name, or null when not connected or it can't be read.</param>
 /// <param name="IsConnected">Whether the adapter reports a connection.</param>
+/// <param name="SignalBars">Windows' 0 to 5 bars for the Wi-Fi connection, or null when not connected or unknown.</param>
 internal sealed record WlanSnapshot(
     bool HasAdapter,
-    bool AccessDenied,
+    bool ListRead,
+    bool ListRefused,
     IReadOnlyList<WifiAvailableNetwork> Networks,
     IReadOnlyList<string> Profiles,
+    IReadOnlyList<WifiSavedProfile> SavedProfiles,
     byte[]? CurrentSsid,
-    bool IsConnected)
+    bool IsConnected,
+    int? SignalBars)
 {
-    public static WlanSnapshot NoAdapter { get; } = new(false, false, [], [], null, false);
+    public static WlanSnapshot NoAdapter { get; } = new(false, false, false, [], [], [], null, false, null);
 }
 
 /// <summary>An event from the WLAN service, parsed inside the callback (the native data is gone afterwards).</summary>
@@ -55,6 +61,7 @@ internal sealed class WlanClient : IDisposable
     private const int ListHeader = 8;
     private const int InterfaceInfoSize = 16 + NameChars * 2 + 4;
     private const int ProfileInfoSize = NameChars * 2 + 4;
+    private const int ProfileInfoFlags = NameChars * 2;
     private const int NetworkSize = 628;
     private const int NetworkSsidLength = 512;
     private const int NetworkSsid = 516;
@@ -99,9 +106,10 @@ internal sealed class WlanClient : IDisposable
     public event Action<WlanChange>? Changed;
 
     /// <summary>
-    /// Opens the handle (if needed) and reads adapter, profiles and the current connection, and, when
+    /// Opens the handle (if needed) and reads adapter, saved profiles and the current connection, and, when
     /// <paramref name="callGated"/>, the network list too. The gated calls (list, current connection) are the ones
-    /// Windows ties to location access, so the caller passes false while access is denied or not yet asked for.
+    /// Windows ties to location access, so the caller passes false while access is denied or not yet asked for; the
+    /// profiles and the connection's name and bars come from calls that aren't gated.
     /// </summary>
     public Task<WlanSnapshot> ReadAsync(bool callGated) => Enqueue(() => Read(callGated));
 
@@ -123,7 +131,14 @@ internal sealed class WlanClient : IDisposable
     /// Saves the profile as an all-user profile (as Windows Settings does), or as a per-user one when that is denied.
     /// The document's buffer is cleared before this returns, whatever happens.
     /// </summary>
-    public Task<bool> SetProfileAsync(WifiProfileDocument document, bool overwrite) => Enqueue(() => SetProfile(document, overwrite));
+    public Task<bool> SetProfileAsync(WifiProfileDocument document, bool overwrite) => Enqueue(() => SetProfile(document, 0, overwrite));
+
+    /// <summary>
+    /// Turns the saved profile's "Connect automatically" on or off by rewriting its <c>connectionMode</c> and nothing
+    /// else (the key stays encrypted as Windows stored it). False, after logging why, when the profile is gone, is set
+    /// by Group Policy (Windows refuses to change it) or Windows refuses the overwrite, which leaves it unchanged.
+    /// </summary>
+    public Task<bool> SetConnectionModeAsync(string profileName, bool auto) => Enqueue(() => SetConnectionMode(profileName, auto));
 
     public void Dispose()
     {
@@ -244,7 +259,8 @@ internal sealed class WlanClient : IDisposable
         }
 
         var profiles = ReadProfiles();
-        var denied = !callGated;
+        var saved = ReadSavedProfiles(profiles);
+        var refused = false;
         var networks = new List<WifiAvailableNetwork>();
         nint list = 0;
         var listResult = callGated ? NativeMethods.WlanGetAvailableNetworkList(_handle, _interface, 0, 0, out list) : 0u;
@@ -267,48 +283,69 @@ internal sealed class WlanClient : IDisposable
         {
             // Windows 11 24H2+ gates the list on location access (and policy can too); the call is what raises the consent prompt.
             Log.Warn("Wi-Fi: WlanGetAvailableNetworkList was refused (Win32 error 5); location access is probably off for WinGnome");
-            denied = true;
+            refused = true;
         }
         else
         {
             throw new InvalidOperationException($"WlanGetAvailableNetworkList failed with Win32 error {listResult}.");
         }
 
+        var listRead = callGated && !refused;
         var connected = interfaceState == InterfaceStateConnected;
         byte[]? current = null;
+        int? bars = null;
         if (connected)
         {
-            current = denied ? null : ReadCurrentSsid();
-            current ??= ReadSsidWithoutWlanApi();
+            // The current connection is gated like the list, so it is only asked for when the list was given.
+            current = listRead ? ReadCurrentSsid() : null;
+            var (ssid, signal) = ReadConnectionWithoutWlanApi(needSsid: current is null);
+            current ??= ssid;
+            bars = signal;
         }
 
-        return new WlanSnapshot(true, denied, networks, profiles, current, connected);
+        return new WlanSnapshot(true, listRead, refused, networks, profiles.ConvertAll(p => p.Name), saved, current, connected, bars);
     }
 
     /// <summary>
-    /// The connected network's name from the network list manager's connection profile, which may work where the WLAN
-    /// API is refused. Null when it doesn't say.
+    /// The connected network's name and Windows' signal bars from the network list manager's connection profile, which
+    /// works where the WLAN API is refused. Each is null when it doesn't say, or when the internet connection isn't Wi-Fi.
     /// </summary>
-    private static byte[]? ReadSsidWithoutWlanApi()
+    private static (byte[]? Ssid, int? Bars) ReadConnectionWithoutWlanApi(bool needSsid)
     {
         try
         {
-            var ssid = NetworkInformation.GetInternetConnectionProfile()?.WlanConnectionProfileDetails?.GetConnectedSsid();
-            return string.IsNullOrEmpty(ssid) ? null : Encoding.UTF8.GetBytes(ssid);
+            var profile = NetworkInformation.GetInternetConnectionProfile();
+            if (profile is null || !profile.IsWlanConnectionProfile)
+            {
+                return (null, null);
+            }
+
+            int? bars = profile.GetSignalBars() is { } value ? value : null;
+            var ssid = needSsid ? profile.WlanConnectionProfileDetails?.GetConnectedSsid() : null;
+            return (string.IsNullOrEmpty(ssid) ? null : Encoding.UTF8.GetBytes(ssid), bars);
         }
         catch (Exception ex)
         {
-            Log.Warn("Wi-Fi: could not read the connected network's name without the WLAN API", ex);
-            return null;
+            Log.Warn("Wi-Fi: could not read the connected network's name and signal without the WLAN API", ex);
+            return (null, null);
         }
     }
 
-    private string? GetProfileXml(string profileName)
+    private string? GetProfileXml(string profileName) => GetProfile(profileName, out _);
+
+    /// <summary>
+    /// The saved profile's XML, with its key encrypted (the plain-text flag is never passed), and its
+    /// <c>WLAN_PROFILE_GROUP_POLICY</c> / <c>WLAN_PROFILE_USER</c> flags; null, after logging, when Windows refuses.
+    /// The XML is never logged.
+    /// </summary>
+    private string? GetProfile(string profileName, out uint flags)
     {
-        var result = NativeMethods.WlanGetProfile(_handle, _interface, profileName, 0, out var xml, 0, out _);
+        flags = 0;
+        var result = NativeMethods.WlanGetProfile(_handle, _interface, profileName, 0, out var xml, ref flags, out _);
         if (result != 0)
         {
             Log.Warn($"Wi-Fi: WlanGetProfile \"{profileName}\" failed with Win32 error {result}");
+            flags = 0;
             return null;
         }
 
@@ -320,6 +357,30 @@ internal sealed class WlanClient : IDisposable
         {
             NativeMethods.WlanFreeMemory(xml);
         }
+    }
+
+    /// <summary>One <c>WlanGetProfile</c> per saved profile, parsed at once: the XML goes no further than the parser.</summary>
+    private List<WifiSavedProfile> ReadSavedProfiles(List<(string Name, uint Flags)> profiles)
+    {
+        var saved = new List<WifiSavedProfile>(profiles.Count);
+        foreach (var (name, listFlags) in profiles)
+        {
+            var summary = WifiProfileXml.ReadSummary(GetProfile(name, out var profileFlags));
+            if (summary is null)
+            {
+                Log.Warn($"Wi-Fi: the saved profile \"{name}\" could not be read; it is listed without its settings");
+            }
+
+            // The list's flags are known even when the profile itself can't be read.
+            var flags = listFlags | profileFlags;
+            saved.Add(new WifiSavedProfile(
+                name,
+                summary,
+                (flags & NativeMethods.WLAN_PROFILE_GROUP_POLICY) != 0,
+                (flags & NativeMethods.WLAN_PROFILE_USER) != 0));
+        }
+
+        return saved;
     }
 
     /// <summary>Picks the first Wi-Fi interface. False when there is none or the service isn't running.</summary>
@@ -358,9 +419,9 @@ internal sealed class WlanClient : IDisposable
         }
     }
 
-    private List<string> ReadProfiles()
+    private List<(string Name, uint Flags)> ReadProfiles()
     {
-        var names = new List<string>();
+        var names = new List<(string Name, uint Flags)>();
         var result = NativeMethods.WlanGetProfileList(_handle, _interface, 0, out var list);
         if (result != 0)
         {
@@ -373,7 +434,8 @@ internal sealed class WlanClient : IDisposable
             var count = Marshal.ReadInt32(list);
             for (var i = 0; i < count; i++)
             {
-                names.Add(Marshal.PtrToStringUni(list + ListHeader + i * ProfileInfoSize) ?? "");
+                var item = list + ListHeader + i * ProfileInfoSize;
+                names.Add((Marshal.PtrToStringUni(item) ?? "", (uint)Marshal.ReadInt32(item + ProfileInfoFlags)));
             }
         }
         finally
@@ -452,15 +514,50 @@ internal sealed class WlanClient : IDisposable
         }
     }
 
-    private unsafe bool SetProfile(WifiProfileDocument document, bool overwrite)
+    private bool SetConnectionMode(string profileName, bool auto)
+    {
+        var xml = GetProfile(profileName, out var flags);
+        if (xml is null)
+        {
+            return false;
+        }
+
+        if ((flags & NativeMethods.WLAN_PROFILE_GROUP_POLICY) != 0)
+        {
+            Log.Warn($"Wi-Fi: \"{profileName}\" is set by Group Policy; Windows doesn't let its connection mode change");
+            return false;
+        }
+
+        WifiProfileDocument document;
+        try
+        {
+            document = WifiProfileXml.WithConnectionMode(xml, auto, profileName);
+        }
+        catch (ArgumentException ex)
+        {
+            // The message never contains the XML.
+            Log.Warn($"Wi-Fi: could not change the connection mode of \"{profileName}\": {ex.Message}");
+            return false;
+        }
+
+        // Saved back where it was (all users or this user only) as an overwrite: Windows replaces the profile in one
+        // step, so a refusal leaves the old one. No per-user fallback, which would add a second profile of that name.
+        return SetProfile(document, flags & NativeMethods.WLAN_PROFILE_USER, overwrite: true);
+    }
+
+    /// <summary>Writes the profile from its pinned buffer, which is cleared before this returns, whatever happens.</summary>
+    /// <param name="document">The profile.</param>
+    /// <param name="flags">0 for all users, <see cref="NativeMethods.WLAN_PROFILE_USER"/> for this user only.</param>
+    /// <param name="overwrite">True to replace a saved profile of the same name.</param>
+    private unsafe bool SetProfile(WifiProfileDocument document, uint flags, bool overwrite)
     {
         try
         {
             fixed (char* xml = document.Buffer)
             {
-                var result = NativeMethods.WlanSetProfile(_handle, _interface, 0, xml, 0, overwrite, 0, out var reason);
+                var result = NativeMethods.WlanSetProfile(_handle, _interface, flags, xml, 0, overwrite, 0, out var reason);
                 // Never for an overwrite: a per-user profile of the same name would sit beside the all-user one it should replace.
-                if (result == (uint)NativeMethods.ERROR_ACCESS_DENIED && !overwrite)
+                if (result == (uint)NativeMethods.ERROR_ACCESS_DENIED && !overwrite && flags == 0)
                 {
                     Log.Warn($"Wi-Fi: an all-user profile for {document} was refused; saving it for this user only");
                     result = NativeMethods.WlanSetProfile(_handle, _interface, NativeMethods.WLAN_PROFILE_USER, xml, 0, overwrite, 0, out reason);
