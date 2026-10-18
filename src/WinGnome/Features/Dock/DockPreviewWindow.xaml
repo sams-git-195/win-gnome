@@ -1,0 +1,23 @@
+<Window x:Class="WinGnome.Features.Dock.DockPreviewWindow"
+        x:ClassModifier="internal"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Windows"
+        WindowStyle="None"
+        AllowsTransparency="False"
+        Background="{DynamicResource DockBackgroundBrush}"
+        Foreground="{DynamicResource ForegroundBrush}"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        ResizeMode="NoResize"
+        Focusable="False"
+        UseLayoutRounding="True"
+        FontFamily="{StaticResource ShellFont}">
+    <!--
+        Not layered (AllowsTransparency off): DWM does not draw thumbnails into layered windows. The thumbnails are
+        composited by DWM on top of this content, inside the boxes the layout leaves free of captions and buttons.
+        Items are placed from code at the rectangles DockPreviewLayout returns.
+    -->
+    <Canvas x:Name="ItemsCanvas" />
+</Window>

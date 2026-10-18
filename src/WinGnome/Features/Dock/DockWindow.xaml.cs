@@ -43,6 +43,7 @@ internal sealed partial class DockWindow : Window
     private PressState? _press;
     private DockAppEntry? _dragEntry;
     private bool _dropCommitted;
+    private FrameworkElement? _hovered;
 
     public DockWindow(DockViewModel viewModel, BlurBackdrop backdrop)
     {
@@ -58,7 +59,12 @@ internal sealed partial class DockWindow : Window
 
         SlideHost.MouseEnter += (_, _) => PointerEntered?.Invoke(this, EventArgs.Empty);
         SlideHost.MouseMove += OnPointerMove;
-        SlideHost.MouseLeave += (_, _) => ReleaseMagnification();
+        SlideHost.MouseMove += OnHoverMove;
+        SlideHost.MouseLeave += (_, _) =>
+        {
+            ReleaseMagnification();
+            SetHovered(null);
+        };
         SlideHost.DragEnter += OnDragEnter;
         SlideHost.DragOver += OnDragOver;
         SlideHost.Drop += OnDrop;
@@ -85,6 +91,15 @@ internal sealed partial class DockWindow : Window
 
     /// <summary>.exe or .lnk files were dropped on the dock.</summary>
     public event EventHandler<DockFilesDroppedEventArgs>? FilesDropped;
+
+    /// <summary>A drag from another app (files) entered the dock.</summary>
+    public event EventHandler? ExternalDragEntered;
+
+    /// <summary>The pointer moved onto another item or off the items; raised only when that changes.</summary>
+    public event EventHandler<DockHoverEventArgs>? EntryHovered;
+
+    /// <summary>The dock started sliding out (or was hidden at once).</summary>
+    public event EventHandler? Concealed;
 
     /// <summary>True while the pointer is over the dock's hit-testable area.</summary>
     public bool IsPointerOver => SlideHost.IsMouseOver;
@@ -183,6 +198,8 @@ internal sealed partial class DockWindow : Window
         if (!shown)
         {
             ResetMagnification();
+            SetHovered(null);
+            Concealed?.Invoke(this, EventArgs.Empty);
         }
         else if (!IsVisible)
         {
@@ -311,6 +328,27 @@ internal sealed partial class DockWindow : Window
         }
     }
 
+    // ---- Hover ------------------------------------------------------------------------------
+
+    private void OnHoverMove(object sender, MouseEventArgs e)
+    {
+        if (_revealed && _dragEntry is null)
+        {
+            SetHovered(ContainerOf(e.OriginalSource as DependencyObject));
+        }
+    }
+
+    private void SetHovered(FrameworkElement? container)
+    {
+        if (ReferenceEquals(container, _hovered))
+        {
+            return;
+        }
+
+        _hovered = container;
+        EntryHovered?.Invoke(this, new DockHoverEventArgs(container?.DataContext as DockAppEntry, container));
+    }
+
     // ---- Clicks -----------------------------------------------------------------------------
 
     private void OnItemMouseDown(object sender, MouseButtonEventArgs e)
@@ -395,6 +433,7 @@ internal sealed partial class DockWindow : Window
         {
             // OLE drags do not raise mouse events, so tell the visibility logic the pointer has arrived.
             PointerEntered?.Invoke(this, EventArgs.Empty);
+            ExternalDragEntered?.Invoke(this, EventArgs.Empty);
         }
 
         OnDragOver(sender, e);

@@ -38,12 +38,15 @@ internal sealed class DockInstance : IDisposable
     private readonly DockMenuPresenter _menu;
     private readonly DockVisibilityController _visibility;
     private readonly DockReservation _reservation;
+    private readonly DockPreviewPresenter _preview;
     private readonly HwndSource? _source;
     private DockSettings _dock;
     private bool _relayoutQueued;
     private bool _menuOpen;
     private bool _dragging;
+    private bool _previewOpen;
     private bool _disposed;
+    private PixelRect _frameWindow;
     private int _iconPixels;
     private (int Cells, int Separators) _layoutCounts = (-1, -1);
     private (string, PixelRect, DockPosition, DockVisibility, double)? _loggedPlacement;
@@ -62,8 +65,14 @@ internal sealed class DockInstance : IDisposable
         _menu = new DockMenuPresenter(context.Dispatcher);
         _visibility = new DockVisibilityController(context, _window, foreground, poller);
         _reservation = new DockReservation();
+        _preview = new DockPreviewPresenter(context.Dispatcher, context.Windows, _actions, PreviewPlacement);
+        _preview.SetEnabled(dock.WindowPreviews);
 
         _window.EntryInvoked += OnEntryInvoked;
+        _window.EntryHovered += OnEntryHovered;
+        _window.ExternalDragEntered += OnExternalDragEntered;
+        _window.Concealed += OnConcealed;
+        _preview.OpenChanged += OnPreviewOpenChanged;
         _window.MenuRequested += OnMenuRequested;
         _window.PinDragStarted += OnPinDragStarted;
         _window.PinDragFinished += OnPinDragFinished;
@@ -87,12 +96,23 @@ internal sealed class DockInstance : IDisposable
     /// <summary>The model changed its cell count or icon size and wants a fresh model.</summary>
     public event EventHandler? RefreshRequested;
 
+    /// <summary>This dock opened its window preview popover (only one is open across all docks).</summary>
+    public event EventHandler? PreviewOpened;
+
     public SurfaceState State => new(Monitor.Key, Monitor.Bounds, Monitor.Dpi, _reservation.IsDetached);
 
     /// <summary>Pinned launch ids in the order shown (after a drag preview).</summary>
     public IReadOnlyList<DockAppEntry> AppEntries => _viewModel.AppEntries;
 
-    public void ApplySettings(DockSettings dock) => _dock = dock;
+    public void ApplySettings(DockSettings dock)
+    {
+        _dock = dock;
+        Run(() =>
+        {
+            _preview.Dismiss();
+            _preview.SetEnabled(dock.WindowPreviews);
+        });
+    }
 
     /// <summary>Shows the dock (after <see cref="DockOn"/>) or hides it and gives its strip back.</summary>
     public void SetEnabled(bool enabled)
@@ -100,6 +120,7 @@ internal sealed class DockInstance : IDisposable
         if (!enabled)
         {
             _menu.Close();
+            Run(_preview.Dismiss);
             _reservation.Release();
         }
 
@@ -123,6 +144,12 @@ internal sealed class DockInstance : IDisposable
     public void RedockForExplorer() => _reservation.Redock();
 
     public void CloseMenu() => _menu.Close();
+
+    /// <summary>Closes the window preview popover, if this dock has one open.</summary>
+    public void DismissPreview() => Run(_preview.Dismiss);
+
+    /// <summary>The user's foreground window changed: the popover closes unless the pointer is on it.</summary>
+    public void OnForegroundChanged() => Run(_preview.OnForegroundChanged);
 
     /// <summary>Always-visible mode: registers the strip again if the work area no longer leaves it out.</summary>
     public bool EnsureReserved() => !_disposed && _reservation.EnsureReserved();
@@ -156,6 +183,8 @@ internal sealed class DockInstance : IDisposable
             {
                 Relayout();
             }
+
+            _preview.Refresh(_viewModel.AppEntries);
         }
         catch (Exception ex)
         {
@@ -179,6 +208,8 @@ internal sealed class DockInstance : IDisposable
     {
         try
         {
+            // The popover was placed against the old geometry; it opens again on the next hover.
+            _preview.Dismiss();
             var monitor = Monitor.Bounds;
             var scale = Monitor.Scale;
             var cells = _viewModel.CellCount;
@@ -193,6 +224,7 @@ internal sealed class DockInstance : IDisposable
             var frame = DockFrameLayout.Compute(monitor, _dock.Position, geometry, cellSize * scale, iconSize * scale, _dock.Magnification, _dock.ExtendToEdges);
 
             _layoutCounts = (cells, separators);
+            _frameWindow = frame.Window;
             _viewModel.Appearance.Apply(_dock, iconSize, _dock.CornerRadius);
             _window.ApplyLayout(new DockViewLayout(
                 frame.Window,
@@ -253,6 +285,7 @@ internal sealed class DockInstance : IDisposable
     /// </summary>
     private void OnWindowDpiChanged(object? sender, DpiChangedEventArgs e)
     {
+        Run(_preview.Dismiss);
         _context.Displays.Invalidate();
         if (_relayoutQueued)
         {
@@ -301,10 +334,38 @@ internal sealed class DockInstance : IDisposable
 
     // ---- Input ------------------------------------------------------------------------------
 
-    private void OnEntryInvoked(object? sender, DockEntryEventArgs e) => Run(() => _actions.Invoke(e.Entry, e.Button));
+    private void OnEntryInvoked(object? sender, DockEntryEventArgs e) => Run(() =>
+    {
+        _preview.Dismiss();
+        _actions.Invoke(e.Entry, e.Button);
+    });
+
+    private void OnEntryHovered(object? sender, DockHoverEventArgs e) => Run(() => _preview.PointerOverIcon(e.Entry, e.Container));
+
+    private void OnExternalDragEntered(object? sender, EventArgs e) => Run(_preview.Dismiss);
+
+    private void OnConcealed(object? sender, EventArgs e) => Run(_preview.Dismiss);
+
+    private void OnPreviewOpenChanged(object? sender, bool open)
+    {
+        _previewOpen = open;
+        _visibility.SetInteracting(IsInteracting);
+        if (open)
+        {
+            PreviewOpened?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>A menu, a pin drag or the preview popover holds the dock on screen.</summary>
+    private bool IsInteracting => _menuOpen || _dragging || _previewOpen;
+
+    /// <summary>Where the popover goes, or null before the first layout.</summary>
+    private DockPreviewPlacement? PreviewPlacement() =>
+        _frameWindow.IsEmpty ? null : new DockPreviewPlacement(_dock.Position, _frameWindow, Monitor);
 
     private void OnMenuRequested(object? sender, DockMenuRequestEventArgs e) => Run(() =>
     {
+        _preview.Dismiss();
         if (DockMenuBuilder.Build(e.Entry, _actions, _context.Windows) is { } menu)
         {
             _menu.Show(menu, e.Target, _dock.Position, _foreground.Handle);
@@ -314,19 +375,22 @@ internal sealed class DockInstance : IDisposable
     private void OnMenuOpenChanged(object? sender, bool open)
     {
         _menuOpen = open;
-        _visibility.SetInteracting(_menuOpen || _dragging);
+        Run(() => _preview.SetSuppressed(_menuOpen || _dragging));
+        _visibility.SetInteracting(IsInteracting);
     }
 
     private void OnPinDragStarted(object? sender, EventArgs e)
     {
         _dragging = true;
+        Run(() => _preview.SetSuppressed(true));
         _visibility.SetInteracting(true);
     }
 
     private void OnPinDragFinished(object? sender, bool committed)
     {
         _dragging = false;
-        _visibility.SetInteracting(_menuOpen);
+        Run(() => _preview.SetSuppressed(_menuOpen));
+        _visibility.SetInteracting(IsInteracting);
         if (committed)
         {
             // The settings change triggers ApplySettings, which refreshes every dock in the new order.
@@ -364,11 +428,18 @@ internal sealed class DockInstance : IDisposable
 
         _disposed = true;
         _source?.RemoveHook(WndProc);
+
+        // Created last, released first: its window and thumbnails go before the dock's own windows.
+        _preview.OpenChanged -= OnPreviewOpenChanged;
+        _preview.Dispose();
         _menu.Close();
         _visibility.Dispose();
         _reservation.Detached -= OnReservationDetached;
         _reservation.Dispose();
         _window.EntryInvoked -= OnEntryInvoked;
+        _window.EntryHovered -= OnEntryHovered;
+        _window.ExternalDragEntered -= OnExternalDragEntered;
+        _window.Concealed -= OnConcealed;
         _window.MenuRequested -= OnMenuRequested;
         _window.PinDragStarted -= OnPinDragStarted;
         _window.PinDragFinished -= OnPinDragFinished;

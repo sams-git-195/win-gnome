@@ -62,6 +62,7 @@ internal sealed class DockViewModel
         ArgumentNullException.ThrowIfNull(apps);
         ArgumentNullException.ThrowIfNull(settings);
 
+        Appearance.WindowPreviews = settings.WindowPreviews;
         apps = _runningOrder.Apply(apps, Environment.TickCount64);
         var desired = new List<DockEntry>(apps.Count + 3);
         var appEntries = new List<DockAppEntry>(apps.Count);

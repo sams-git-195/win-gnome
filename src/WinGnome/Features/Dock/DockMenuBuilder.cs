@@ -17,8 +17,8 @@ internal static class DockMenuBuilder
     /// <summary>Segoe Fluent Icons "CheckMark".</summary>
     private const string CheckGlyph = "";
 
-    /// <summary>Segoe Fluent Icons "Cancel", the close mark.</summary>
-    private const string CloseGlyph = "";
+    /// <summary>Segoe Fluent Icons "Cancel", the close mark (also on the preview popover's items).</summary>
+    internal const string CloseGlyph = "";
 
     /// <summary>The menu for <paramref name="entry"/>, or null when it has none (Show Applications).</summary>
     public static ContextMenu? Build(DockEntry entry, DockActions actions, WindowTracker windows) => entry switch

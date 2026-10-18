@@ -72,10 +72,14 @@ internal sealed class DockActions
                 break;
 
             case DockClickKind.ShowPreviews:
-                _context.Commands.ShowOverview(new OverviewRequest(OverviewMode.Windows, app.Windows));
+                ShowWindows(app);
                 break;
         }
     }
+
+    /// <summary>Opens the overview with only <paramref name="app"/>'s windows.</summary>
+    public void ShowWindows(DockApp app) =>
+        _context.Commands.ShowOverview(new OverviewRequest(OverviewMode.Windows, app.Windows));
 
     /// <summary>
     /// Starts a new instance (pinned launcher, the app's catalogue entry, its AUMID, or its executable), elevated when

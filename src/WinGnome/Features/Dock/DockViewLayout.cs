@@ -49,6 +49,17 @@ internal sealed class DockMenuRequestEventArgs(DockEntry entry, System.Windows.F
     public System.Windows.FrameworkElement Target { get; } = target;
 }
 
+/// <summary>
+/// The pointer moved onto another dock item (<see cref="Container"/>), or off every item (both null). <see cref="Entry"/>
+/// is null for items that are not apps.
+/// </summary>
+internal sealed class DockHoverEventArgs(DockAppEntry? entry, System.Windows.FrameworkElement? container) : EventArgs
+{
+    public DockAppEntry? Entry { get; } = entry;
+
+    public System.Windows.FrameworkElement? Container { get; } = container;
+}
+
 /// <summary>Files dropped on the dock, to be pinned at <see cref="PinIndex"/> (an index into the pinned list).</summary>
 internal sealed class DockFilesDroppedEventArgs(IReadOnlyList<string> paths, int pinIndex) : EventArgs
 {
