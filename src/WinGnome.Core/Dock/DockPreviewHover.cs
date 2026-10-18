@@ -54,7 +54,7 @@ public sealed class DockPreviewHover
 
     /// <summary>
     /// The pointer is over an icon (<paramref name="key"/>), or over no icon (null). Report it when the hovered icon
-    /// changes. <paramref name="hasPreview"/> is false for icons that never show a popover (fewer than two windows).
+    /// changes. <paramref name="hasPreview"/> is false for icons that never show a popover (apps that are not running).
     /// </summary>
     public DockPreviewChange PointerOverIcon(string? key, bool hasPreview, long nowMs)
     {
@@ -113,7 +113,7 @@ public sealed class DockPreviewHover
     }
 
     /// <summary>
-    /// Closes the popover for good reason (a click, a menu, a drag, the foreground changing). The icon under the pointer
+    /// Closes the popover because the user acted (a click, a menu, a drag). The icon under the pointer
     /// does not open it again until the pointer has moved to another icon or off the dock.
     /// </summary>
     public DockPreviewChange Dismiss()
@@ -124,13 +124,15 @@ public sealed class DockPreviewHover
 
     /// <summary>
     /// Closes the popover for a reason that is not the user's (a relayout, a settings or display change, the dock
-    /// hiding, another dock's popover opening). Unlike <see cref="Dismiss"/> it disarms nothing: an icon still under the
-    /// pointer starts the show delay again, so the popover comes back without the pointer having to leave and return.
+    /// hiding, another dock's popover opening). Unlike <see cref="Dismiss"/> it disarms nothing: when the icon last
+    /// reported is still under the pointer (<paramref name="pointerOnIcon"/>, which the app checks because a pointer-left
+    /// event can be missed) the show delay starts again, so the popover comes back without the pointer having to leave
+    /// and return. Otherwise the machine goes idle.
     /// </summary>
-    public DockPreviewChange Close(long nowMs)
+    public DockPreviewChange Close(long nowMs, bool pointerOnIcon)
     {
         var change = Reset();
-        if (!_suppressed && _disarmedKey is null && _hoverKey is { } key)
+        if (pointerOnIcon && !_suppressed && _disarmedKey is null && _hoverKey is { } key)
         {
             StartPending(key, nowMs);
         }

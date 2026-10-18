@@ -424,7 +424,7 @@ public class DockPreviewHoverTests
         // it again after the usual delay instead of staying dead until the pointer leaves.
         var hover = OpenOn(A);
 
-        Assert.Equal(DockPreviewChange.Hide, hover.Close(2000));
+        Assert.Equal(DockPreviewChange.Hide, hover.Close(2000, pointerOnIcon: true));
 
         Assert.Equal(DockPreviewPhase.Pending, hover.Phase);
         Assert.Equal(A, hover.Key);
@@ -439,10 +439,24 @@ public class DockPreviewHoverTests
         hover.PointerOverPopover(over: true, nowMs: 1500);
         hover.PointerOverIcon(null, hasPreview: false, nowMs: 1501);
 
-        Assert.Equal(DockPreviewChange.Hide, hover.Close(2000));
+        Assert.Equal(DockPreviewChange.Hide, hover.Close(2000, pointerOnIcon: false));
 
         Assert.Equal(DockPreviewPhase.Idle, hover.Phase);
         Assert.Null(hover.Deadline);
+    }
+
+    [Fact]
+    public void Close_PointerNoLongerOnTheLastReportedIcon_GoesIdle()
+    {
+        // A missed pointer-left event leaves the icon as the last one reported; the app knows better and says so. The
+        // popover must not come back with the pointer on neither the icon nor the popover.
+        var hover = OpenOn(A);
+
+        Assert.Equal(DockPreviewChange.Hide, hover.Close(2000, pointerOnIcon: false));
+
+        Assert.Equal(DockPreviewPhase.Idle, hover.Phase);
+        Assert.Null(hover.Deadline);
+        Assert.Equal(DockPreviewChange.None, hover.Tick(2400));
     }
 
     [Fact]
@@ -451,7 +465,7 @@ public class DockPreviewHoverTests
         var hover = new DockPreviewHover();
         hover.PointerOverIcon(A, hasPreview: true, nowMs: 1000);
 
-        Assert.Equal(DockPreviewChange.None, hover.Close(1200));
+        Assert.Equal(DockPreviewChange.None, hover.Close(1200, pointerOnIcon: true));
 
         Assert.Equal(DockPreviewPhase.Pending, hover.Phase);
         Assert.Equal(1600, hover.Deadline);
@@ -463,7 +477,7 @@ public class DockPreviewHoverTests
         var hover = OpenOn(A);
         hover.Dismiss();
 
-        Assert.Equal(DockPreviewChange.None, hover.Close(2000));
+        Assert.Equal(DockPreviewChange.None, hover.Close(2000, pointerOnIcon: true));
 
         Assert.Equal(DockPreviewPhase.Idle, hover.Phase);
         Assert.Null(hover.Deadline);
@@ -475,7 +489,7 @@ public class DockPreviewHoverTests
         var hover = OpenOn(A);
         hover.SetSuppressed(true);
 
-        Assert.Equal(DockPreviewChange.None, hover.Close(2000));
+        Assert.Equal(DockPreviewChange.None, hover.Close(2000, pointerOnIcon: true));
 
         Assert.Equal(DockPreviewPhase.Idle, hover.Phase);
         Assert.Null(hover.Deadline);
@@ -486,7 +500,7 @@ public class DockPreviewHoverTests
     {
         var hover = new DockPreviewHover();
 
-        Assert.Equal(DockPreviewChange.None, hover.Close(1000));
+        Assert.Equal(DockPreviewChange.None, hover.Close(1000, pointerOnIcon: true));
         Assert.Equal(DockPreviewPhase.Idle, hover.Phase);
     }
 

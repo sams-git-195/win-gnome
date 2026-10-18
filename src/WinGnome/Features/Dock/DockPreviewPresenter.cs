@@ -86,8 +86,8 @@ internal sealed class DockPreviewPresenter : IDisposable
     }
 
     /// <summary>
-    /// Closes the popover (a click, a drag, the dock hiding, a relayout, a settings change). The icon under the pointer
-    /// does not open it again until the pointer leaves it.
+    /// Closes the popover because the user acted (a click on an icon or a thumbnail, a menu, a drag). The icon under the
+    /// pointer does not open it again until the pointer leaves it.
     /// </summary>
     public void Dismiss()
     {
@@ -100,13 +100,13 @@ internal sealed class DockPreviewPresenter : IDisposable
     /// <summary>
     /// Closes the popover for a reason that is not the user's (a relayout, a settings or display change, the dock
     /// hiding, another dock's popover opening, its app's windows gone). An icon still under the pointer opens it again
-    /// after the usual delay.
+    /// after the usual delay; the pointer is checked here because the dock's pointer-left event can be missed.
     /// </summary>
     public void Close()
     {
         if (!_disposed)
         {
-            Apply(_hover.Close(Now));
+            Apply(_hover.Close(Now, PointerOnHoveredIcon));
         }
     }
 
@@ -175,10 +175,17 @@ internal sealed class DockPreviewPresenter : IDisposable
         SyncTimer();
     }
 
-    /// <summary>Opens (or switches) the popover for the hovered icon, which is the machine's key.</summary>
+    /// <summary>True while the pointer really is on the icon last reported as hovered.</summary>
+    private bool PointerOnHoveredIcon => _hoveredContainer is { IsMouseOver: true };
+
+    /// <summary>
+    /// Opens (or switches) the popover for the hovered icon, which is the machine's key, but only while the pointer is on
+    /// it: a popover opened after a missed pointer-left event would have no pointer event left to close it.
+    /// </summary>
     private void ShowHovered()
     {
         if (_enabled
+            && PointerOnHoveredIcon
             && _hoveredEntry is { } entry
             && string.Equals(entry.Key, _hover.Key, StringComparison.Ordinal)
             && _placement() is { } placement
@@ -189,7 +196,8 @@ internal sealed class DockPreviewPresenter : IDisposable
             return;
         }
 
-        _hover.Dismiss();
+        // Nothing to show here, or the pointer has gone: idle without disarming, so the icon works on the next hover.
+        _hover.Close(Now, pointerOnIcon: false);
         Conceal();
     }
 
