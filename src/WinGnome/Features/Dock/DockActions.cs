@@ -2,6 +2,7 @@ using System.Windows.Input;
 using WinGnome.Core.Dock;
 using WinGnome.Core.Settings;
 using WinGnome.Core.Shell;
+using WinGnome.Core.Windows;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
 
@@ -110,13 +111,76 @@ internal sealed class DockActions
         _lastActivated = hwnd;
     }
 
-    /// <summary>Politely closes every window of the app (like clicking each close button).</summary>
-    public static void Quit(DockApp app)
+    /// <summary>The close target for a window the dock lists: the tracker's snapshot, else a fresh read; null when it is gone.</summary>
+    public CloseTarget? CloseTargetFor(nint hwnd)
     {
+        var info = _context.Windows.Windows.FirstOrDefault(w => w.Handle == hwnd) ?? _context.Windows.Inspect(hwnd);
+        return info is null ? null : CloseTargetOf(info);
+    }
+
+    public static CloseTarget CloseTargetOf(WindowInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        return new CloseTarget(info.Handle, info.ProcessId, info.IsElevated);
+    }
+
+    /// <summary>
+    /// Politely closes one window (like clicking its close button) after re-reading it: a window that is gone, whose handle
+    /// now belongs to another process, or that is elevated is left alone. Nothing waits on the window.
+    /// </summary>
+    /// <param name="captured">What the dock showed when the user chose the window.</param>
+    /// <returns>True when the close request was posted.</returns>
+    public bool CloseWindow(CloseTarget captured)
+    {
+        var posted = TryPostClose(captured, out var decision);
+        if (decision != CloseDecision.Post)
+        {
+            Log.Info($"Dock: not closing window 0x{captured.Handle:X}: {decision}");
+        }
+
+        return posted;
+    }
+
+    /// <summary>Politely closes every window of the app, except elevated ones (like clicking each close button).</summary>
+    public void Quit(DockApp app)
+    {
+        var elevated = 0;
         foreach (var hwnd in app.Windows)
         {
-            WindowActivator.Close(hwnd);
+            if (CloseTargetFor(hwnd) is not { } captured)
+            {
+                continue;
+            }
+
+            TryPostClose(captured, out var decision);
+            if (decision == CloseDecision.Elevated)
+            {
+                elevated++;
+            }
         }
+
+        if (elevated > 0)
+        {
+            Log.Info($"Dock: quit '{app.Name}' left {elevated} elevated window(s) open");
+        }
+    }
+
+    private bool TryPostClose(CloseTarget captured, out CloseDecision decision)
+    {
+        var live = _context.Windows.Inspect(captured.Handle) is { } info ? CloseTargetOf(info) : (CloseTarget?)null;
+        decision = DockWindowClose.Decide(captured, live);
+        if (decision != CloseDecision.Post)
+        {
+            return false;
+        }
+
+        if (WindowActivator.TryClose(captured.Handle, out var error))
+        {
+            return true;
+        }
+
+        Log.Warn($"Dock: could not post close to window 0x{captured.Handle:X} (process {captured.ProcessId}): Win32 error {error}");
+        return false;
     }
 
     /// <summary>The launch id and name a running app would be pinned with, or null when it cannot be launched again.</summary>

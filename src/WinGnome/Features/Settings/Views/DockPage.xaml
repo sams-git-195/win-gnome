@@ -76,6 +76,9 @@
             <c:SettingsRow Title="Click action" Subtitle="{Binding ClickAction.SelectedDescription}">
                 <ComboBox ItemsSource="{Binding ClickAction.Options}" SelectedItem="{Binding ClickAction.Selected}" DisplayMemberPath="Label" />
             </c:SettingsRow>
+            <c:SettingsRow Title="Window previews" Subtitle="Hover an app with several windows to see and close them.">
+                <CheckBox Style="{DynamicResource SettingsToggle}" IsChecked="{Binding WindowPreviews.Value}" />
+            </c:SettingsRow>
         </c:SettingsGroup>
 
         <c:SettingsGroup Header="Contents">

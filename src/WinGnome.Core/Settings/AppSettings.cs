@@ -278,6 +278,9 @@ public sealed class DockSettings
 
     public DockClickAction ClickAction { get; set; } = DockClickAction.FocusOrMinimize;
 
+    /// <summary>Hovering an app with several windows shows a popover of live thumbnails with a close button each.</summary>
+    public bool WindowPreviews { get; set; } = true;
+
     /// <summary>Which displays get a dock. Super+1..9 always acts on the main display's dock.</summary>
     public BarMonitors Monitors { get; set; } = BarMonitors.Primary;
 
