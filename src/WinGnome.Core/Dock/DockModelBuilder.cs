@@ -10,7 +10,9 @@ public static class DockModelBuilder
     /// <summary>
     /// Builds the dock model. Pinned apps come first in pinned order; unpinned running apps (when
     /// <paramref name="includeUnpinnedRunning"/> is true) follow in order of first appearance in
-    /// <paramref name="windows"/>. A window belongs to a pinned app when identities match; failing that when the
+    /// <paramref name="windows"/>. That order, and each app's <see cref="DockApp.Windows"/>, are only as stable as the
+    /// input (z-order for the live dock); <c>DockRunningOrder</c> makes them stable. Each app's
+    /// <see cref="DockApp.MostRecentWindow"/> is its first window in <paramref name="windows"/>. A window belongs to a pinned app when identities match; failing that when the
     /// pin's target is the same install as the window's process (for named-AUMID pins, only windows with no AUMID
     /// of their own; <see cref="AppPathMatch.IsSameInstall"/>); and failing that, for file-system pins, when the pinned file name equals the window's process file name.
     /// Named-AUMID pins get their target from <paramref name="resolvePath"/>; generated AUMIDs never match by path.
@@ -89,7 +91,8 @@ public static class DockModelBuilder
                 first?.AppUserModelId,
                 IsPinned: true,
                 slot.Windows.Select(w => w.Handle).ToList(),
-                IsFocused(slot.Windows, foreground)));
+                IsFocused(slot.Windows, foreground),
+                first?.Handle ?? 0));
         }
 
         foreach (var group in unpinned)
@@ -103,7 +106,8 @@ public static class DockModelBuilder
                 first.AppUserModelId,
                 IsPinned: false,
                 group.Windows.Select(w => w.Handle).ToList(),
-                IsFocused(group.Windows, foreground)));
+                IsFocused(group.Windows, foreground),
+                first.Handle));
         }
 
         return result;

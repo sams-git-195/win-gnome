@@ -8,6 +8,9 @@ public class DockClickPlannerTests
     private static DockApp App(bool focused, params nint[] windows) =>
         new("id", "App", "launch", null, null, IsPinned: true, windows, focused);
 
+    private static DockApp AppWithMostRecent(bool focused, nint mostRecent, params nint[] windows) =>
+        App(focused, windows) with { MostRecentWindow = mostRecent };
+
     private static DockClickResult Plan(DockApp app, DockClickAction action, nint foreground = 0) =>
         DockClickPlanner.Plan(app, foreground, action, lastActivated: 0);
 
@@ -32,6 +35,22 @@ public class DockClickPlannerTests
     }
 
     [Fact]
+    public void FocusOrMinimize_NotFocused_ActivatesMostRecentWindowWhateverItsPosition()
+    {
+        var result = Plan(AppWithMostRecent(false, 22, 11, 22, 33), DockClickAction.FocusOrMinimize, foreground: 99);
+
+        Assert.Equal(new DockClickResult(DockClickKind.Activate, 22), result);
+    }
+
+    [Fact]
+    public void FocusOrMinimize_StaleMostRecentWindow_FallsBackToTheFirstWindow()
+    {
+        var result = Plan(AppWithMostRecent(false, 99, 11, 22, 33), DockClickAction.FocusOrMinimize, foreground: 55);
+
+        Assert.Equal(new DockClickResult(DockClickKind.Activate, 11), result);
+    }
+
+    [Fact]
     public void FocusOrMinimize_Focused_MinimisesTheForegroundWindow()
     {
         var result = Plan(App(true, 11, 22, 33), DockClickAction.FocusOrMinimize, foreground: 22);
@@ -45,6 +64,22 @@ public class DockClickPlannerTests
         var result = Plan(App(false, 11, 22), DockClickAction.Cycle, foreground: 99);
 
         Assert.Equal(new DockClickResult(DockClickKind.Activate, 11), result);
+    }
+
+    [Fact]
+    public void Cycle_NotFocused_ActivatesMostRecentWindow()
+    {
+        var result = Plan(AppWithMostRecent(false, 22, 11, 22, 33), DockClickAction.Cycle, foreground: 99);
+
+        Assert.Equal(new DockClickResult(DockClickKind.Activate, 22), result);
+    }
+
+    [Fact]
+    public void Cycle_FocusedOnMostRecentWindow_StepsToTheNextInStableOrder()
+    {
+        var result = Plan(AppWithMostRecent(true, 22, 11, 22, 33), DockClickAction.Cycle, foreground: 22);
+
+        Assert.Equal(new DockClickResult(DockClickKind.Activate, 33), result);
     }
 
     [Fact]
