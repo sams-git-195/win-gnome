@@ -28,8 +28,10 @@ internal sealed class WifiNetworkItem(WifiNetworkRow row, bool isConnecting)
 
     public bool CanForget => Row.IsSaved;
 
+    public string SignalGlyph => GlyphFor(Row.SignalLevel);
+
     /// <summary>Signal strength as the cellular-bars glyphs of Segoe Fluent Icons (one to four bars).</summary>
-    public string SignalGlyph => Row.SignalLevel switch
+    public static string GlyphFor(int level) => level switch
     {
         <= 1 => "",
         2 => "",
@@ -39,10 +41,74 @@ internal sealed class WifiNetworkItem(WifiNetworkRow row, bool isConnecting)
 }
 
 /// <summary>
-/// Wi-Fi: the Wi-Fi switch, the visible networks with connect, disconnect and forget, and links for the rest. Reads
-/// happen when the panel opens and when Windows reports a change (no polling); every Windows call runs off the UI
-/// thread. Connecting follows <see cref="WifiConnectFlow"/>, which decides what to write, when a failed attempt must
-/// delete the profile it made, and when to ask for the password again. Passwords only ever live in <c>char[]</c>
+/// One row of the Saved Networks list. Kept across reloads (by profile name), so a write in flight on its switch isn't
+/// lost when a WLAN event re-reads the list before the write finishes.
+/// </summary>
+internal sealed class WifiSavedNetworkItem : ObservableObject
+{
+    private WifiSavedNetworkRow _row;
+    private bool _isConnecting;
+
+    public WifiSavedNetworkItem(WifiSavedNetworkRow row, Action<WifiSavedNetworkItem, VerifiedSwitch, bool> changeAutoConnect)
+    {
+        _row = row;
+        ProfileName = row.ProfileName;
+        AutoConnect = new VerifiedSwitch((sw, on) => changeAutoConnect(this, sw, on));
+    }
+
+    /// <summary>What connect, forget and the connect-mode edit take.</summary>
+    public string ProfileName { get; }
+
+    public WifiSavedNetworkRow Row => _row;
+
+    public string Name => _row.Name;
+
+    public string Subtitle => _isConnecting ? "Connecting…" : _row.Subtitle;
+
+    public bool CanConnect => !_row.IsConnected && !_isConnecting;
+
+    /// <summary>True when the Connect automatically switch and Forget are offered (not for Group Policy or unreadable profiles).</summary>
+    public bool CanEdit => _row.CanEdit;
+
+    /// <summary>True when the visible list gave this network's signal.</summary>
+    public bool HasSignal => _row.SignalLevel is not null;
+
+    public string SignalGlyph => WifiNetworkItem.GlyphFor(_row.SignalLevel ?? 0);
+
+    /// <summary>The profile's connect-automatically setting, as Windows last reported it.</summary>
+    public VerifiedSwitch AutoConnect { get; }
+
+    /// <param name="row">The row as just read.</param>
+    /// <param name="isConnecting">True while this panel connects to it.</param>
+    /// <param name="canEdit">False in safe mode, where no switch can change.</param>
+    public void Show(WifiSavedNetworkRow row, bool isConnecting, bool canEdit)
+    {
+        _row = row;
+        _isConnecting = isConnecting;
+        AutoConnect.CanChange = canEdit && row.CanEdit;
+        // While a write is in flight the switch waits for the re-read after it, which shows the written value.
+        if (AutoConnect.IsIdle)
+        {
+            AutoConnect.Confirm(row.AutoConnect);
+        }
+
+        OnPropertyChanged(nameof(Row));
+        OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(Subtitle));
+        OnPropertyChanged(nameof(CanConnect));
+        OnPropertyChanged(nameof(CanEdit));
+        OnPropertyChanged(nameof(HasSignal));
+        OnPropertyChanged(nameof(SignalGlyph));
+    }
+}
+
+/// <summary>
+/// Wi-Fi: the Wi-Fi switch, the current network, the visible networks when Windows shares them (or a notice saying
+/// why not), the saved networks with connect, connect automatically and forget, and links for the rest. Only the
+/// visible list, scans and the current connection's WLAN query depend on location access; everything else uses calls
+/// Windows doesn't gate. Reads happen when the panel opens and when Windows reports a change (no polling); every
+/// Windows call runs off the UI thread. Connecting follows <see cref="WifiConnectFlow"/>, which decides what to write,
+/// when a failed attempt must delete the profile it made, and when to ask for the password again. Passwords only ever live in <c>char[]</c>
 /// buffers that are cleared as soon as the profile is written, and are never logged.
 /// </summary>
 internal sealed class WifiPanelViewModel : SystemPanelViewModel
@@ -50,6 +116,7 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
     private const string WifiLink = "ms-settings:network-wifi";
     private static readonly TimeSpan RefreshDelay = TimeSpan.FromMilliseconds(300);
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(30);
+    private static readonly WifiLocationNoticeText NoNotice = WifiLocationNotice.For(WifiLocationBlock.None, callRefused: false);
 
     private readonly SystemSettingWriter _writer;
     private readonly WifiConnectFlow _flow = new(ConnectTimeout);
@@ -60,17 +127,20 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
     private RadioClient? _radio;
     private WifiLocationProbe? _location;
     private bool _userAskedNearby;
+    private bool _callRefused;
     private bool _gatedCallsAllowed;
-    private bool _offerShowNearby;
+    private WifiLocationNoticeText _notice = NoNotice;
     private int _open;
     private IReadOnlyList<string> _profiles = [];
+    private Dictionary<string, WifiSavedNetworkItem> _savedItems = new(StringComparer.OrdinalIgnoreCase);
+    private WifiCurrentNetwork? _current;
+    private WifiSavedNetworkItem? _currentSaved;
     private WifiNetworkRow? _target;
     private string? _targetProfile;
     private string? _connectingKey;
     private bool _isLoading;
     private bool _hasAdapter;
-    private bool _locationDenied;
-    private bool _connectedWithoutName;
+    private bool _profilesRead;
     private bool _radioPresent;
     private bool _radioCanChange = true;
     private bool _wifiOn;
@@ -91,10 +161,13 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
         _connectTimer.Tick += (_, _) => OnConnectTimeout();
 
         RefreshCommand = new RelayCommand(Refresh);
-        ConnectCommand = new RelayCommand(parameter => Connect(parameter as WifiNetworkItem), _ => CanChange);
-        DisconnectCommand = new RelayCommand(parameter => Disconnect(parameter as WifiNetworkItem), _ => CanChange);
-        ForgetCommand = new RelayCommand(parameter => Forget(parameter as WifiNetworkItem), _ => CanChange);
+        ConnectCommand = new RelayCommand(parameter => Connect((parameter as WifiNetworkItem)?.Row), _ => CanChange);
+        ConnectSavedCommand = new RelayCommand(parameter => ConnectSaved(parameter as WifiSavedNetworkItem), _ => CanChange);
+        DisconnectCommand = new RelayCommand(_ => Disconnect(), _ => CanChange);
+        ForgetCommand = new RelayCommand(Forget, _ => CanChange);
         OpenLocationSettingsCommand = new RelayCommand(() => context.OpenLink("ms-settings:privacy-location"));
+        // Windows' own page lists and connects to nearby networks: as a system component it isn't gated on location.
+        ShowWindowsListCommand = new RelayCommand(() => context.OpenLink(WifiLink));
         AirplaneModeCommand = new RelayCommand(() => context.OpenLink("ms-settings:network-airplanemode"));
         HotspotCommand = new RelayCommand(() => context.OpenLink("ms-settings:network-mobilehotspot"));
         HiddenNetworkCommand = new RelayCommand(() => context.OpenLink(WifiLink));
@@ -107,16 +180,26 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
 
     public ObservableCollection<WifiNetworkItem> Networks { get; } = [];
 
+    public ObservableCollection<WifiSavedNetworkItem> SavedNetworks { get; } = [];
+
     public ICommand RefreshCommand { get; }
 
     /// <summary>Parameter: the <see cref="WifiNetworkItem"/>.</summary>
     public ICommand ConnectCommand { get; }
 
+    /// <summary>Parameter: the <see cref="WifiSavedNetworkItem"/>.</summary>
+    public ICommand ConnectSavedCommand { get; }
+
+    /// <summary>Disconnects the adapter from whichever network it is on.</summary>
     public ICommand DisconnectCommand { get; }
 
+    /// <summary>Parameter: a <see cref="WifiNetworkItem"/> or a <see cref="WifiSavedNetworkItem"/>.</summary>
     public ICommand ForgetCommand { get; }
 
     public ICommand OpenLocationSettingsCommand { get; }
+
+    /// <summary>Opens Windows' Wi-Fi page, which lists nearby networks where WinGnome can't.</summary>
+    public ICommand ShowWindowsListCommand { get; }
 
     public ICommand AirplaneModeCommand { get; }
 
@@ -127,18 +210,16 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
     /// <summary>Makes the first location-gated call, which is what raises Windows' consent prompt.</summary>
     public ICommand ShowNearbyCommand { get; }
 
-    /// <summary>True when access hasn't been asked for yet, so the notice offers "Show nearby networks" instead of a link to Settings.</summary>
-    public bool OfferShowNearby => _offerShowNearby;
+    /// <summary>True when access hasn't been asked for yet, so the notice offers "Show nearby networks".</summary>
+    public bool OfferShowNearby => _notice.OfferShowNearby;
 
-    public bool OffersLocationSettings => !_offerShowNearby;
+    public bool OffersLocationSettings => _notice.OfferLocationSettings;
 
-    public string LocationNoticeTitle => _offerShowNearby
-        ? "Windows needs your permission to show nearby networks"
-        : "Windows needs location access to show nearby networks";
+    public bool OffersWindowsList => _notice.OfferWindowsList;
 
-    public string LocationNoticeSubtitle => _offerShowNearby
-        ? "Windows will ask whether WinGnome may use your location. Turning Wi-Fi on or off and disconnecting work without it."
-        : "Turn on location access for WinGnome (and for desktop apps) in Windows Settings, then press Refresh. Turning Wi-Fi on or off and disconnecting still work.";
+    public string LocationNoticeTitle => _notice.Title;
+
+    public string LocationNoticeSubtitle => _notice.Subtitle;
 
     public bool IsLoading
     {
@@ -193,24 +274,48 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
 
     public bool ShowsNoAdapter => _loaded && !_hasAdapter;
 
-    /// <summary>True when the list of networks (not the location notice or the empty states) shows.</summary>
-    public bool ShowsList => _hasAdapter && !_locationDenied;
+    /// <summary>True when the list of visible networks (not the location notice or the empty states) shows.</summary>
+    public bool ShowsList => _hasAdapter && _gatedCallsAllowed;
 
-    public bool ShowsLocationNotice => _hasAdapter && _locationDenied;
-
-    /// <summary>"Connected" without the network's name, when Windows won't say which one (location access).</summary>
-    public bool ShowsConnectedWithoutName => _hasAdapter && _connectedWithoutName;
+    /// <summary>In place of the visible list when Windows withholds it, with the reason the gate found.</summary>
+    public bool ShowsLocationNotice => _hasAdapter && !_gatedCallsAllowed && _notice.Title.Length > 0;
 
     public bool ShowsEmptyListNote => ShowsList && !_isLoading && Networks.Count == 0;
+
+    /// <summary>True whenever the adapter is connected, whether or not Windows names the network.</summary>
+    public bool ShowsCurrentNetwork => _hasAdapter && _current is not null;
+
+    public string CurrentNetworkName => _current?.Name ?? "";
+
+    public string CurrentNetworkSubtitle => _current?.Subtitle ?? "";
+
+    public bool ShowsCurrentSignal => _current?.SignalLevel is not null;
+
+    public string CurrentSignalGlyph => WifiNetworkItem.GlyphFor(_current?.SignalLevel ?? 0);
+
+    /// <summary>The connected network's saved row when its profile can be changed: its switch and Forget show in Current network too.</summary>
+    public WifiSavedNetworkItem? CurrentSaved => _currentSaved;
+
+    public bool ShowsCurrentProfileOptions => _currentSaved is not null;
+
+    public bool ShowsSavedNetworks => _hasAdapter && SavedNetworks.Count > 0;
+
+    /// <summary>"No saved networks.": only when Windows gave the list and it was empty.</summary>
+    public bool ShowsNoSavedNote => _loaded && _hasAdapter && _profilesRead && !_isLoading && SavedNetworks.Count == 0;
+
+    /// <summary>Windows refused the saved profile list, so its emptiness says nothing.</summary>
+    public bool ShowsSavedReadFailed => _loaded && _hasAdapter && !_profilesRead && !_isLoading;
 
     protected override void Open()
     {
         Interlocked.Increment(ref _open);
         Networks.Clear();
+        ClearSaved();
         _loaded = false;
         _hasAdapter = false;
-        _locationDenied = false;
-        _connectedWithoutName = false;
+        _gatedCallsAllowed = false;
+        _callRefused = false;
+        _notice = NoNotice;
         NotifyState();
 
         if (Context.Options.SelfTest)
@@ -272,8 +377,17 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
         _radio?.Dispose();
         _radio = null;
         Networks.Clear();
+        ClearSaved();
         _connectingKey = null;
         _target = null;
+    }
+
+    private void ClearSaved()
+    {
+        SavedNetworks.Clear();
+        _savedItems = new(StringComparer.OrdinalIgnoreCase);
+        _current = null;
+        _currentSaved = null;
     }
 
     private void NotifyState()
@@ -281,10 +395,20 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
         OnPropertyChanged(nameof(ShowsNoAdapter));
         OnPropertyChanged(nameof(ShowsList));
         OnPropertyChanged(nameof(ShowsLocationNotice));
-        OnPropertyChanged(nameof(ShowsConnectedWithoutName));
         OnPropertyChanged(nameof(ShowsEmptyListNote));
+        OnPropertyChanged(nameof(ShowsCurrentNetwork));
+        OnPropertyChanged(nameof(CurrentNetworkName));
+        OnPropertyChanged(nameof(CurrentNetworkSubtitle));
+        OnPropertyChanged(nameof(ShowsCurrentSignal));
+        OnPropertyChanged(nameof(CurrentSignalGlyph));
+        OnPropertyChanged(nameof(CurrentSaved));
+        OnPropertyChanged(nameof(ShowsCurrentProfileOptions));
+        OnPropertyChanged(nameof(ShowsSavedNetworks));
+        OnPropertyChanged(nameof(ShowsNoSavedNote));
+        OnPropertyChanged(nameof(ShowsSavedReadFailed));
         OnPropertyChanged(nameof(OfferShowNearby));
         OnPropertyChanged(nameof(OffersLocationSettings));
+        OnPropertyChanged(nameof(OffersWindowsList));
         OnPropertyChanged(nameof(LocationNoticeTitle));
         OnPropertyChanged(nameof(LocationNoticeSubtitle));
         OnPropertyChanged(nameof(HasRadio));
@@ -304,12 +428,15 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
 
         IsLoading = true;
         var asked = _userAskedNearby;
+        var refusedBefore = _callRefused;
         LoadAsync(() =>
         {
-            // The access state decides whether the gated calls run at all: a refused call can re-raise Windows' dialog.
-            var decision = WifiLocationPolicy.Decide(location.Check(), asked);
-            return (Snapshot: client.ReadAsync(decision.CallGated).GetAwaiter().GetResult(), Decision: decision);
-        }, result => Show(result.Snapshot, result.Decision, scanAfter), onFailed: () =>
+            // The reason decides whether the gated calls run at all: a refused call can re-raise Windows' dialog, so
+            // one that was refused in this visit isn't repeated until the user presses Refresh.
+            var block = WifiLocationGate.Evaluate(WifiLocationGateReader.Read(location));
+            var callGated = WifiLocationPolicy.Decide(block, asked).CallGated && !refusedBefore;
+            return (Snapshot: client.ReadAsync(callGated).GetAwaiter().GetResult(), Block: block);
+        }, result => Show(result.Snapshot, result.Block, scanAfter), onFailed: () =>
         {
             _loaded = true;
             IsLoading = false;
@@ -334,22 +461,27 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
         }, onFailed: () => IsBusy = false, longRunning: true, channel: "radio");
     }
 
-    private void Show(WlanSnapshot snapshot, WifiLocationDecision decision, bool scanAfter)
+    private void Show(WlanSnapshot snapshot, WifiLocationBlock block, bool scanAfter)
     {
         _loaded = true;
         _hasAdapter = snapshot.HasAdapter;
-        _locationDenied = snapshot.AccessDenied || decision.ShowNotice;
-        _offerShowNearby = decision.OfferShowNearby && !snapshot.AccessDenied;
-        _gatedCallsAllowed = decision.CallGated && !snapshot.AccessDenied;
+        _profilesRead = snapshot.ProfilesRead;
+        _callRefused |= snapshot.ListRefused;
+        _gatedCallsAllowed = snapshot.ListRead;
+        _notice = WifiLocationNotice.For(block, _callRefused);
         _profiles = snapshot.Profiles;
         var rows = WifiNetworkList.Build(snapshot.Networks, snapshot.Profiles, snapshot.CurrentSsid);
-        _connectedWithoutName = snapshot.IsConnected && snapshot.CurrentSsid is null && !rows.Any(r => r.IsConnected);
+        var visible = snapshot.ListRead ? rows : null;
 
         Networks.Clear();
         foreach (var row in rows)
         {
             Networks.Add(new WifiNetworkItem(row, _connectingKey is not null && _connectingKey == SsidText.ToHex(row.Ssid)));
         }
+
+        var saved = WifiSavedNetworkList.Build(snapshot.SavedProfiles, snapshot.CurrentSsid, snapshot.CurrentProfileName, visible);
+        ShowSaved(saved);
+        _current = WifiCurrentNetworkBuilder.Build(snapshot.IsConnected, snapshot.CurrentSsid, snapshot.SignalBars, saved, visible);
 
         IsLoading = false;
         NotifyState();
@@ -359,9 +491,41 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
         }
     }
 
+    /// <summary>
+    /// Shows the saved rows, reusing each profile's item so a switch with a write in flight keeps waiting for it. The
+    /// connected row also drives the Current network group's switch and Forget.
+    /// </summary>
+    private void ShowSaved(IReadOnlyList<WifiSavedNetworkRow> rows)
+    {
+        var items = new Dictionary<string, WifiSavedNetworkItem>(StringComparer.OrdinalIgnoreCase);
+        SavedNetworks.Clear();
+        _currentSaved = null;
+        foreach (var row in rows)
+        {
+            // Profile names are unique per adapter; a second row with a name already taken gets its own item.
+            var item = !items.ContainsKey(row.ProfileName) && _savedItems.TryGetValue(row.ProfileName, out var known)
+                ? known
+                : new WifiSavedNetworkItem(row, ChangeAutoConnect);
+            item.Show(row, IsConnectingTo(row.ProfileName), CanEdit);
+            items.TryAdd(row.ProfileName, item);
+            SavedNetworks.Add(item);
+            if (row.IsConnected && row.CanEdit)
+            {
+                _currentSaved ??= item;
+            }
+        }
+
+        _savedItems = items;
+    }
+
+    private bool IsConnectingTo(string profileName) =>
+        _connectingKey is not null && string.Equals(profileName, _targetProfile, StringComparison.OrdinalIgnoreCase);
+
     private void Refresh()
     {
         Problem = null;
+        // An explicit Refresh may try a refused gated call once more (location access may have been turned on).
+        _callRefused = false;
         RequestScan();
         Reload();
     }
@@ -457,20 +621,29 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
 
     // ---- Connecting ----
 
-    private void Connect(WifiNetworkItem? item)
+    private void Connect(WifiNetworkRow? row)
     {
-        if (item is null || !CanChange || _client is null)
+        if (row is null || !CanChange || _client is null)
         {
             return;
         }
 
         Problem = null;
         _connectTimer.Stop();
-        _target = item.Row;
-        _targetProfile = item.Row.ProfileName;
+        _target = row;
+        _targetProfile = row.ProfileName;
         _connectingKey = null;
-        var commands = _flow.Begin(item.Row.Kind, item.Row.IsSaved, DateTimeOffset.Now);
+        var commands = _flow.Begin(row.Kind, row.IsSaved, DateTimeOffset.Now);
         Run(commands);
+    }
+
+    /// <summary>A saved network connects through the same flow as a saved visible one, so a rejected key re-prompts.</summary>
+    private void ConnectSaved(WifiSavedNetworkItem? item)
+    {
+        if (item is not null)
+        {
+            Connect(WifiSavedNetworkList.ToNetworkRow(item.Row));
+        }
     }
 
     /// <summary>
@@ -655,20 +828,19 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
         {
             if (overwrite)
             {
-                var existing = client.GetProfileXmlAsync(profile).GetAwaiter().GetResult();
+                var existing = client.GetProfileTextAsync(profile).GetAwaiter().GetResult();
                 if (existing is null)
                 {
                     return false;
                 }
 
-                document = WifiProfileXml.ReplaceKey(existing, target.Kind, key, profile);
-            }
-            else
-            {
-                document = WifiProfileXml.Build(target.Ssid, target.Kind, target.CipherAlgorithm, key, profile);
+                // Written back with the profile's own scope, so a per-user profile stays per-user.
+                document = WifiProfileXml.ReplaceKey(existing.Xml, target.Kind, key, profile);
+                return client.OverwriteProfileAsync(document, existing.Scope).GetAwaiter().GetResult();
             }
 
-            return client.SetProfileAsync(document, overwrite).GetAwaiter().GetResult();
+            document = WifiProfileXml.Build(target.Ssid, target.Kind, target.CipherAlgorithm, key, profile);
+            return client.SaveNewProfileAsync(document).GetAwaiter().GetResult();
         }
         catch (ArgumentException ex)
         {
@@ -709,6 +881,11 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
             {
                 Networks[i] = new WifiNetworkItem(row, isConnecting: true);
             }
+        }
+
+        foreach (var item in SavedNetworks)
+        {
+            item.Show(item.Row, IsConnectingTo(item.ProfileName), CanEdit);
         }
     }
 
@@ -771,28 +948,35 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
 
     // ---- Disconnect and forget ----
 
-    private void Disconnect(WifiNetworkItem? item)
+    private void Disconnect()
     {
-        if (item is null || _client is not { } client)
+        if (_client is not { } client)
         {
             return;
         }
 
         Problem = null;
-        _writer.Run($"disconnect from the Wi-Fi network \"{item.Name}\"",
+        _writer.Run($"disconnect from the Wi-Fi network \"{_current?.Name}\"",
             () => client.DisconnectAsync().GetAwaiter().GetResult(),
             () => ReportWriteFailure("disconnecting"));
     }
 
-    private void Forget(WifiNetworkItem? item)
+    /// <param name="parameter">The visible or saved row to forget.</param>
+    private void Forget(object? parameter)
     {
-        if (item?.Row.ProfileName is not { } profile || _client is not { } client)
+        (string? profile, string name) = parameter switch
+        {
+            WifiNetworkItem network => (network.Row.ProfileName, network.Name),
+            WifiSavedNetworkItem saved when saved.CanEdit => (saved.ProfileName, saved.Name),
+            _ => ((string?)null, ""),
+        };
+        if (profile is null || _client is not { } client)
         {
             return;
         }
 
         if (!Context.Services.Dialogs.Confirm(
-                $"Forget \"{item.Name}\"?",
+                WifiSavedNetworkList.ForgetTitle(name, profile),
                 "This PC will stop remembering the network and its password. You can connect again later by entering the password.",
                 "Forget",
                 isDestructive: true))
@@ -817,6 +1001,46 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
                 });
             }
         }, () => ReportWriteFailure("forgetting the network"));
+    }
+
+    // ---- Connect automatically ----
+
+    /// <summary>
+    /// Rewrites the profile's connection mode on the writer thread, then re-reads: the switch shows what Windows saved,
+    /// so a refused overwrite snaps it back. Never runs in safe mode (the switch is disabled there too).
+    /// </summary>
+    private void ChangeAutoConnect(WifiSavedNetworkItem item, VerifiedSwitch target, bool on)
+    {
+        var profile = item.ProfileName;
+        var what = $"turn Connect automatically {(on ? "on" : "off")} for the Wi-Fi network \"{profile}\"";
+        if (!CanEdit)
+        {
+            Log.Info($"Safe mode: did not {what}");
+            return;
+        }
+
+        if (_client is not { } client)
+        {
+            return;
+        }
+
+        Problem = null;
+        target.Begin();
+        _writer.Run(what, () =>
+        {
+            try
+            {
+                return client.SetConnectionModeAsync(profile, on).GetAwaiter().GetResult();
+            }
+            finally
+            {
+                Context.Dispatcher.BeginInvoke(() =>
+                {
+                    target.End();
+                    Reload();
+                });
+            }
+        }, () => ReportWriteFailure($"Connect automatically for \"{item.Name}\""));
     }
 
     private void QueueDelete(string? profile)

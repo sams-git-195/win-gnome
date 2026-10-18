@@ -1,3 +1,6 @@
+using System.Text;
+using System.Xml;
+
 namespace WinGnome.Core.Connectivity;
 
 /// <summary>
@@ -46,6 +49,9 @@ public static class WifiProfileXml
 
     // DOT11_CIPHER_ALGORITHM_TKIP, which only a WPA (not WPA2) network uses.
     private const int CipherTkip = 2;
+
+    // A profile is a few kilobytes, an 802.1X one with its EAP settings perhaps a hundred.
+    private const long MaxProfileCharacters = 1_000_000;
 
     /// <summary>
     /// Builds the profile into a new buffer. <paramref name="cipherAlgorithm"/> is the scan's cipher (it only matters
@@ -98,6 +104,203 @@ public static class WifiProfileXml
 
         writer.Append("</security></MSM></WLANProfile>");
         return new WifiProfileDocument(buffer, writer.Length, profileName, kind);
+    }
+
+    /// <summary>
+    /// Reads the fields the panel needs from a saved profile's XML, never the key. Null when the text isn't a
+    /// well-formed <c>WLANProfile</c>, or has a DTD (never processed).
+    /// </summary>
+    public static WifiProfileSummary? ReadSummary(string? profileXml)
+    {
+        if (string.IsNullOrWhiteSpace(profileXml))
+        {
+            return null;
+        }
+
+        // No DTD and no resolver: a profile comes from the system, but the text is still parsed as untrusted.
+        var settings = new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null,
+            IgnoreComments = true,
+            IgnoreProcessingInstructions = true,
+            MaxCharactersInDocument = MaxProfileCharacters,
+        };
+
+        try
+        {
+            using var reader = XmlReader.Create(new StringReader(profileXml), settings);
+            return ReadFields(reader);
+        }
+        catch (Exception ex) when (ex is XmlException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private enum Field
+    {
+        None,
+        ProfileName,
+        SsidHex,
+        SsidName,
+        ConnectionMode,
+        Authentication,
+        Encryption,
+        UseOneX,
+    }
+
+    // Walks the document once, keeping the names of the open elements, and takes the text of only the fields above.
+    // Every other element, the key included, is stepped over and never read as a value.
+    private static WifiProfileSummary? ReadFields(XmlReader reader)
+    {
+        var path = new List<string>();
+        var values = new string?[Enum.GetValues<Field>().Length];
+        var sawRoot = false;
+
+        while (!reader.EOF)
+        {
+            if (reader.NodeType == XmlNodeType.Element)
+            {
+                path.Add(reader.LocalName);
+                if (path.Count == 1)
+                {
+                    if (reader.LocalName != "WLANProfile")
+                    {
+                        return null;
+                    }
+
+                    sawRoot = true;
+                }
+
+                var field = FieldAt(path);
+                if (field != Field.None && !reader.IsEmptyElement)
+                {
+                    // Reading the text moves past the end tag, so the reader is already on the next node. It is read
+                    // even when the field is already set, or the reader would stay put; the first occurrence wins.
+                    var text = reader.ReadElementContentAsString();
+                    values[(int)field] ??= text;
+                    path.RemoveAt(path.Count - 1);
+                    continue;
+                }
+
+                if (reader.IsEmptyElement)
+                {
+                    path.RemoveAt(path.Count - 1);
+                }
+            }
+            else if (reader.NodeType == XmlNodeType.EndElement)
+            {
+                path.RemoveAt(path.Count - 1);
+            }
+
+            reader.Read();
+        }
+
+        if (!sawRoot)
+        {
+            return null;
+        }
+
+        var name = values[(int)Field.ProfileName] ?? "";
+        var ssidName = values[(int)Field.SsidName];
+        var ssid = TryParseHex(values[(int)Field.SsidHex]) ?? (ssidName is null ? [] : Encoding.UTF8.GetBytes(ssidName));
+        return new WifiProfileSummary(
+            name,
+            ssid,
+            values[(int)Field.Authentication] ?? "",
+            values[(int)Field.Encryption] ?? "",
+            string.Equals(values[(int)Field.ConnectionMode]?.Trim(), "auto", StringComparison.OrdinalIgnoreCase),
+            bool.TryParse(values[(int)Field.UseOneX], out var oneX) && oneX);
+    }
+
+    private static Field FieldAt(List<string> path) => path.Count switch
+    {
+        2 when path[1] == "name" => Field.ProfileName,
+        2 when path[1] == "connectionMode" => Field.ConnectionMode,
+        4 when path[1] == "SSIDConfig" && path[2] == "SSID" => path[3] switch
+        {
+            "hex" => Field.SsidHex,
+            "name" => Field.SsidName,
+            _ => Field.None,
+        },
+        5 when path[1] == "MSM" && path[2] == "security" && path[3] == "authEncryption" => path[4] switch
+        {
+            "authentication" => Field.Authentication,
+            "encryption" => Field.Encryption,
+            "useOneX" => Field.UseOneX,
+            _ => Field.None,
+        },
+        _ => Field.None,
+    };
+
+    // Null for empty, odd-length or non-hex text, so the caller falls back to the <name> element.
+    private static byte[]? TryParseHex(string? text)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length % 2 != 0 || !IsHex(text))
+        {
+            return null;
+        }
+
+        return Convert.FromHexString(text);
+    }
+
+    /// <summary>
+    /// Sets the profile's <c>connectionMode</c> to <c>auto</c> or <c>manual</c> and changes nothing else (the key stays
+    /// encrypted exactly as it was). Throws <see cref="ArgumentException"/>, never containing the XML, when the XML has
+    /// no <c>connectionType</c> to anchor on.
+    /// </summary>
+    public static WifiProfileDocument WithConnectionMode(string existingProfileXml, bool auto, string profileName)
+    {
+        ArgumentNullException.ThrowIfNull(existingProfileXml);
+        ArgumentNullException.ThrowIfNull(profileName);
+
+        const string Open = "<connectionMode>";
+        const string Close = "</connectionMode>";
+        const string TypeClose = "</connectionType>";
+        var element = auto ? "<connectionMode>auto</connectionMode>" : "<connectionMode>manual</connectionMode>";
+
+        var typeEnd = existingProfileXml.IndexOf(TypeClose, StringComparison.Ordinal);
+        if (typeEnd < 0)
+        {
+            throw new ArgumentException("The saved profile has no connection type to change the connection mode after.", nameof(existingProfileXml));
+        }
+
+        // Replace the element where it is, or add it straight after <connectionType> (where Windows writes it).
+        int cutStart;
+        int cutEnd;
+        var start = existingProfileXml.IndexOf(Open, StringComparison.Ordinal);
+        if (start >= 0)
+        {
+            var end = existingProfileXml.IndexOf(Close, start, StringComparison.Ordinal);
+            if (end < 0)
+            {
+                throw new ArgumentException("The saved profile's connection mode can't be changed.", nameof(existingProfileXml));
+            }
+
+            cutStart = start;
+            cutEnd = end + Close.Length;
+        }
+        else if (existingProfileXml.Contains("<connectionMode", StringComparison.Ordinal))
+        {
+            // <connectionMode/> or <connectionMode >: adding a second element would make the profile invalid.
+            throw new ArgumentException("The saved profile's connection mode can't be changed.", nameof(existingProfileXml));
+        }
+        else
+        {
+            cutStart = cutEnd = typeEnd + TypeClose.Length;
+        }
+
+        // Copied span by span, so no piece of the profile (and its encrypted key) becomes a second string.
+        var source = existingProfileXml.AsSpan();
+        var buffer = new char[source.Length - (cutEnd - cutStart) + element.Length + 1];
+        source[..cutStart].CopyTo(buffer);
+        element.CopyTo(0, buffer, cutStart, element.Length);
+        source[cutEnd..].CopyTo(buffer.AsSpan(cutStart + element.Length));
+
+        var summary = ReadSummary(existingProfileXml);
+        var kind = summary is null ? WifiProfileKind.HandOff : WifiSecurity.FromProfile(summary.Authentication, summary.Encryption, summary.UsesOneX);
+        return new WifiProfileDocument(buffer, buffer.Length - 1, profileName, kind);
     }
 
     /// <summary>True when every character can appear in XML 1.0 (no control characters, no lone surrogates, no U+FFFE or U+FFFF).</summary>
@@ -247,3 +450,12 @@ public static class WifiProfileXml
         }
     }
 }
+
+/// <summary>What the Wi-Fi panel reads from a saved profile. The key is deliberately not part of it.</summary>
+/// <param name="Name">The profile name (what connect, delete and overwrite take).</param>
+/// <param name="Ssid">The network name bytes: the profile's <c>&lt;hex&gt;</c>, else its <c>&lt;name&gt;</c> as UTF-8.</param>
+/// <param name="Authentication">The <c>authentication</c> text, as stored (<c>WPA2PSK</c>, <c>open</c>...); empty if absent.</param>
+/// <param name="Encryption">The <c>encryption</c> text, as stored; empty if absent.</param>
+/// <param name="AutoConnect">True when <c>connectionMode</c> is <c>auto</c>.</param>
+/// <param name="UsesOneX">True when <c>useOneX</c> is true (802.1X).</param>
+public sealed record WifiProfileSummary(string Name, byte[] Ssid, string Authentication, string Encryption, bool AutoConnect, bool UsesOneX);
