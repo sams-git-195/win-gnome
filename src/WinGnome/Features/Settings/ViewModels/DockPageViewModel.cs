@@ -38,6 +38,7 @@ internal sealed class DockPageViewModel : SettingsPageViewModel
             ChoiceOption.Of(DockClickAction.Cycle, "Cycle windows", "Focuses the app; clicking again steps through its windows."),
             ChoiceOption.Of(DockClickAction.Previews, "Show previews", "Opens the overview with only the app's windows when it has several."));
 
+        WindowPreviews = Toggle(s => s.Dock.WindowPreviews, (s, v) => s.Dock.WindowPreviews = v);
         ShowRunningApps = Toggle(s => s.Dock.ShowRunningApps, (s, v) => s.Dock.ShowRunningApps = v);
         ShowRunningIndicators = Toggle(s => s.Dock.ShowRunningIndicators, (s, v) => s.Dock.ShowRunningIndicators = v);
         ShowAppsButton = Toggle(s => s.Dock.ShowAppsButton, (s, v) => s.Dock.ShowAppsButton = v);
@@ -76,6 +77,8 @@ internal sealed class DockPageViewModel : SettingsPageViewModel
     public ChoiceSetting Visibility { get; }
 
     public ChoiceSetting ClickAction { get; }
+
+    public ToggleSetting WindowPreviews { get; }
 
     public ToggleSetting ShowRunningApps { get; }
 

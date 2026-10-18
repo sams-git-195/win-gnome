@@ -66,6 +66,27 @@ public class SettingsSerializerTests
     }
 
     [Fact]
+    public void Deserialize_DockWithoutWindowPreviewsField_TurnsThemOn()
+    {
+        // A settings file written before Dock.WindowPreviews existed.
+        var settings = SettingsSerializer.Deserialize("""{ "Dock": { "Position": "Left", "ClickAction": "Cycle" } }""");
+
+        Assert.True(settings.Dock.WindowPreviews);
+        Assert.Equal(DockPosition.Left, settings.Dock.Position);
+    }
+
+    [Fact]
+    public void RoundTrip_WindowPreviewsOff_StaysOff()
+    {
+        var original = new AppSettings();
+        original.Dock.WindowPreviews = false;
+
+        var copy = SettingsSerializer.Deserialize(SettingsSerializer.Serialize(original));
+
+        Assert.False(copy.Dock.WindowPreviews);
+    }
+
+    [Fact]
     public void Deserialize_PinWithoutRunAsAdministratorField_KeepsItOff()
     {
         // A settings file written before PinnedApp.RunAsAdministrator existed.
