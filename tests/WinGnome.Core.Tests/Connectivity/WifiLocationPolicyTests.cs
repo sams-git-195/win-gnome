@@ -8,15 +8,15 @@ public class WifiLocationPolicyTests
     [InlineData(false)]
     [InlineData(true)]
     public void Decide_None_CallsTheGatedApis(bool asked) =>
-        Assert.Equal(new WifiLocationDecision(true, false, false), WifiLocationPolicy.Decide(WifiLocationBlock.None, asked));
+        Assert.Equal(new WifiLocationDecision(true), WifiLocationPolicy.Decide(WifiLocationBlock.None, asked));
 
     [Fact]
     public void Decide_NotAsked_DoesNotCallUntilTheUserPressesTheButton() =>
-        Assert.Equal(new WifiLocationDecision(false, true, true), WifiLocationPolicy.Decide(WifiLocationBlock.NotAsked, false));
+        Assert.Equal(new WifiLocationDecision(false), WifiLocationPolicy.Decide(WifiLocationBlock.NotAsked, false));
 
     [Fact]
     public void Decide_NotAskedButUserAsked_Calls() =>
-        Assert.Equal(new WifiLocationDecision(true, false, false), WifiLocationPolicy.Decide(WifiLocationBlock.NotAsked, true));
+        Assert.Equal(new WifiLocationDecision(true), WifiLocationPolicy.Decide(WifiLocationBlock.NotAsked, true));
 
     [Theory]
     [InlineData(WifiLocationBlock.Policy, false)]
@@ -29,6 +29,6 @@ public class WifiLocationPolicyTests
     [InlineData(WifiLocationBlock.DesktopAppsOff, true)]
     [InlineData(WifiLocationBlock.AppDenied, false)]
     [InlineData(WifiLocationBlock.AppDenied, true)]
-    public void Decide_KnownReason_NeverCallsAndHasNoShowNearbyButton(WifiLocationBlock block, bool asked) =>
-        Assert.Equal(new WifiLocationDecision(false, true, false), WifiLocationPolicy.Decide(block, asked));
+    public void Decide_KnownReason_NeverCalls(WifiLocationBlock block, bool asked) =>
+        Assert.Equal(new WifiLocationDecision(false), WifiLocationPolicy.Decide(block, asked));
 }

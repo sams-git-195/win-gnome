@@ -12,11 +12,9 @@ public enum WifiLocationAccess
     UserPromptRequired,
 }
 
-/// <summary>What the Wi-Fi panel may call and what it shows for a given access state.</summary>
+/// <summary>What the Wi-Fi panel may call for a given reason (the notice itself comes from <see cref="WifiLocationNotice"/>).</summary>
 /// <param name="CallGated">True when the network list, the current connection and scans may be called now.</param>
-/// <param name="ShowNotice">True when the list is replaced by the location notice.</param>
-/// <param name="OfferShowNearby">True when the notice carries a "Show nearby networks" button (access not asked yet).</param>
-public readonly record struct WifiLocationDecision(bool CallGated, bool ShowNotice, bool OfferShowNearby);
+public readonly record struct WifiLocationDecision(bool CallGated);
 
 /// <summary>
 /// Decides, from the gate's reason, whether the location-gated Wi-Fi calls may run. A denied state must not be probed
@@ -33,9 +31,8 @@ public static class WifiLocationPolicy
     /// <param name="userAskedForNetworks">True after the user pressed "Show nearby networks" in this panel visit.</param>
     public static WifiLocationDecision Decide(WifiLocationBlock block, bool userAskedForNetworks) => block switch
     {
-        WifiLocationBlock.None => new(true, false, false),
-        WifiLocationBlock.NotAsked when userAskedForNetworks => new(true, false, false),
-        WifiLocationBlock.NotAsked => new(false, true, true),
-        _ => new(false, true, false),
+        WifiLocationBlock.None => new(true),
+        WifiLocationBlock.NotAsked => new(userAskedForNetworks),
+        _ => new(false),
     };
 }
