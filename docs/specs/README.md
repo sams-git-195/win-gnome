@@ -10,4 +10,5 @@ for when a spec is needed and the template to use.
 
 ## Recent specs
 
+- [0025 — A usable Wi-Fi panel when Windows withholds the network list](0025-wifi-usable-without-location.md)
 - [0023 — Hide taskbar flashes with an empty window region](0023-taskbar-flash-region.md)

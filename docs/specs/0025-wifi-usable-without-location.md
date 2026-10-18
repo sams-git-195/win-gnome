@@ -1,6 +1,7 @@
 # 0025 — A usable Wi-Fi panel when Windows withholds the network list
 
-Status: Draft — planned 2026-10-18 from read-only probes on the user's machine (Windows 11 26H2, build 26300.9711).
+Status: Implemented (branch `feat/wifi-saved-networks`; the live write checks, AC 10 to 13, are pending with the user). Planned
+2026-10-18 from read-only probes on the user's machine (Windows 11 26H2, build 26300.9711).
 Extends spec 0019 part (b); closes the *Saved Networks* part of KI-109 and revises KI-108.
 
 ## Problem
@@ -249,3 +250,22 @@ loaded by `RadioClient`.
   to Windows); **KI-109** drop *Saved Networks*; new **KI-117** (S4): auto-connect edit rewrites the profile XML,
   group-policy profiles are read-only, the connected row is matched by SSID bytes (two profiles for one SSID mark only
   the first).
+
+## Implementation notes
+Where the implementation differs from or adds to the design above:
+- Core also gained `WifiLocationGate.PolicyOff` (which policy values turn location off) and `WifiLocationGate.AppState`
+  (WinGnome's own desktop consent entry), `WifiCurrentNetworkBuilder` (the Current network row from whichever reads
+  succeeded: saved row, then visible row, then the SSID alone; Windows' bars first) and `WifiSavedNetworkList.ToNetworkRow`
+  (the saved row handed to the connect flow), all tested.
+- *Connect automatically* is a `VerifiedSwitch` per saved row (as in the Privacy and Notifications panels) rather than an
+  `AutoConnectCommand`; the Current network group binds the connected row's switch, so both show the same state. Rows are
+  kept across reloads by profile name, so a write in flight isn't overtaken by a WLAN-event re-read.
+- `WlanSnapshot.AccessDenied` became `ListRead` and `ListRefused`. A gated call refused despite the gate isn't repeated in
+  that panel visit until *Refresh* (each refusal can re-raise Windows' dialog).
+- Not built: hiding the switch with "Change in Windows Settings" if the overwrite turns out to be refused (KI-117); the
+  switch snaps back and the banner shows instead.
+- New KI-118: first adapter only, bars and name from the internet connection profile, `ms-settings:network-wifi` with the
+  taskbar hidden unverified.
+- Verified here (read-only, `--safe`, isolated profile, 125 %, dark): the gate logs `Policy`, no gated call is made, the
+  Current network row shows the connected network with WPA3 and bars, all 11 saved profiles are listed, and the Policy
+  notice shows only *Show networks in Windows*. Light mode was not checked.

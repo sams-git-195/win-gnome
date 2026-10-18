@@ -18,7 +18,7 @@ detail section below the Resolved table when the measured evidence behind the fi
 KI-102).
 
 IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-112 all
-have entries now). The next free ID is **KI-117**; grep the specs for `KI-0` before allocating one.
+have entries now). The next free ID is **KI-119**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
@@ -73,12 +73,14 @@ have entries now). The next free ID is **KI-117**; grep the specs for `KI-0` bef
 | [KI-105](#ki-105) | S4 | Tray | An icon whose registration fell in a front gap stays click-dead until the app re-registers, a second matching unflagged update arrives, or the built-in fallback knows its owner | Open |
 | [KI-106](#ki-106) | S4 | Tray | Tray callback learning reads unflagged wire fields: a range-gated, twice-confirmed heuristic | By design |
 | [KI-107](#ki-107) | S4 | Settings, Top bar | Install-on-shutdown detection reads the undocumented Update Orchestrator `ShutdownFlyoutOptions` value | By design |
-| [KI-108](#ki-108) | S4 | Settings | The Wi-Fi list and the connected network's name need location access on Windows 11 24H2+; `ERROR_ACCESS_DENIED` may also be policy | By design |
-| [KI-109](#ki-109) | S4 | Settings | Wi-Fi panel v1 leaves out Saved Networks, captive-portal sign-in and handle reopen, uses a link for Airplane Mode, and its write paths aren't verified live | Open |
+| [KI-108](#ki-108) | S4 | Settings | The Wi-Fi list of nearby networks needs location access on Windows 11 24H2+, and can't be shown at all under a location policy | By design |
+| [KI-109](#ki-109) | S4 | Settings | Wi-Fi panel v1 leaves out captive-portal sign-in and handle reopen, uses a link for Airplane Mode, and its write paths aren't verified live | Open |
 | [KI-110](#ki-110) | S4 | Settings | Bluetooth panel v1 doesn't pair, discover, connect or show battery, and its radio and Remove Device paths aren't verified live | Open |
 | [KI-111](#ki-111) | S4 | Settings | Wi-Fi profile leftovers: a crash mid-connect can leave a just-created or overwritten profile saved, and a denied all-user write falls back to a per-user profile | Open |
 | [KI-112](#ki-112) | S4 | Taskbar | The secondary taskbar's empty window region is a race with Explorer, so a flash can still get through | Open |
 | [KI-116](#ki-116) | S4 | Window buttons | A patch fitted to an app's own buttons (Steam) is measured once per decoration | Open |
+| [KI-117](#ki-117) | S4 | Settings | Saved Wi-Fi networks: *Connect automatically* rewrites the profile XML, Group Policy profiles are read-only, the connected row is matched by SSID, and the writes aren't verified live | Open |
+| [KI-118](#ki-118) | S4 | Settings | Wi-Fi panel without location: first adapter only, bars only when Wi-Fi carries the internet connection, Windows' Wi-Fi page with the taskbar hidden unverified | Open |
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -849,27 +851,29 @@ not the switch, because switching it off couldn't stop them.
   the update shows as installed afterwards) and record the result here.
 
 ### KI-108
-**The Wi-Fi list and the connected network's name need location access on Windows 11 24H2+; `ERROR_ACCESS_DENIED` may also be policy** · S4 · Settings · By design
+**The Wi-Fi list of nearby networks needs location access on Windows 11 24H2+, and can't be shown at all under a location policy** · S4 · Settings · By design
 
-Windows gates `WlanGetAvailableNetworkList` and the current-connection query on location access for desktop apps. Before any
-gated call the panel reads `AppCapability("wiFiControl").CheckAccess()` (Core `WifiLocationPolicy` decides): allowed or unknown
-state calls as usual; a denied state (by user or system) skips the list, the current-connection query and scans entirely, so a
-refused call can't re-raise Windows' "Location has been turned off" dialog or keep the location icon lit, and shows the notice
-with *Open Location Settings*; a not-yet-asked state shows the notice with *Show nearby networks*, whose click makes the first
-gated call (what raises Windows' consent prompt, attributed to WinGnome). The state is re-read when Windows reports a change
-while the panel is open. The connected network's name is then tried through `WlanConnectionProfileDetails` (it may need
-location too, in which case the row says "Connected" without a name). A call that still returns `ERROR_ACCESS_DENIED` (policy
-can cause it too) shows the same notice, so the wording is hedged. On the development machine the state reads
-`UserPromptRequired`; with an earlier build the unguarded call had produced Windows' own "Location has been turned off" dialog.
-Whether `wiFiControl` is the capability that tracks the gate for unpackaged apps is unverified beyond that read. Turning Wi-Fi
-on or off, Airplane Mode and *Forget* still work without location.
+Windows gates `WlanGetAvailableNetworkList`, `WlanScan` and the current-connection query on location access for desktop apps
+(system components such as Windows' own Wi-Fi page are exempt). Since spec 0025 the panel finds the real reason before any
+gated call, from reads that never raise a prompt (Core `WifiLocationGate`, read by `WifiLocationGateReader`): the policies
+`DisableLocation` = 1 (Group Policy *Turn off location*), `AppPrivacy\LetAppsAccessLocation` = 2 and MDM `AllowLocation` = 0,
+then the device, user, desktop-apps and WinGnome's own consent values, and last `AppCapability("wiFiControl").CheckAccess()`,
+which says `UserPromptRequired` even under the policy (seen on build 26300; `DeniedByUser` on a later read). Only "nothing
+blocks" calls the gated APIs, or "not asked yet" after *Show nearby networks* is pressed; every known reason skips them, so
+Windows' "Location has been turned off" dialog and the location icon aren't triggered, and a call refused anyway isn't repeated
+until *Refresh*. The notice's wording and buttons follow the reason (`WifiLocationNotice`): under a policy it offers only *Show
+networks in Windows* (`ms-settings:network-wifi`), because the Location page's switches are greyed out and only an
+administrator can remove the policy. Everything else in the panel (current network with name and bars from
+`ConnectionProfile`, saved networks, connect, connect automatically, disconnect, forget, the Wi-Fi switch) uses calls that
+aren't gated. The consent store and the MDM/AppPrivacy values are undocumented (KI-086); a wrong read only changes the notice's
+wording. Listing nearby networks inside WinGnome under the policy is impossible by design for a non-system app.
 
 ### KI-109
-**Wi-Fi panel v1 leaves out Saved Networks, captive-portal sign-in and handle reopen, uses a link for Airplane Mode, and its write paths aren't verified live** · S4 · Settings · Open
+**Wi-Fi panel v1 leaves out captive-portal sign-in and handle reopen, uses a link for Airplane Mode, and its write paths aren't verified live** · S4 · Settings · Open
 
-Not built from spec 0019: the *Saved Networks…* dialog (each saved row has *Forget*), captive-portal detection and *Sign In*
-(`INetworkListManager`), reopening the WLAN handle after a WlanSvc restart or resume (reopen the panel), a native Airplane Mode
-switch (undocumented `IRadioManager`; the row links to Windows Settings). The Wi-Fi switch uses `Windows.Devices.Radios` because
+Not built from spec 0019: captive-portal detection and *Sign In* (`INetworkListManager`), reopening the WLAN handle after a
+WlanSvc restart or resume (reopen the panel), a native Airplane Mode switch (undocumented `IRadioManager`; the row links to
+Windows Settings). *Saved Networks* was added by spec 0025 (KI-117 lists its limits). The Wi-Fi switch uses `Windows.Devices.Radios` because
 `WlanSetInterface` couldn't be checked without toggling the radio. Connect, disconnect, forget, the switch and the WPA3 profile
 schema (written in the v1 namespace) have not been exercised on a live network; the Core rules are tested.
 
@@ -924,6 +928,34 @@ KI-007). The width isn't measured again, so if the app later changes its buttons
 scaling change it handles itself) the patch keeps the old width until the window is decorated again (closed and
 reopened, or WinGnome restarted). The patch never gets narrower than the circles need, nor wider than DWM's
 rectangle. The edge is rounded towards the drag strip by up to one 2 px sample, so the patch may cover a pixel of it.
+
+### KI-117
+**Saved Wi-Fi networks: *Connect automatically* rewrites the profile XML, Group Policy profiles are read-only, the connected row is matched by SSID, and the writes aren't verified live** · S4 · Settings · Open
+
+The *Connect automatically* switch (spec 0025) reads the profile with `WlanGetProfile` (key encrypted, never the plain-text
+flag), changes only the `connectionMode` element (Core `WifiProfileXml.WithConnectionMode`) and writes it back with
+`WlanSetProfile` as an overwrite, as all-user or per-user like the original, from a pinned buffer cleared afterwards. Windows
+replaces a profile in one step, so a refusal or a crash leaves the old or the new one; the switch then re-reads and the banner
+shows. Not verified live, because it changes the user's real profiles: that a standard user may overwrite an all-user profile
+holding a protected key (granted access `0x70023` says yes), that the network still connects afterwards with its key intact, and
+that *Connect* from Saved Networks isn't gated under the location policy (Microsoft's list says it isn't). If the overwrite turns
+out to be refused, the switch should be hidden with a "Change in Windows Settings" note (not built). Group Policy profiles
+(`WLAN_PROFILE_GROUP_POLICY`) show no switch and no *Forget* (Windows refuses both), and so do profiles whose XML can't be read.
+The connected row is the first saved profile whose SSID bytes equal the connection's; a second profile for the same SSID isn't
+marked. The connection's SSID comes from `WlanConnectionProfileDetails.GetConnectedSsid()` as UTF-8 when the WLAN query is
+gated, so a non-UTF-8 SSID may not match its profile (the Current network row then shows the name without the security).
+The older key-replace overwrite after a rejected password (KI-111) still writes an all-user profile even when the saved one is
+per-user.
+
+### KI-118
+**Wi-Fi panel without location: first adapter only, bars only when Wi-Fi carries the internet connection, Windows' Wi-Fi page with the taskbar hidden unverified** · S4 · Settings · Open
+
+The panel reads the first interface `WlanEnumInterfaces` returns, so saved profiles of another Wi-Fi adapter aren't listed.
+The Current network row's signal bars and (under the location gate) its name come from the *internet* connection profile, so
+with Ethernet and Wi-Fi both connected and Ethernet carrying the internet the row says "Connected" without bars and possibly
+without a name. *Show networks in Windows* opens `ms-settings:network-wifi`, assumed to list and connect to nearby networks
+with Explorer's taskbar hidden (not checked; `ms-availablenetworks:` isn't used because it likely needs the taskbar). With
+location allowed, the connected network shows in Current network and in Visible Networks.
 
 ## Resolved
 
