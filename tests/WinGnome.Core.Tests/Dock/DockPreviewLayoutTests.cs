@@ -286,6 +286,48 @@ public class DockPreviewLayoutTests
     }
 
     [Fact]
+    public void Compute_ThirteenWindowsAt150Percent_WrapIntoTwoRowsThatFitThePopover()
+    {
+        var monitor = new PixelRect(0, 0, 2880, 1620);
+
+        var plan = DockPreviewLayout.Compute(DockPosition.Bottom, new PixelRect(1140, 1470, 1740, 1608), 1440, monitor, monitor, 1.5,
+            Windows(13));
+
+        Assert.Equal(new PixelRect(150, 876, 2730, 1458), plan.Popover);
+        Assert.Equal(13, plan.Items.Count);
+        Assert.Equal(new PixelRect(1842, 294, 2202, 570), plan.Items[12].Item);
+        Assert.True(plan.Items[12].Item.Right <= plan.Popover.Width && plan.Items[12].Item.Bottom <= plan.Popover.Height);
+    }
+
+    [Fact]
+    public void Compute_ThirteenWindowsAt200Percent_WrapIntoTwoRowsThatFitThePopover()
+    {
+        var monitor = new PixelRect(0, 0, 3840, 2160);
+
+        var plan = DockPreviewLayout.Compute(DockPosition.Bottom, new PixelRect(1600, 1960, 2240, 2144), 1920, monitor, monitor, 2,
+            Windows(13));
+
+        Assert.Equal(new PixelRect(200, 1168, 3640, 1944), plan.Popover);
+        Assert.Equal(new PixelRect(2456, 392, 2936, 760), plan.Items[12].Item);
+        Assert.True(plan.Items[12].Item.Right <= plan.Popover.Width && plan.Items[12].Item.Bottom <= plan.Popover.Height);
+    }
+
+    [Fact]
+    public void Compute_RightDockOnANegativeMonitor_WrapsIntoTwoColumnsLeftOfTheDock()
+    {
+        // Seven windows still fit one column at 163 DIP; eight need two columns of four, at the full 224.
+        var monitor = new PixelRect(-1920, -300, 0, 780);
+
+        var plan = DockPreviewLayout.Compute(DockPosition.Right, new PixelRect(-100, 100, 0, 400), 250, monitor, monitor, 1, Windows(8));
+
+        Assert.Equal(new PixelRect(-608, -132, -108, 632), plan.Popover);
+        Assert.Equal(8, plan.Items.Count);
+        Assert.Equal(new PixelRect(8, 8, 248, 192), plan.Items[0].Item);
+        Assert.Equal(new PixelRect(252, 572, 492, 756), plan.Items[7].Item);
+        Assert.True(plan.Items[7].Item.Right <= plan.Popover.Width && plan.Items[7].Item.Bottom <= plan.Popover.Height);
+    }
+
+    [Fact]
     public void Compute_SideDockWithoutRoomForOneColumn_WrapsIntoColumnsAwayFromTheDock()
     {
         // One column of four would need 61 DIP boxes; two columns of two fit at 200.
