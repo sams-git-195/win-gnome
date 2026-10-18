@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using WinGnome.Core.Settings;
@@ -74,12 +75,36 @@ internal sealed class DockMenuPresenter
 
     private void OnOpened(object sender, RoutedEventArgs e)
     {
-        if (sender is ContextMenu menu
-            && PresentationSource.FromVisual(menu) is HwndSource source
-            && !NativeMethods.SetForegroundWindow(source.Handle))
+        if (sender is not ContextMenu menu || PresentationSource.FromVisual(menu) is not HwndSource source)
         {
-            // The menu still works with the mouse; it just will not close on clicks in other apps.
-            Log.Warn("Dock: could not give the context menu the foreground");
+            return;
+        }
+
+        // Activating the menu's window sends it WM_SETFOCUS, and WPF answers that by moving focus to the element the
+        // window last focused, or to its root (the popup root, outside the menu) when it never had one. Focus leaving
+        // the menu ends its menu mode and closes it at once: the first right-click after start-up opened a menu that
+        // vanished. Keep focus inside the menu while it takes the foreground.
+        menu.PreviewLostKeyboardFocus += KeepFocus;
+        try
+        {
+            if (!NativeMethods.SetForegroundWindow(source.Handle))
+            {
+                // The menu still works with the mouse; it just will not close on clicks in other apps.
+                Log.Warn("Dock: could not give the context menu the foreground");
+            }
+        }
+        finally
+        {
+            menu.PreviewLostKeyboardFocus -= KeepFocus;
+        }
+    }
+
+    /// <summary>Cancels a focus change that would take keyboard focus out of the menu (handling the preview event does).</summary>
+    private static void KeepFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is ContextMenu menu && (e.NewFocus is not DependencyObject target || !menu.IsAncestorOf(target)))
+        {
+            e.Handled = true;
         }
     }
 
