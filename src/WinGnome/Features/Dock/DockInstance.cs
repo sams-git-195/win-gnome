@@ -109,7 +109,7 @@ internal sealed class DockInstance : IDisposable
         _dock = dock;
         Run(() =>
         {
-            _preview.Dismiss();
+            _preview.Close();
             _preview.SetEnabled(dock.WindowPreviews);
         });
     }
@@ -130,6 +130,9 @@ internal sealed class DockInstance : IDisposable
     /// <summary>Lays the dock out for <paramref name="monitor"/> and reserves its strip there in always-visible mode.</summary>
     public void DockOn(MonitorInfo monitor)
     {
+        // The popover was placed for the old monitor geometry; it opens again if the pointer is still on its icon. A
+        // relayout because apps came or went needs no close: the refresh that caused it re-anchors the popover.
+        Run(_preview.Close);
         Monitor = monitor;
         Relayout();
     }
@@ -145,11 +148,8 @@ internal sealed class DockInstance : IDisposable
 
     public void CloseMenu() => _menu.Close();
 
-    /// <summary>Closes the window preview popover, if this dock has one open.</summary>
-    public void DismissPreview() => Run(_preview.Dismiss);
-
-    /// <summary>The user's foreground window changed: the popover closes unless the pointer is on it.</summary>
-    public void OnForegroundChanged() => Run(_preview.OnForegroundChanged);
+    /// <summary>Closes the window preview popover, if this dock has one open (another dock opened one).</summary>
+    public void ClosePreview() => Run(_preview.Close);
 
     /// <summary>Always-visible mode: registers the strip again if the work area no longer leaves it out.</summary>
     public bool EnsureReserved() => !_disposed && _reservation.EnsureReserved();
@@ -208,8 +208,6 @@ internal sealed class DockInstance : IDisposable
     {
         try
         {
-            // The popover was placed against the old geometry; it opens again on the next hover.
-            _preview.Dismiss();
             var monitor = Monitor.Bounds;
             var scale = Monitor.Scale;
             var cells = _viewModel.CellCount;
@@ -285,7 +283,7 @@ internal sealed class DockInstance : IDisposable
     /// </summary>
     private void OnWindowDpiChanged(object? sender, DpiChangedEventArgs e)
     {
-        Run(_preview.Dismiss);
+        Run(_preview.Close);
         _context.Displays.Invalidate();
         if (_relayoutQueued)
         {
@@ -344,7 +342,7 @@ internal sealed class DockInstance : IDisposable
 
     private void OnExternalDragEntered(object? sender, EventArgs e) => Run(_preview.Dismiss);
 
-    private void OnConcealed(object? sender, EventArgs e) => Run(_preview.Dismiss);
+    private void OnConcealed(object? sender, EventArgs e) => Run(_preview.Close);
 
     private void OnPreviewOpenChanged(object? sender, bool open)
     {

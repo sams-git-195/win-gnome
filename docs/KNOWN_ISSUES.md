@@ -18,7 +18,7 @@ detail section below the Resolved table when the measured evidence behind the fi
 KI-102).
 
 IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-112 all
-have entries now). KI-117 and KI-118 are the Wi-Fi panel's, KI-120 to KI-123 the dock's. KI-119 was skipped. The next free ID is **KI-124**; grep the specs for `KI-0` before allocating one.
+have entries now). KI-117 and KI-118 are the Wi-Fi panel's, KI-120 to KI-126 the dock's. KI-119 was skipped. The next free ID is **KI-127**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
@@ -85,6 +85,9 @@ have entries now). KI-117 and KI-118 are the Wi-Fi panel's, KI-120 to KI-123 the
 | [KI-121](#ki-121) | S4 | Dock | Window previews show no picture for minimised windows and black for protected content | By design |
 | [KI-122](#ki-122) | S4 | Dock | Switching the preview popover between icons can show one frame of the new thumbnails at the old position | Open |
 | [KI-123](#ki-123) | S4 | Dock | Closing a Store app's window from the dock can be skipped as a reused handle | Open |
+| [KI-124](#ki-124) | S4 | Dock | Esc does not close a dock context menu until the pointer has been over it | Open |
+| [KI-125](#ki-125) | S4 | Dock | On a monitor too small for one minimum preview item the popover can run to the monitor edge | Open |
+| [KI-126](#ki-126) | S4 | Dock | Saving settings closes an open preview popover and may reopen it after 400 ms | Open |
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -1001,6 +1004,34 @@ logged at Info with the handle. This is the safe direction (nothing wrong is clo
 nothing; clicking again once the popover or menu has been rebuilt should succeed (not yet verified). Fix direction: compare the frame host's own
 process as well, or treat a frame whose hosted process changed but whose handle and frame host are unchanged as the
 same window.
+
+### KI-124
+**Esc does not close a dock context menu until the pointer has been over it** · S4 · Dock · Open
+
+Right-click a dock icon and press Esc without moving the pointer onto the menu: the menu stays open. Once the pointer
+has hovered one of its rows (or after an arrow key), Esc closes it. The menu has the foreground and WPF keyboard focus
+(DockMenuPresenter gives it both), so the key reaches the menu's window; WPF's ContextMenu apparently ignores Esc
+until an item is current. Seen on the build before the dock preview work (9621069) too, so it is not new. Clicking
+anywhere else, or right-clicking again, closes the menu. Fix direction: handle Key.Escape in the menu's
+PreviewKeyDown and set IsOpen = false, after checking that this does not break Esc inside a highlighted item.
+
+### KI-125
+**On a monitor too small for one minimum preview item the popover can run to the monitor edge** · S4 · Dock · Open
+
+DockPreviewLayout keeps boxes at least 160 DIP wide and always shows at least two slots (a window next to "+N more",
+or both of two windows). On a monitor or work area narrower or shorter than that grid needs (under about 200 DIP along
+the dock, or under about 180 DIP between the dock and the far edge) the popover is pinned to the near margin and runs
+past the 8 DIP margin to the monitor edge, or past it. No real display is that small; it shows up only with odd work
+areas. Fix direction: shrink below the minimum when even one minimum item does not fit, or show only "+N more".
+
+### KI-126
+**Saving settings closes an open preview popover and may reopen it after 400 ms** · S4 · Dock · Open
+
+DockInstance.ApplySettings closes the popover, and the relayout that follows (DockOn) closes it again, whatever
+changed. If the pointer is still on the icon the popover reopens after the show delay, so a save that touched nothing
+the popover depends on still makes it blink. In practice the pointer is in the Settings window during a save, so the
+popover is rarely open then. Fix direction: compare the dock settings that affect the popover (position, size,
+magnification, previews switch, monitors) and skip the close when none changed.
 
 ## Resolved
 

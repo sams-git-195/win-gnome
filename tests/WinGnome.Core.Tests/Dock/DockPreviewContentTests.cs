@@ -19,12 +19,13 @@ public class DockPreviewContentTests
 
     [Theory]
     [InlineData(true, 0, false)]
-    [InlineData(true, 1, false)]
+    [InlineData(true, 1, true)]
     [InlineData(true, 2, true)]
     [InlineData(true, 3, true)]
+    [InlineData(false, 1, false)]
     [InlineData(false, 2, false)]
     [InlineData(false, 3, false)]
-    public void ShowsPreview_NeedsTheSettingAndTwoWindows(bool enabled, int windowCount, bool expected)
+    public void ShowsPreview_NeedsTheSettingAndAWindow(bool enabled, int windowCount, bool expected)
     {
         nint[] windows = windowCount switch
         {

@@ -225,80 +225,179 @@ public class DockPreviewLayoutTests
         var plan = DockPreviewLayout.Compute(DockPosition.Bottom, new PixelRect(760, 100, 1160, 1072), 960, Monitor, Monitor, 1,
             Windows(2));
 
-        Assert.Equal(new PixelRect(16, 44, 128, 114), plan.Items[0].Box);
-        Assert.Equal(130, plan.Popover.Height);
+        Assert.Equal(new PixelRect(16, 44, 176, 144), plan.Items[0].Box);
+        Assert.Equal(160, plan.Popover.Height);
         Assert.Equal(92, plan.Popover.Bottom);
     }
 
     [Fact]
-    public void Compute_ExactlyFitsAtTheMinimumBox_ShowsEveryWindow()
+    public void Compute_ExactlyFitsOneRowAtTheMinimumBox_KeepsOneRow()
     {
-        // 3 * 128 + 2 * 4 + 16 = 408 = 424 - 16.
-        var monitor = new PixelRect(0, 0, 424, 1080);
+        // 3 * 176 + 2 * 4 + 16 = 552 = 568 - 16.
+        var monitor = new PixelRect(0, 0, 568, 1080);
 
-        var plan = DockPreviewLayout.Compute(DockPosition.Bottom, new PixelRect(100, 980, 324, 1072), 212, monitor, monitor, 1,
+        var plan = DockPreviewLayout.Compute(DockPosition.Bottom, new PixelRect(100, 980, 468, 1072), 284, monitor, monitor, 1,
             Windows(3));
 
-        Assert.Equal(new PixelRect(8, 842, 416, 972), plan.Popover);
+        Assert.Equal(new PixelRect(8, 812, 560, 972), plan.Popover);
         Assert.Equal(3, plan.Items.Count);
         Assert.Equal(0, plan.OverflowCount);
-        Assert.Equal(new PixelRect(16, 44, 128, 114), plan.Items[0].Box);
+        Assert.Equal(new PixelRect(16, 44, 176, 144), plan.Items[0].Box);
+        Assert.Equal(new PixelRect(368, 8, 544, 152), plan.Items[2].Item);
     }
 
     [Fact]
-    public void Compute_OneWindowTooMany_ReplacesTheLastSlotWithPlusNMore()
+    public void Compute_OnePixelTooNarrowForOneRow_WrapsIntoTwoRowsAtFullSize()
     {
-        var monitor = new PixelRect(0, 0, 424, 1080);
+        var monitor = new PixelRect(0, 0, 567, 1080);
 
-        var plan = DockPreviewLayout.Compute(DockPosition.Bottom, new PixelRect(100, 980, 324, 1072), 212, monitor, monitor, 1,
+        var plan = DockPreviewLayout.Compute(DockPosition.Bottom, new PixelRect(100, 980, 467, 1072), 283, monitor, monitor, 1,
+            Windows(3));
+
+        Assert.Equal(new PixelRect(33, 584, 533, 972), plan.Popover);
+        Assert.Equal(3, plan.Items.Count);
+        Assert.Equal(0, plan.OverflowCount);
+        Assert.Equal(new PixelRect(8, 8, 248, 192), plan.Items[0].Item);
+        Assert.Equal(new PixelRect(252, 8, 492, 192), plan.Items[1].Item);
+        Assert.Equal(new PixelRect(8, 196, 248, 380), plan.Items[2].Item);
+    }
+
+    [Fact]
+    public void Compute_ThirteenWindows_WrapIntoTwoRowsOfFullSizeThumbnails()
+    {
+        // One row of 13 would need boxes of 125.5 DIP; two rows of seven fit at the full 224.
+        var plan = Bottom(960, Windows(13));
+
+        Assert.Equal(new PixelRect(100, 584, 1820, 972), plan.Popover);
+        Assert.Equal(13, plan.Items.Count);
+        Assert.Equal(0, plan.OverflowCount);
+        Assert.Equal(new PixelRect(8, 8, 248, 192), plan.Items[0].Item);
+        Assert.Equal(new PixelRect(1472, 8, 1712, 192), plan.Items[6].Item);
+        Assert.Equal(new PixelRect(8, 196, 248, 380), plan.Items[7].Item);
+        Assert.Equal(
+            new DockPreviewItemLayout(
+                Item: new PixelRect(1228, 196, 1468, 380),
+                Caption: new PixelRect(1236, 204, 1460, 232),
+                Close: new PixelRect(1436, 206, 1460, 230),
+                Box: new PixelRect(1236, 232, 1460, 372),
+                Thumbnail: new PixelRect(1236, 239, 1460, 365),
+                IsPlaceholder: false),
+            plan.Items[12]);
+    }
+
+    [Fact]
+    public void Compute_ThirteenWindowsAt150Percent_WrapIntoTwoRowsThatFitThePopover()
+    {
+        var monitor = new PixelRect(0, 0, 2880, 1620);
+
+        var plan = DockPreviewLayout.Compute(DockPosition.Bottom, new PixelRect(1140, 1470, 1740, 1608), 1440, monitor, monitor, 1.5,
+            Windows(13));
+
+        Assert.Equal(new PixelRect(150, 876, 2730, 1458), plan.Popover);
+        Assert.Equal(13, plan.Items.Count);
+        Assert.Equal(new PixelRect(1842, 294, 2202, 570), plan.Items[12].Item);
+        Assert.True(plan.Items[12].Item.Right <= plan.Popover.Width && plan.Items[12].Item.Bottom <= plan.Popover.Height);
+    }
+
+    [Fact]
+    public void Compute_ThirteenWindowsAt200Percent_WrapIntoTwoRowsThatFitThePopover()
+    {
+        var monitor = new PixelRect(0, 0, 3840, 2160);
+
+        var plan = DockPreviewLayout.Compute(DockPosition.Bottom, new PixelRect(1600, 1960, 2240, 2144), 1920, monitor, monitor, 2,
+            Windows(13));
+
+        Assert.Equal(new PixelRect(200, 1168, 3640, 1944), plan.Popover);
+        Assert.Equal(new PixelRect(2456, 392, 2936, 760), plan.Items[12].Item);
+        Assert.True(plan.Items[12].Item.Right <= plan.Popover.Width && plan.Items[12].Item.Bottom <= plan.Popover.Height);
+    }
+
+    [Fact]
+    public void Compute_RightDockOnANegativeMonitor_WrapsIntoTwoColumnsLeftOfTheDock()
+    {
+        // Seven windows still fit one column at 163 DIP; eight need two columns of four, at the full 224.
+        var monitor = new PixelRect(-1920, -300, 0, 780);
+
+        var plan = DockPreviewLayout.Compute(DockPosition.Right, new PixelRect(-100, 100, 0, 400), 250, monitor, monitor, 1, Windows(8));
+
+        Assert.Equal(new PixelRect(-608, -132, -108, 632), plan.Popover);
+        Assert.Equal(8, plan.Items.Count);
+        Assert.Equal(new PixelRect(8, 8, 248, 192), plan.Items[0].Item);
+        Assert.Equal(new PixelRect(252, 572, 492, 756), plan.Items[7].Item);
+        Assert.True(plan.Items[7].Item.Right <= plan.Popover.Width && plan.Items[7].Item.Bottom <= plan.Popover.Height);
+    }
+
+    [Fact]
+    public void Compute_SideDockWithoutRoomForOneColumn_WrapsIntoColumnsAwayFromTheDock()
+    {
+        // One column of four would need 61 DIP boxes; two columns of two fit at 200.
+        var workArea = new PixelRect(0, 0, 1920, 374);
+
+        var plan = DockPreviewLayout.Compute(DockPosition.Left, new PixelRect(0, 100, 100, 300), 190, Monitor, workArea, 1, Windows(4));
+
+        Assert.Equal(new PixelRect(108, 8, 560, 366), plan.Popover);
+        Assert.Equal(new PixelRect(8, 8, 224, 177), plan.Items[0].Item);
+        Assert.Equal(new PixelRect(8, 181, 224, 350), plan.Items[1].Item);
+        Assert.Equal(new PixelRect(228, 8, 444, 177), plan.Items[2].Item);
+        Assert.Equal(new PixelRect(228, 181, 444, 350), plan.Items[3].Item);
+        Assert.Equal(new PixelRect(236, 44, 436, 169), plan.Items[2].Box);
+    }
+
+    [Fact]
+    public void Compute_OneWindowTooManyForTheGrid_ReplacesTheLastSlotWithPlusNMore()
+    {
+        // Room for three minimum items along the dock and one row across: two windows and "+2 more".
+        var monitor = new PixelRect(0, 0, 568, 1080);
+
+        var plan = DockPreviewLayout.Compute(DockPosition.Bottom, new PixelRect(100, 216, 468, 1072), 284, monitor, monitor, 1,
             Windows(4));
 
-        Assert.Equal(new PixelRect(8, 842, 416, 972), plan.Popover);
+        Assert.Equal(new PixelRect(8, 48, 560, 208), plan.Popover);
         Assert.Equal(2, plan.Items.Count);
         Assert.Equal(2, plan.OverflowCount);
-        Assert.Equal(new PixelRect(140, 8, 268, 122), plan.Items[1].Item);
-        Assert.Equal(new PixelRect(272, 8, 400, 122), plan.OverflowItem);
+        Assert.Equal(new PixelRect(188, 8, 364, 152), plan.Items[1].Item);
+        Assert.Equal(new PixelRect(368, 8, 544, 152), plan.OverflowItem);
     }
 
     [Fact]
     public void Compute_ManyMoreWindowsThanFit_CountsTheHiddenOnes()
     {
-        var monitor = new PixelRect(0, 0, 466, 1080);
+        var monitor = new PixelRect(0, 0, 568, 1080);
 
-        var plan = DockPreviewLayout.Compute(DockPosition.Bottom, new PixelRect(100, 980, 366, 1072), 233, monitor, monitor, 1,
-            Windows(5));
+        var plan = DockPreviewLayout.Compute(DockPosition.Bottom, new PixelRect(100, 216, 468, 1072), 284, monitor, monitor, 1,
+            Windows(7));
 
-        Assert.Equal(new PixelRect(29, 842, 437, 972), plan.Popover);
+        Assert.Equal(new PixelRect(8, 48, 560, 208), plan.Popover);
         Assert.Equal(2, plan.Items.Count);
-        Assert.Equal(3, plan.OverflowCount);
+        Assert.Equal(5, plan.OverflowCount);
     }
 
     [Fact]
     public void Compute_SideDockOverflow_StacksPlusNMoreBelowTheLastWindow()
     {
-        // Along space 382 - 16 = 366 holds three 114 DIP items: 3 * 114 + 2 * 4 + 16.
-        var workArea = new PixelRect(0, 0, 1920, 382);
+        // Room for two minimum items along the dock (350 DIP) and one column across (268 DIP).
+        var workArea = new PixelRect(0, 0, 400, 382);
 
         var plan = DockPreviewLayout.Compute(DockPosition.Left, new PixelRect(0, 100, 100, 300), 190, Monitor, workArea, 1, Windows(4));
 
-        Assert.Equal(new PixelRect(108, 8, 252, 374), plan.Popover);
-        Assert.Equal(2, plan.Items.Count);
-        Assert.Equal(2, plan.OverflowCount);
-        Assert.Equal(new PixelRect(8, 126, 136, 240), plan.Items[1].Item);
-        Assert.Equal(new PixelRect(8, 244, 136, 358), plan.OverflowItem);
+        Assert.Equal(new PixelRect(108, 36, 300, 344), plan.Popover);
+        Assert.Equal(new PixelRect(8, 8, 184, 152), Assert.Single(plan.Items).Item);
+        Assert.Equal(3, plan.OverflowCount);
+        Assert.Equal(new PixelRect(8, 156, 184, 300), plan.OverflowItem);
     }
 
     [Fact]
-    public void Compute_MonitorTooSmallForTwoMinimumItems_StillShowsBothWindows()
+    public void Compute_MonitorTooNarrowForOneMinimumItem_StacksTheWindowsAtTheMinimumBox()
     {
-        // "+1 more" would hide a single window, so both are shown and the popover is pinned to the left margin.
+        // Not even one 176 DIP item fits along a 200 px monitor: the windows stack, pinned to the left margin.
         var monitor = new PixelRect(0, 0, 200, 1080);
 
         var plan = DockPreviewLayout.Compute(DockPosition.Bottom, new PixelRect(20, 980, 180, 1072), 100, monitor, monitor, 1, Windows(2));
 
-        Assert.Equal(new PixelRect(8, 842, 284, 972), plan.Popover);
+        Assert.Equal(new PixelRect(8, 664, 200, 972), plan.Popover);
         Assert.Equal(2, plan.Items.Count);
         Assert.Equal(0, plan.OverflowCount);
+        Assert.Equal(new PixelRect(8, 156, 184, 300), plan.Items[1].Item);
     }
 
     [Fact]

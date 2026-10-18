@@ -17,8 +17,8 @@ public sealed record DockPreviewItem(CloseTarget Target, string Title, bool IsMi
 /// <summary>Which dock icons show a preview popover, and what it lists (spec 0024).</summary>
 public static class DockPreviewContent
 {
-    /// <summary>Apps with fewer windows keep the plain tooltip instead.</summary>
-    public const int MinWindows = 2;
+    /// <summary>Every running app gets the popover; pinned apps that are not running keep the plain tooltip.</summary>
+    public const int MinWindows = 1;
 
     /// <summary>True when hovering <paramref name="app"/>'s icon opens the popover (and its tooltip is off).</summary>
     public static bool ShowsPreview(bool enabled, DockApp app)

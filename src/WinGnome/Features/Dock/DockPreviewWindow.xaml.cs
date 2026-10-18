@@ -238,12 +238,6 @@ internal sealed partial class DockPreviewWindow : Window
             }
         };
         button.MouseLeave += (_, _) => middlePressed = false;
-        if (close is not null)
-        {
-            // Opacity, not visibility: the × stays in the UI Automation tree for screen readers.
-            button.MouseEnter += (_, _) => close.Opacity = 1;
-            button.MouseLeave += (_, _) => close.Opacity = 0;
-        }
 
         Put(ItemsCanvas, button, origin, scale);
         var parts = new ItemParts(button, title, close);
@@ -281,7 +275,6 @@ internal sealed partial class DockPreviewWindow : Window
             Height = size,
             Padding = new Thickness(0),
             FontSize = CloseFontSize,
-            Opacity = 0,
         };
         close.SetResourceReference(StyleProperty, "FlatButton");
         close.SetResourceReference(FontFamilyProperty, "IconFont");
@@ -312,8 +305,10 @@ internal sealed partial class DockPreviewWindow : Window
         return host;
     }
 
+    /// <summary>Adds <paramref name="element"/> to <paramref name="canvas"/> at <paramref name="rect"/> (pixels, converted to DIP).</summary>
     private static void Put(Canvas canvas, FrameworkElement element, PixelRect rect, double scale)
     {
+        canvas.Children.Add(element);
         Canvas.SetLeft(element, rect.Left / scale);
         Canvas.SetTop(element, rect.Top / scale);
         element.Width = double.IsNaN(element.Width) ? rect.Width / scale : element.Width;

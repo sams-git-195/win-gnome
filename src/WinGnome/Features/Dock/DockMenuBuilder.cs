@@ -113,7 +113,10 @@ internal static class DockMenuBuilder
         };
         DockPanel.SetDock(close, System.Windows.Controls.Dock.Right);
 
+        // Detach the title from the item before it moves into the new header: an element has one logical parent, and
+        // adding it while the item still owns it throws (which took the whole menu down, so right-click did nothing).
         var label = (TextBlock)item.Header;
+        item.Header = null;
         label.TextTrimming = TextTrimming.CharacterEllipsis;
         var header = new DockPanel { LastChildFill = true };
         header.Children.Add(close);

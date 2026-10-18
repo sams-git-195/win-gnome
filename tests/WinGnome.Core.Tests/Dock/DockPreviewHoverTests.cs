@@ -418,6 +418,93 @@ public class DockPreviewHoverTests
     }
 
     [Fact]
+    public void Close_WhileOpen_HidesAndRearmsTheIconUnderThePointer()
+    {
+        // A relayout or a settings change closes the popover; it is no click, so the icon still under the pointer opens
+        // it again after the usual delay instead of staying dead until the pointer leaves.
+        var hover = OpenOn(A);
+
+        Assert.Equal(DockPreviewChange.Hide, hover.Close(2000, pointerOnIcon: true));
+
+        Assert.Equal(DockPreviewPhase.Pending, hover.Phase);
+        Assert.Equal(A, hover.Key);
+        Assert.Equal(2400, hover.Deadline);
+        Assert.Equal(DockPreviewChange.Show, hover.Tick(2400));
+    }
+
+    [Fact]
+    public void Close_PointerOffTheIcons_GoesIdle()
+    {
+        var hover = OpenOn(A);
+        hover.PointerOverPopover(over: true, nowMs: 1500);
+        hover.PointerOverIcon(null, hasPreview: false, nowMs: 1501);
+
+        Assert.Equal(DockPreviewChange.Hide, hover.Close(2000, pointerOnIcon: false));
+
+        Assert.Equal(DockPreviewPhase.Idle, hover.Phase);
+        Assert.Null(hover.Deadline);
+    }
+
+    [Fact]
+    public void Close_PointerNoLongerOnTheLastReportedIcon_GoesIdle()
+    {
+        // A missed pointer-left event leaves the icon as the last one reported; the app knows better and says so. The
+        // popover must not come back with the pointer on neither the icon nor the popover.
+        var hover = OpenOn(A);
+
+        Assert.Equal(DockPreviewChange.Hide, hover.Close(2000, pointerOnIcon: false));
+
+        Assert.Equal(DockPreviewPhase.Idle, hover.Phase);
+        Assert.Null(hover.Deadline);
+        Assert.Equal(DockPreviewChange.None, hover.Tick(2400));
+    }
+
+    [Fact]
+    public void Close_WhilePending_RestartsTheDelay()
+    {
+        var hover = new DockPreviewHover();
+        hover.PointerOverIcon(A, hasPreview: true, nowMs: 1000);
+
+        Assert.Equal(DockPreviewChange.None, hover.Close(1200, pointerOnIcon: true));
+
+        Assert.Equal(DockPreviewPhase.Pending, hover.Phase);
+        Assert.Equal(1600, hover.Deadline);
+    }
+
+    [Fact]
+    public void Close_AfterAClickDismissed_KeepsTheIconDisarmed()
+    {
+        var hover = OpenOn(A);
+        hover.Dismiss();
+
+        Assert.Equal(DockPreviewChange.None, hover.Close(2000, pointerOnIcon: true));
+
+        Assert.Equal(DockPreviewPhase.Idle, hover.Phase);
+        Assert.Null(hover.Deadline);
+    }
+
+    [Fact]
+    public void Close_WhileSuppressed_StaysIdle()
+    {
+        var hover = OpenOn(A);
+        hover.SetSuppressed(true);
+
+        Assert.Equal(DockPreviewChange.None, hover.Close(2000, pointerOnIcon: true));
+
+        Assert.Equal(DockPreviewPhase.Idle, hover.Phase);
+        Assert.Null(hover.Deadline);
+    }
+
+    [Fact]
+    public void Close_WhileIdle_DoesNothing()
+    {
+        var hover = new DockPreviewHover();
+
+        Assert.Equal(DockPreviewChange.None, hover.Close(1000, pointerOnIcon: true));
+        Assert.Equal(DockPreviewPhase.Idle, hover.Phase);
+    }
+
+    [Fact]
     public void SetSuppressed_WhileOpen_Hides()
     {
         var hover = OpenOn(A);
