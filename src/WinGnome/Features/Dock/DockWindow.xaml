@@ -25,6 +25,7 @@
                   Height="{Binding Appearance.CellSize}"
                   Background="#01000000"
                   ToolTip="{Binding Name}"
+                  ToolTipService.IsEnabled="{Binding ShowsToolTip}"
                   ToolTipService.Placement="{Binding Appearance.ToolTipPlacement}"
                   ToolTipService.HorizontalOffset="{Binding Appearance.ToolTipHorizontalOffset}"
                   ToolTipService.VerticalOffset="{Binding Appearance.ToolTipVerticalOffset}"

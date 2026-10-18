@@ -12,7 +12,9 @@ public readonly record struct DockClickResult(DockClickKind Kind, nint Window);
 public static class DockClickPlanner
 {
     /// <summary>
-    /// Plans a click. <paramref name="app"/>.Windows must be ordered most-recently-used first.
+    /// Plans a click. Activating goes to <see cref="DockApp.MostRecentWindow"/>, or to the first window when that is
+    /// not one of the app's windows; <see cref="DockClickAction.Cycle"/> steps through <paramref name="app"/>.Windows
+    /// in their given order, which the caller keeps stable so every window is visited in turn.
     /// <paramref name="lastActivated"/> is reserved for future cycling heuristics and is currently unused.
     /// </summary>
     public static DockClickResult Plan(DockApp app, nint foreground, DockClickAction action, nint lastActivated)
@@ -31,7 +33,7 @@ public static class DockClickPlanner
         switch (action)
         {
             case DockClickAction.FocusOrMinimize:
-                return FocusOrMinimize(windows, focused, foreground);
+                return FocusOrMinimize(app, focused, foreground);
 
             case DockClickAction.Cycle:
                 if (focused && windows.Count > 1)
@@ -42,22 +44,26 @@ public static class DockClickPlanner
 
                 return focused
                     ? new DockClickResult(DockClickKind.Minimize, foreground)
-                    : new DockClickResult(DockClickKind.Activate, windows[0]);
+                    : new DockClickResult(DockClickKind.Activate, ActivationTarget(app));
 
             case DockClickAction.Previews:
                 return windows.Count > 1
                     ? new DockClickResult(DockClickKind.ShowPreviews, 0)
-                    : FocusOrMinimize(windows, focused, foreground);
+                    : FocusOrMinimize(app, focused, foreground);
 
             default:
                 return new DockClickResult(DockClickKind.None, 0);
         }
     }
 
-    private static DockClickResult FocusOrMinimize(IReadOnlyList<nint> windows, bool focused, nint foreground) =>
+    private static DockClickResult FocusOrMinimize(DockApp app, bool focused, nint foreground) =>
         focused
             ? new DockClickResult(DockClickKind.Minimize, foreground)
-            : new DockClickResult(DockClickKind.Activate, windows[0]);
+            : new DockClickResult(DockClickKind.Activate, ActivationTarget(app));
+
+    /// <summary>The most recent window, unless it is unknown or no longer listed (then the first window).</summary>
+    private static nint ActivationTarget(DockApp app) =>
+        IndexOf(app.Windows, app.MostRecentWindow) >= 0 ? app.MostRecentWindow : app.Windows[0];
 
     private static int IndexOf(IReadOnlyList<nint> windows, nint handle)
     {

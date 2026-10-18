@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Input;
 using WinGnome.Infrastructure;
 using WinGnome.Interop;
 using WinGnome.Services;
@@ -15,6 +17,9 @@ internal static class DockMenuBuilder
     /// <summary>Segoe Fluent Icons "CheckMark".</summary>
     private const string CheckGlyph = "";
 
+    /// <summary>Segoe Fluent Icons "Cancel", the close mark (also on the preview popover's items).</summary>
+    internal const string CloseGlyph = "";
+
     /// <summary>The menu for <paramref name="entry"/>, or null when it has none (Show Applications).</summary>
     public static ContextMenu? Build(DockEntry entry, DockActions actions, WindowTracker windows) => entry switch
     {
@@ -28,10 +33,10 @@ internal static class DockMenuBuilder
         var app = entry.App;
         var menu = new ContextMenu();
 
-        // GNOME lists the app's windows first; clicking one focuses it.
+        // GNOME lists the app's windows first; clicking one focuses it, its × (or Delete) closes it.
         foreach (var hwnd in app.Windows)
         {
-            menu.Items.Add(Item(WindowTitle(hwnd, windows, app.Name), () => actions.ActivateWindow(hwnd)));
+            menu.Items.Add(WindowItem(menu, hwnd, WindowTitle(hwnd, windows, app.Name), actions));
         }
 
         if (app.Windows.Count > 0)
@@ -71,10 +76,59 @@ internal static class DockMenuBuilder
             var quit = app.Windows.Count == 1
                 ? "Quit"
                 : string.Format(CultureInfo.CurrentCulture, "Close {0} windows", app.Windows.Count);
-            menu.Items.Add(Item(quit, () => DockActions.Quit(app)));
+            menu.Items.Add(Item(quit, () => actions.Quit(app)));
         }
 
         return menu;
+    }
+
+    /// <summary>
+    /// A window row: the title, then a × that closes just that window. Elevated windows get no ×, and Delete does
+    /// nothing on them. The target is captured when the menu opens, so a handle reused while the menu is up is caught.
+    /// </summary>
+    private static MenuItem WindowItem(ContextMenu menu, nint hwnd, string title, DockActions actions)
+    {
+        var item = Item(title, () => actions.ActivateWindow(hwnd));
+        if (actions.CloseTargetFor(hwnd) is not { IsElevated: false } target)
+        {
+            return item;
+        }
+
+        void CloseThisWindow()
+        {
+            Run(() => actions.CloseWindow(target));
+            menu.IsOpen = false;
+        }
+
+        var close = new Button { Content = CloseGlyph, Focusable = false, Width = 20, Height = 20, Padding = new Thickness(0), FontSize = 10 };
+        close.SetResourceReference(FrameworkElement.StyleProperty, "FlatButton");
+        close.SetResourceReference(Control.FontFamilyProperty, "IconFont");
+        close.Margin = new Thickness(12, -2, -4, -2);
+        AutomationProperties.SetName(close, "Close " + title);
+        close.Click += (_, e) =>
+        {
+            // Handled, so the click does not also reach the row and focus the window being closed.
+            e.Handled = true;
+            CloseThisWindow();
+        };
+        DockPanel.SetDock(close, System.Windows.Controls.Dock.Right);
+
+        var label = (TextBlock)item.Header;
+        label.TextTrimming = TextTrimming.CharacterEllipsis;
+        var header = new DockPanel { LastChildFill = true };
+        header.Children.Add(close);
+        header.Children.Add(label);
+        item.Header = header;
+
+        item.PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Delete)
+            {
+                e.Handled = true;
+                CloseThisWindow();
+            }
+        };
+        return item;
     }
 
     private static string WindowTitle(nint hwnd, WindowTracker windows, string fallback)

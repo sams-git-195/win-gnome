@@ -6,8 +6,9 @@ namespace WinGnome.Services.Connectivity;
 
 /// <summary>
 /// Reads, without calling any location-gated Wi-Fi API, whether Windows lets this app use them
-/// (<c>AppCapability("wiFiControl").CheckAccess()</c>), and reports when that changes. The panel feeds the answer to
-/// Core's <see cref="WifiLocationPolicy"/> so a denied state is never probed again. Created when the Wi-Fi panel
+/// (<c>AppCapability("wiFiControl").CheckAccess()</c>), and reports when that changes. The answer is the last input of
+/// Core's <see cref="WifiLocationGate"/>, after the policy and consent reads, because it says "ask" even when a policy
+/// means no prompt can appear. Created when the Wi-Fi panel
 /// opens and disposed when it closes; <see cref="Check"/> may block briefly (it loads WinRT), so call it from a worker.
 /// </summary>
 internal sealed class WifiLocationProbe : IDisposable

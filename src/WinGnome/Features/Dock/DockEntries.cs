@@ -57,6 +57,7 @@ internal sealed class DockAppEntry(DockAppearance appearance, string key) : Dock
     private ImageSource? _icon;
     private bool _isFocused;
     private bool _isRunning;
+    private bool _showsPreview;
     private int[] _indicators = [];
 
     /// <summary>Stable key across refreshes ("pin:" + launch id, or "run:" + identity), so the view keeps its container.</summary>
@@ -103,6 +104,22 @@ internal sealed class DockAppEntry(DockAppearance appearance, string key) : Dock
 
     public bool IsPinned => App.IsPinned;
 
+    /// <summary>Hovering this icon opens the window preview popover (<see cref="DockPreviewContent.ShowsPreview"/>).</summary>
+    public bool ShowsPreview
+    {
+        get => _showsPreview;
+        private set
+        {
+            if (SetProperty(ref _showsPreview, value))
+            {
+                OnPropertyChanged(nameof(ShowsToolTip));
+            }
+        }
+    }
+
+    /// <summary>The name tooltip, off for icons that show the popover so the two never overlap.</summary>
+    public bool ShowsToolTip => !ShowsPreview;
+
     /// <summary>One element per running-indicator dot (one per window, at most four).</summary>
     public int[] Indicators
     {
@@ -116,6 +133,7 @@ internal sealed class DockAppEntry(DockAppearance appearance, string key) : Dock
         Name = app.Name;
         IsFocused = app.IsFocused;
         IsRunning = app.IsRunning;
+        ShowsPreview = DockPreviewContent.ShowsPreview(Appearance.WindowPreviews, app);
 
         var dots = Math.Min(app.Windows.Count, MaxIndicators);
         if (dots != _indicators.Length)

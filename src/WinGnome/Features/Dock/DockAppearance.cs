@@ -47,6 +47,12 @@ internal sealed class DockAppearance : ObservableObject
 
     public Visibility IndicatorVisibility { get; private set; } = Visibility.Visible;
 
+    /// <summary>
+    /// <see cref="DockSettings.WindowPreviews"/>. Set by <see cref="DockViewModel.Update"/> before it updates the entries,
+    /// which read it (no binding uses it directly).
+    /// </summary>
+    public bool WindowPreviews { get; set; } = true;
+
     // Running dots sit on the screen-edge side of the icon, centred in the padding strip.
     public HorizontalAlignment IndicatorHorizontalAlignment => Position switch
     {

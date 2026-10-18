@@ -216,6 +216,7 @@ internal sealed class DockFeature : IFeature
         dock.ExplorerRestarted += OnExplorerRestarted;
         dock.Detached += OnDockDetached;
         dock.RefreshRequested += OnRefreshRequested;
+        dock.PreviewOpened += OnPreviewOpened;
         return dock;
     }
 
@@ -224,6 +225,7 @@ internal sealed class DockFeature : IFeature
         dock.ExplorerRestarted -= OnExplorerRestarted;
         dock.Detached -= OnDockDetached;
         dock.RefreshRequested -= OnRefreshRequested;
+        dock.PreviewOpened -= OnPreviewOpened;
         dock.Dispose();
     }
 
@@ -268,9 +270,22 @@ internal sealed class DockFeature : IFeature
         foreach (var dock in _docks)
         {
             dock.CloseMenu();
+            dock.OnForegroundChanged();
         }
 
         QueueRefresh();
+    }
+
+    /// <summary>Only one window preview popover is open across all docks.</summary>
+    private void OnPreviewOpened(object? sender, EventArgs e)
+    {
+        foreach (var dock in _docks)
+        {
+            if (!ReferenceEquals(dock, sender))
+            {
+                dock.DismissPreview();
+            }
+        }
     }
 
     private void OnModelInputChanged(object? sender, EventArgs e) => QueueRefresh();

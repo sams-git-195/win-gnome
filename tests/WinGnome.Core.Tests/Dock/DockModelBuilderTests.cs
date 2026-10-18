@@ -242,6 +242,31 @@ public class DockModelBuilderTests
     }
 
     [Fact]
+    public void MostRecentWindow_IsFirstWindowInInputOrder_ForPinnedAndUnpinnedApps()
+    {
+        var windows = new[]
+        {
+            Win(30, "Term", null, TerminalAumid),
+            Win(50, "Zed", @"C:\z\zed.exe"),
+            Win(10, "Term", null, TerminalAumid),
+            Win(40, "Zed", @"C:\z\zed.exe"),
+        };
+
+        var apps = Build([Pin("Terminal", TerminalAumid)], windows);
+
+        Assert.Equal(new nint[] { 30, 50 }, apps.Select(a => a.MostRecentWindow));
+        Assert.Equal(new nint[] { 30, 10 }, apps[0].Windows.ToArray());
+    }
+
+    [Fact]
+    public void MostRecentWindow_IsZeroForAPinnedAppThatIsNotRunning()
+    {
+        var app = Assert.Single(Build([Pin("Terminal", TerminalAumid)], []));
+
+        Assert.Equal(0, app.MostRecentWindow);
+    }
+
+    [Fact]
     public void IsFocused_WhenAnyWindowIsTheForeground()
     {
         var windows = new[]

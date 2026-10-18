@@ -80,9 +80,13 @@ internal static partial class NativeMethods
     [DllImport("wlanapi.dll")]
     public static extern unsafe uint WlanSetProfile(nint hClientHandle, in Guid pInterfaceGuid, uint dwFlags, char* strProfileXml, nint strAllUserProfileSecurity, [MarshalAs(UnmanagedType.Bool)] bool bOverwrite, nint pReserved, out uint pdwReasonCode);
 
-    /// <summary>Gets a profile's XML (the key stays encrypted without the plain-text flag); free it with <see cref="WlanFreeMemory"/>.</summary>
+    /// <summary>
+    /// Gets a profile's XML; free it with <see cref="WlanFreeMemory"/>. <paramref name="pdwFlags"/> goes in as 0 (never the
+    /// plain-text flag, so the key stays encrypted) and comes back with the group-policy (0x1) and per-user
+    /// (<see cref="WLAN_PROFILE_USER"/>) flags.
+    /// </summary>
     [DllImport("wlanapi.dll", CharSet = CharSet.Unicode)]
-    public static extern uint WlanGetProfile(nint hClientHandle, in Guid pInterfaceGuid, string strProfileName, nint pReserved, out nint pstrProfileXml, nint pdwFlags, out uint pdwGrantedAccess);
+    public static extern uint WlanGetProfile(nint hClientHandle, in Guid pInterfaceGuid, string strProfileName, nint pReserved, out nint pstrProfileXml, ref uint pdwFlags, out uint pdwGrantedAccess);
 
     [DllImport("wlanapi.dll", CharSet = CharSet.Unicode)]
     public static extern uint WlanDeleteProfile(nint hClientHandle, in Guid pInterfaceGuid, string strProfileName, nint pReserved);

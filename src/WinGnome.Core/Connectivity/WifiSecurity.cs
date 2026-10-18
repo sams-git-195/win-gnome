@@ -54,6 +54,34 @@ public static class WifiSecurity
         };
     }
 
+    /// <summary>
+    /// The kind of a saved profile, from the <c>authentication</c> and <c>encryption</c> text of its XML (case-insensitive).
+    /// 802.1X, enterprise and anything WinGnome doesn't write map to <see cref="WifiProfileKind.HandOff"/>.
+    /// </summary>
+    public static WifiProfileKind FromProfile(string? authentication, string? encryption, bool usesOneX)
+    {
+        if (usesOneX)
+        {
+            return WifiProfileKind.HandOff;
+        }
+
+        // The cipher only decides for open authentication (none = open network, WEP = WEP); a PSK network can name TKIP or AES.
+        return authentication?.ToUpperInvariant() switch
+        {
+            "OPEN" => encryption?.ToUpperInvariant() switch
+            {
+                "NONE" => WifiProfileKind.Open,
+                "WEP" => WifiProfileKind.Wep,
+                _ => WifiProfileKind.HandOff,
+            },
+            "OWE" => WifiProfileKind.Owe,
+            "WPAPSK" => WifiProfileKind.WpaPsk,
+            "WPA2PSK" => WifiProfileKind.Wpa2Psk,
+            "WPA3SAE" => WifiProfileKind.Wpa3Sae,
+            _ => WifiProfileKind.HandOff,
+        };
+    }
+
     /// <summary>True when connecting to a new network of this kind needs a password.</summary>
     public static bool NeedsPassword(WifiProfileKind kind) =>
         kind is WifiProfileKind.Wep or WifiProfileKind.WpaPsk or WifiProfileKind.Wpa2Psk or WifiProfileKind.Wpa3Sae;

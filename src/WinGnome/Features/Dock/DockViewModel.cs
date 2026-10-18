@@ -18,6 +18,7 @@ internal sealed class DockViewModel
     private readonly IIconProvider _icons;
     private readonly IAppCatalog _catalog;
     private readonly Dictionary<string, DockAppEntry> _appEntries = new(StringComparer.OrdinalIgnoreCase);
+    private readonly DockRunningOrder _runningOrder = new();
     private readonly DockSeparatorEntry _separator;
     private readonly DockActionEntry _recycleBin;
     private readonly DockActionEntry _showApplications;
@@ -49,7 +50,10 @@ internal sealed class DockViewModel
     public IReadOnlyList<string> PinnedLaunchIds =>
         Entries.OfType<DockAppEntry>().Where(e => e.IsPinned && e.App.LaunchId is not null).Select(e => e.App.LaunchId!).ToList();
 
-    /// <summary>Brings the entries in line with <paramref name="apps"/> and the button settings.</summary>
+    /// <summary>
+    /// Brings the entries in line with <paramref name="apps"/> and the button settings. Unpinned apps and each app's
+    /// windows keep their first-appearance order, whatever order the model arrives in (<see cref="DockRunningOrder"/>).
+    /// </summary>
     /// <param name="apps">Dock model from <see cref="DockModelBuilder"/>.</param>
     /// <param name="settings">Dock settings (which built-in buttons to show).</param>
     /// <param name="iconSizePx">Icon size to load, in physical pixels.</param>
@@ -58,6 +62,8 @@ internal sealed class DockViewModel
         ArgumentNullException.ThrowIfNull(apps);
         ArgumentNullException.ThrowIfNull(settings);
 
+        Appearance.WindowPreviews = settings.WindowPreviews;
+        apps = _runningOrder.Apply(apps, Environment.TickCount64);
         var desired = new List<DockEntry>(apps.Count + 3);
         var appEntries = new List<DockAppEntry>(apps.Count);
         var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -66,7 +72,7 @@ internal sealed class DockViewModel
 
         foreach (var app in apps)
         {
-            var key = app.IsPinned ? "pin:" + app.LaunchId : "run:" + app.Identity;
+            var key = DockRunningOrder.KeyOf(app);
             if (!keys.Add(key))
             {
                 continue;
