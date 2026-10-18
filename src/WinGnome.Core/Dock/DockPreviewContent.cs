@@ -57,6 +57,14 @@ public static class DockPreviewContent
     }
 
     /// <summary>
+    /// True when a refreshed popover must be laid out again at the icon's current position: its windows need a rebuild
+    /// (<see cref="NeedsRebuild"/>), or the icon moved along the dock (another app left or arrived) so the popover would
+    /// point at the wrong place. Anchors are the icon's centre along the dock in screen pixels.
+    /// </summary>
+    public static bool NeedsRelayout(IReadOnlyList<DockPreviewItem> shown, IReadOnlyList<DockPreviewItem> next, int shownAnchor, int currentAnchor) =>
+        currentAnchor != shownAnchor || NeedsRebuild(shown, next);
+
+    /// <summary>
     /// True when the popover must be laid out and its thumbnails registered again: a window came, went or moved, or
     /// was minimised or restored (which changes whether DWM has a picture). A title change alone is updated in place.
     /// </summary>

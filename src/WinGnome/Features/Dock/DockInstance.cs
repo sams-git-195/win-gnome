@@ -65,7 +65,7 @@ internal sealed class DockInstance : IDisposable
         _menu = new DockMenuPresenter(context.Dispatcher);
         _visibility = new DockVisibilityController(context, _window, foreground, poller);
         _reservation = new DockReservation();
-        _preview = new DockPreviewPresenter(context.Dispatcher, context.Windows, _actions, PreviewPlacement);
+        _preview = new DockPreviewPresenter(context.Dispatcher, context.Windows, _actions, PreviewPlacement, _window.ContainerFor);
         _preview.SetEnabled(dock.WindowPreviews);
 
         _window.EntryInvoked += OnEntryInvoked;

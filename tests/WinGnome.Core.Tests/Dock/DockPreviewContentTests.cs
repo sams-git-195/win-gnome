@@ -142,6 +142,28 @@ public class DockPreviewContentTests
     }
 
     [Fact]
+    public void NeedsRelayout_SameWindowsSameAnchor_IsFalse()
+    {
+        Assert.False(DockPreviewContent.NeedsRelayout([Item(1, "a"), Item(2)], [Item(1, "b"), Item(2)], shownAnchor: 300, currentAnchor: 300));
+    }
+
+    [Theory]
+    [InlineData(299)]
+    [InlineData(301)]
+    [InlineData(-300)]
+    public void NeedsRelayout_IconMoved_IsTrue(int currentAnchor)
+    {
+        // Another app left and one arrived: same cell count, but this icon now sits elsewhere.
+        Assert.True(DockPreviewContent.NeedsRelayout([Item(1), Item(2)], [Item(1), Item(2)], shownAnchor: 300, currentAnchor));
+    }
+
+    [Fact]
+    public void NeedsRelayout_WindowClosedSameAnchor_IsTrue()
+    {
+        Assert.True(DockPreviewContent.NeedsRelayout([Item(1), Item(2), Item(3)], [Item(1), Item(3)], shownAnchor: 300, currentAnchor: 300));
+    }
+
+    [Fact]
     public void NeedsRebuild_WindowMinimised_IsTrue()
     {
         Assert.True(DockPreviewContent.NeedsRebuild([Item(1), Item(2)], [Item(1), Item(2, minimized: true)]));

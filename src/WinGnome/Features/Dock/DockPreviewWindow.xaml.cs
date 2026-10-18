@@ -213,14 +213,31 @@ internal sealed partial class DockPreviewWindow : Window
 
         var button = ItemButton(content);
         button.Click += (_, _) => WindowChosen?.Invoke(this, item.Handle);
+        // A middle click counts only when it was pressed and released on this item.
+        var middlePressed = false;
+        button.MouseDown += (_, e) =>
+        {
+            if (e.ChangedButton == MouseButton.Middle)
+            {
+                middlePressed = true;
+            }
+        };
         button.MouseUp += (_, e) =>
         {
-            if (e.ChangedButton == MouseButton.Middle && item.CanClose)
+            if (e.ChangedButton != MouseButton.Middle)
+            {
+                return;
+            }
+
+            var pressedHere = middlePressed;
+            middlePressed = false;
+            if (pressedHere && item.CanClose)
             {
                 e.Handled = true;
                 CloseRequested?.Invoke(this, item);
             }
         };
+        button.MouseLeave += (_, _) => middlePressed = false;
         if (close is not null)
         {
             // Opacity, not visibility: the × stays in the UI Automation tree for screen readers.

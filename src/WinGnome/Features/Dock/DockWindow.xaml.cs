@@ -400,6 +400,10 @@ internal sealed partial class DockWindow : Window
         }
     }
 
+    /// <summary>The item container showing <paramref name="entry"/>, or null when it has none (not shown).</summary>
+    public FrameworkElement? ContainerFor(DockEntry entry) =>
+        Items.ItemContainerGenerator.ContainerFromItem(entry) as FrameworkElement;
+
     private FrameworkElement? ContainerOf(DependencyObject? element) =>
         element is null ? null : ItemsControl.ContainerFromElement(Items, element) as FrameworkElement;
 

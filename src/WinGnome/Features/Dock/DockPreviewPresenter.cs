@@ -27,6 +27,7 @@ internal sealed class DockPreviewPresenter : IDisposable
     private readonly WindowTracker _windows;
     private readonly DockActions _actions;
     private readonly Func<DockPreviewPlacement?> _placement;
+    private readonly Func<DockAppEntry, FrameworkElement?> _containerOf;
     private readonly DockPreviewHover _hover = new();
     private DispatcherTimer? _timer;
     private DockPreviewWindow? _window;
@@ -43,8 +44,11 @@ internal sealed class DockPreviewPresenter : IDisposable
     /// <param name="windows">The window tracker: titles, minimised and elevated state, process ids.</param>
     /// <param name="actions">The dock's actions (focus, close, overview).</param>
     /// <param name="placement">The dock's current placement, or null when it has none yet.</param>
-    public DockPreviewPresenter(Dispatcher dispatcher, WindowTracker windows, DockActions actions, Func<DockPreviewPlacement?> placement)
+    /// <param name="containerOf">The dock item currently showing an entry, or null when it has none.</param>
+    public DockPreviewPresenter(Dispatcher dispatcher, WindowTracker windows, DockActions actions, Func<DockPreviewPlacement?> placement,
+        Func<DockAppEntry, FrameworkElement?> containerOf)
     {
+        _containerOf = containerOf ?? throw new ArgumentNullException(nameof(containerOf));
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _windows = windows ?? throw new ArgumentNullException(nameof(windows));
         _actions = actions ?? throw new ArgumentNullException(nameof(actions));
@@ -130,22 +134,25 @@ internal sealed class DockPreviewPresenter : IDisposable
             return;
         }
 
-        if (!DockPreviewContent.NeedsRebuild(_items, items))
+        // Lay out against where the icon is now: icons shift when other apps come and go, even at the same count. The
+        // dock's items were just edited, so bring its layout up to date before reading the position.
+        var container = _containerOf(entry);
+        container?.UpdateLayout();
+        if (_placement() is not { } placement || AnchorOf(container, placement.Position) is not { } anchor)
         {
-            _shown = entry;
-            _items = items;
-            _window?.UpdateTitles(items);
+            Dismiss();
             return;
         }
 
-        if (_placement() is { } placement)
+        if (DockPreviewContent.NeedsRelayout(_items, items, _anchor, anchor))
         {
-            Present(entry, items, placement, _anchor);
+            Present(entry, items, placement, anchor);
+            return;
         }
-        else
-        {
-            Dismiss();
-        }
+
+        _shown = entry;
+        _items = items;
+        _window?.UpdateTitles(items);
     }
 
     private void Apply(DockPreviewChange change)
