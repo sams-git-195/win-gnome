@@ -144,7 +144,10 @@ internal sealed class DockPreviewPresenter : IDisposable
             return;
         }
 
-        if (DockPreviewContent.NeedsRelayout(_items, items, _anchor, anchor))
+        // Half a cell: magnification moves the icon with the pointer and its animations, which is not a move to
+        // another slot and must not re-register the thumbnails or nudge the popover away from the pointer.
+        var tolerancePx = (int)Math.Floor(entry.Appearance.CellSize * placement.Monitor.Scale / 2);
+        if (DockPreviewContent.NeedsRelayout(_items, items, _anchor, anchor, tolerancePx))
         {
             Present(entry, items, placement, anchor);
             return;
