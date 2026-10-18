@@ -24,6 +24,8 @@ internal static partial class WindowActivator
         public nint dwExtraInfo;
     }
 
+    private const int ErrorInvalidWindowHandle = 1400;
+
     private const uint INPUT_KEYBOARD = 1;
     private const uint KEYEVENTF_KEYUP = 0x0002;
 
@@ -87,6 +89,31 @@ internal static partial class WindowActivator
         {
             NativeMethods.PostMessage(hwnd, NativeMethods.WM_SYSCOMMAND, NativeMethods.SC_CLOSE, 0);
         }
+    }
+
+    /// <summary>
+    /// Politely asks the window to close like <see cref="Close"/>, but reports a failed post. The message is posted,
+    /// never sent, so a hung window cannot block the caller.
+    /// </summary>
+    /// <param name="hwnd">The window to close.</param>
+    /// <param name="win32Error">0 on success; otherwise the Win32 error of the failed post.</param>
+    /// <returns>True when the request was queued (the window may still decline, for example to ask about unsaved work).</returns>
+    public static bool TryClose(nint hwnd, out int win32Error)
+    {
+        if (hwnd == 0)
+        {
+            win32Error = ErrorInvalidWindowHandle;
+            return false;
+        }
+
+        if (NativeMethods.PostMessage(hwnd, NativeMethods.WM_SYSCOMMAND, NativeMethods.SC_CLOSE, 0))
+        {
+            win32Error = 0;
+            return true;
+        }
+
+        win32Error = Marshal.GetLastPInvokeError();
+        return false;
     }
 
     /// <summary>Sends a key chord such as Ctrl+Win+Right. Keys are pressed in order and released in reverse.</summary>
