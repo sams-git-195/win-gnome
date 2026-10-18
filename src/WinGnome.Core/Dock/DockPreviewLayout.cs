@@ -52,8 +52,11 @@ public static class DockPreviewLayout
     /// <summary>Largest thumbnail box width.</summary>
     public const double MaxBoxWidthDip = 224;
 
-    /// <summary>Smallest thumbnail box width before windows overflow into "+N more".</summary>
-    public const double MinBoxWidthDip = 112;
+    /// <summary>
+    /// Smallest thumbnail box width: below it a window's content is no longer legible, so windows wrap into another
+    /// line first and overflow into "+N more" only when no grid of this size fits.
+    /// </summary>
+    public const double MinBoxWidthDip = 160;
 
     /// <summary>Thumbnail box height as a fraction of its width.</summary>
     public const double BoxAspect = 0.625;
@@ -113,24 +116,28 @@ public static class DockPreviewLayout
         var alongSpace = ((vertical ? area.Height : area.Width) / s) - (2 * ScreenMarginDip);
         var acrossSpace = AcrossSpacePx(position, dockWindow, area, gapPx, marginPx) / s;
 
-        var (boxWidth, visible, overflow) = FitBoxes(sources.Count, vertical, alongSpace, acrossSpace);
-        var slots = visible + (overflow > 0 ? 1 : 0);
-        var along = (slots * AlongCell(boxWidth, vertical)) + ((slots - 1) * ItemGapDip) + (2 * PopoverPaddingDip);
-        var across = AcrossCell(boxWidth, vertical) + (2 * PopoverPaddingDip);
+        var grid = FitGrid(sources.Count, vertical, alongSpace, acrossSpace);
+        var slots = grid.Visible + (grid.Overflow > 0 ? 1 : 0);
+        var lines = (slots + grid.PerLine - 1) / grid.PerLine;
+        var along = Span(grid.PerLine, AlongCell(grid.BoxWidth, vertical));
+        var across = Span(lines, AcrossCell(grid.BoxWidth, vertical));
         var width = Px(vertical ? across : along, s);
         var height = Px(vertical ? along : across, s);
 
         var popover = Place(position, dockWindow, anchor, area, gapPx, marginPx, width, height);
 
-        var items = new List<DockPreviewItemLayout>(visible);
-        for (var i = 0; i < visible; i++)
+        var items = new List<DockPreviewItemLayout>(grid.Visible);
+        for (var i = 0; i < grid.Visible; i++)
         {
-            items.Add(ItemAt(i, boxWidth, vertical, s, sources[i]));
+            items.Add(ItemAt(i, grid, vertical, s, sources[i]));
         }
 
-        var overflowItem = overflow > 0 ? ItemRect(visible, boxWidth, vertical, s) : default;
-        return new DockPreviewPlan(popover, items, overflow, overflowItem);
+        var overflowItem = grid.Overflow > 0 ? ItemRect(grid.Visible, grid, vertical, s) : default;
+        return new DockPreviewPlan(popover, items, grid.Overflow, overflowItem);
     }
+
+    /// <summary>The popover's extent for <paramref name="count"/> cells of <paramref name="cell"/> DIP, with gaps and padding.</summary>
+    private static double Span(int count, double cell) => (count * cell) + ((count - 1) * ItemGapDip) + (2 * PopoverPaddingDip);
 
     /// <summary>The work area clipped to the monitor, or the whole monitor when that leaves nothing.</summary>
     private static PixelRect UsableArea(PixelRect monitorBounds, PixelRect workArea)
@@ -149,26 +156,43 @@ public static class DockPreviewLayout
         };
 
     /// <summary>
-    /// The thumbnail box width (DIP) and how many windows get an item. Every item shares one box width: the largest
-    /// that fits all windows along the dock and fits across, never above the maximum or below the minimum. When even
-    /// the minimum does not fit all windows, the last slot becomes the "+N more" item.
+    /// The grid: one box width (DIP) shared by every item, how many items go in each line along the dock, and how many
+    /// windows get an item. The fewest lines whose box width stays at or above the minimum win, each line as full as an
+    /// even split allows, at the largest box width that fits along and across (never above the maximum). When no
+    /// number of lines fits every window at the minimum, the minimum-size grid that fits is filled and its last slot
+    /// becomes the "+N more" item.
     /// </summary>
-    private static (double BoxWidth, int Visible, int Overflow) FitBoxes(int count, bool vertical, double alongSpace, double acrossSpace)
+    private static Grid FitGrid(int count, bool vertical, double alongSpace, double acrossSpace)
     {
         var contentAlong = alongSpace - (2 * PopoverPaddingDip);
-        var fitAlong = BoxForAlongCell((contentAlong - ((count - 1) * ItemGapDip)) / count, vertical);
-        if (fitAlong >= MinBoxWidthDip - Epsilon)
+        var contentAcross = acrossSpace - (2 * PopoverPaddingDip);
+        for (var lines = 1; lines <= count; lines++)
         {
-            var fitAcross = BoxForAcrossCell(acrossSpace - (2 * PopoverPaddingDip), vertical);
-            return (Math.Clamp(Math.Min(fitAlong, fitAcross), MinBoxWidthDip, MaxBoxWidthDip), count, 0);
+            var perLine = (count + lines - 1) / lines;
+            var fitAlong = BoxForAlongCell(CellFor(contentAlong, perLine), vertical);
+            var fitAcross = BoxForAcrossCell(CellFor(contentAcross, lines), vertical);
+            var box = Math.Min(MaxBoxWidthDip, Math.Min(fitAlong, fitAcross));
+            if (box >= MinBoxWidthDip - Epsilon)
+            {
+                return new Grid(Math.Max(box, MinBoxWidthDip), perLine, count, 0);
+            }
         }
 
-        var slots = (int)Math.Floor(((contentAlong + ItemGapDip) / (AlongCell(MinBoxWidthDip, vertical) + ItemGapDip)) + Epsilon);
+        var maxPerLine = Math.Max(1, CellsThatFit(contentAlong, AlongCell(MinBoxWidthDip, vertical)));
+        var maxLines = Math.Max(1, CellsThatFit(contentAcross, AcrossCell(MinBoxWidthDip, vertical)));
 
-        // One slot is "+N more"; keep at least one window next to it even on a monitor too small for two slots.
-        slots = Math.Max(slots, 2);
-        return slots >= count ? (MinBoxWidthDip, count, 0) : (MinBoxWidthDip, slots - 1, count - (slots - 1));
+        // One slot is "+N more"; keep at least one window next to it even where only one slot fits.
+        var capacity = Math.Max(2, maxPerLine * maxLines);
+        var visible = capacity >= count ? count : capacity - 1;
+        var slots = visible + (capacity >= count ? 0 : 1);
+        return new Grid(MinBoxWidthDip, Math.Min(maxPerLine, slots), visible, count - visible);
     }
+
+    /// <summary>The size of each of <paramref name="cells"/> equal cells sharing <paramref name="space"/> DIP with gaps between them.</summary>
+    private static double CellFor(double space, int cells) => (space - ((cells - 1) * ItemGapDip)) / cells;
+
+    /// <summary>How many cells of <paramref name="cell"/> DIP, with gaps between them, fit in <paramref name="space"/> DIP.</summary>
+    private static int CellsThatFit(double space, double cell) => (int)Math.Floor(((space + ItemGapDip) / (cell + ItemGapDip)) + Epsilon);
 
     /// <summary>Size of one item along the dock: its width above a bottom dock, its height beside a side dock.</summary>
     private static double AlongCell(double boxWidth, bool vertical) =>
@@ -207,9 +231,10 @@ public static class DockPreviewLayout
     /// <summary>Moves a span inside [min, max]; when it is longer than the range its start is pinned to min.</summary>
     private static int ClampStart(int start, int length, int min, int max) => Math.Max(min, Math.Min(max - length, start));
 
-    private static DockPreviewItemLayout ItemAt(int index, double boxWidth, bool vertical, double scale, DockPreviewSourceSize? source)
+    private static DockPreviewItemLayout ItemAt(int index, Grid grid, bool vertical, double scale, DockPreviewSourceSize? source)
     {
-        var (itemX, itemY) = ItemOrigin(index, boxWidth, vertical);
+        var boxWidth = grid.BoxWidth;
+        var (itemX, itemY) = ItemOrigin(index, grid, vertical);
         var captionTop = itemY + ItemPaddingDip;
         var boxLeft = itemX + ItemPaddingDip;
 
@@ -217,7 +242,7 @@ public static class DockPreviewLayout
         var closeTop = captionTop + ((CaptionHeightDip - CloseSizeDip) / 2);
         var placeholder = source is not { Width: >= MinUsableSourcePx, Height: >= MinUsableSourcePx };
         return new DockPreviewItemLayout(
-            ItemRect(index, boxWidth, vertical, scale),
+            ItemRect(index, grid, vertical, scale),
             Rect(boxLeft, captionTop, boxWidth, CaptionHeightDip, scale),
             Rect(boxLeft + boxWidth - CloseSizeDip, closeTop, CloseSizeDip, CloseSizeDip, scale),
             box,
@@ -225,18 +250,25 @@ public static class DockPreviewLayout
             placeholder);
     }
 
-    private static PixelRect ItemRect(int index, double boxWidth, bool vertical, double scale)
+    private static PixelRect ItemRect(int index, Grid grid, bool vertical, double scale)
     {
-        var (x, y) = ItemOrigin(index, boxWidth, vertical);
-        return Rect(x, y, ItemWidth(boxWidth), ItemHeight(boxWidth), scale);
+        var (x, y) = ItemOrigin(index, grid, vertical);
+        return Rect(x, y, ItemWidth(grid.BoxWidth), ItemHeight(grid.BoxWidth), scale);
     }
 
-    /// <summary>Top-left of item <paramref name="index"/> in DIP, relative to the popover.</summary>
-    private static (double X, double Y) ItemOrigin(int index, double boxWidth, bool vertical)
+    /// <summary>
+    /// Top-left of item <paramref name="index"/> in DIP, relative to the popover. Items fill a line along the dock, then
+    /// the next line: rows top to bottom above a bottom dock, columns left to right beside a side dock.
+    /// </summary>
+    private static (double X, double Y) ItemOrigin(int index, Grid grid, bool vertical)
     {
-        var offset = PopoverPaddingDip + (index * (AlongCell(boxWidth, vertical) + ItemGapDip));
-        return vertical ? (PopoverPaddingDip, offset) : (offset, PopoverPaddingDip);
+        var along = PopoverPaddingDip + ((index % grid.PerLine) * (AlongCell(grid.BoxWidth, vertical) + ItemGapDip));
+        var across = PopoverPaddingDip + ((index / grid.PerLine) * (AcrossCell(grid.BoxWidth, vertical) + ItemGapDip));
+        return vertical ? (across, along) : (along, across);
     }
+
+    /// <summary>The popover's grid: box width (DIP), items per line along the dock, windows shown and windows left out.</summary>
+    private readonly record struct Grid(double BoxWidth, int PerLine, int Visible, int Overflow);
 
     /// <summary>The largest rectangle of the source's aspect ratio centred in the box.</summary>
     private static PixelRect Fit(PixelRect box, DockPreviewSourceSize source)
