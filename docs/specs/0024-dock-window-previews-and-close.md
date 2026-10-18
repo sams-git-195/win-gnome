@@ -1,13 +1,25 @@
 # 0024 — Dock window previews, per-window close and a stable running-app order
 
-Status: Implemented (stable order e4f8458, close path 60fd575, previews 0bb9893, re-anchoring add487e). Not yet smoke-tested on screen.
+Status: Implemented (stable order e4f8458, close path 60fd575, previews 0bb9893, re-anchoring add487e), then fixed
+after the first real use (branch `fix/dock-preview-interaction`, see "Fixes after release" at the end). Smoke-tested
+on screen with a driven test rig after those fixes.
 
 **Implementation notes (differences from the text below):**
 
 - No Esc hotkey (see the decision below), so nothing in the popover registers a hotkey.
-- A foreground change closes the popover only while the pointer is not on it: closing a window from the popover moves
-  the foreground to another window, and the popover must stay up and update then (Behaviour: "the popover stays open
-  and updates").
+- **Every running app gets the popover**, single-window apps included (the user asked for it after release); it
+  replaces their tooltip. Pinned apps that are not running keep the tooltip. Supersedes "Single-window apps: no
+  popover" below.
+- **A foreground change no longer closes the popover.** It follows the pointer: leaving icon and popover closes it after
+  the grace anyway, and closing it on foreground changes made it vanish under the pointer whenever any other app took
+  the foreground (a notification, a background tool's window), which happened constantly on the user's machine.
+- **Passive closes re-arm.** Only a click (or a menu, a drag) disarms the icon under the pointer. A close that is not
+  the user's (settings, display or DPI change, the dock hiding, another dock's popover opening, the app's windows
+  gone) uses `DockPreviewHover.Close`, which starts the show delay again for an icon still under the pointer. A
+  relayout because apps came or went no longer closes the popover at all: the refresh that caused it re-anchors it.
+- **The × is always shown** (not only on hover), on every non-elevated item, placeholders included; it is a 24 DIP
+  button in the caption row.
+- **Many windows wrap into a grid** instead of shrinking a single row: see the layout rules below, as amended.
 - "Minimised" is shown under the app icon inside the thumbnail box rather than in the 28 DIP caption row, which has
   no room for a second line.
 - `DockPreviewContent` (Core) decides which icons show the popover and what it lists, and whether a refresh needs the
@@ -136,6 +148,13 @@ terminated, and nothing waits on the target window.
 | `DockWindowClose` | `readonly record struct CloseTarget(nint Handle, int ProcessId, bool IsElevated)`; `enum CloseDecision { Post, Gone, Reused, Elevated }`; `Decide(CloseTarget captured, CloseTarget? live)`: captured elevated → `Elevated`; live null → `Gone`; different process id → `Reused`; live elevated → `Elevated`; else `Post`. |
 
 `DockPreviewLayout` rules (DIP constants, converted with the scale and rounded half away from zero per edge):
+*Amended after release:* items form a grid of lines along the dock (rows above a bottom dock, columns beside a side
+dock, filled in reading order). The layout takes the fewest lines `k` (1, 2, …) whose largest fitting box width
+(`ceil(n / k)` items per line along the dock, `k` lines across, never above 224) is at least the new minimum **160**
+DIP, so a window stays legible; only when no `k` fits every window at 160 does the grid at 160 that fits get filled with
+its last slot as "+N more" (at least one window beside it). Thirteen windows on a 1920 DIP wide monitor make two rows
+of seven at 224 DIP instead of one row of 125 DIP boxes. The original rules follow.
+
 thumbnail box `t × 0.625t`, `t` from 224 down to 112; item = box + 8 padding each side + 28 caption, so a full-size
 item is 240 × 184; 4 between items; 8 popover padding; 8 gap from the dock window's inner edge; 8 margin to the
 clamp area. Bottom dock: items in a row, popover bottom = dock window top − gap; left dock: a column, popover left =
@@ -240,8 +259,8 @@ a hover, so self-test behaviour is unchanged.
    activates the most recent; `Cycle` visits every window in turn. (Tests: `DockRunningOrderTests`,
    `DockModelBuilderTests`, `DockClickPlannerTests`; QA: three Notepad windows, `Cycle`, visits all three)
 5. Pinned apps' order is unchanged by the stable-order step. (Test)
-6. Hovering a multi-window icon for 400 ms opens the popover; 399 ms does not; single-window and not-running apps
-   never open one. (Tests: `DockPreviewHoverTests`; QA)
+6. Hovering a running app's icon for 400 ms opens the popover; 399 ms does not; not-running apps never open one
+   (amended after release: single-window apps open it too). (Tests: `DockPreviewHoverTests`; QA)
 7. Icon → popover across the gap within 300 ms keeps it open; leaving both closes it after 300 ms; switching
    between multi-window icons while open is immediate; after a click-dismiss the same icon does not re-open until
    the pointer leaves it. (Tests: `DockPreviewHoverTests`; QA)
@@ -344,3 +363,31 @@ each test fail by reverting the sort in `Apply` (or the planner change) before t
   makes a wrong-window close need both the handle and the process id reused in that window; accepted.
 - **Grace length.** 2 s is a guess; a longer grace keeps slots through slower window swaps but delays "reopen goes
   to the end". Revisit after use.
+
+## Fixes after release
+
+Reported by the user after trying the shipped build: no way to close from the popover, clicking a thumbnail did
+nothing, single-window apps had no popover, right-click on dock apps did nothing, and the whole interaction felt
+sloppy (a 2000 px strip of tiny, dark thumbnails for an app with 13 windows). Each was reproduced with a driven test
+rig (an isolated instance, synthetic pointer input, window enumeration, UI Automation and screenshots) before fixing.
+
+| Report | Cause (evidence) | Fix |
+|---|---|---|
+| No close, clicks do nothing, no titles | DockPreviewWindow.Put positioned elements but never added them to the canvas, so the popover drew only its background and the DWM thumbnails: no captions, no ×, no item buttons to click. UI Automation listed no children; a render log showed children=0 after Render. The DWM thumbnails themselves always rendered (registered to the popover's HWND, non-layered), they just looked dark because the windows were dark and tiny. | Put adds the element. |
+| Right-click does nothing | DockMenuBuilder.WindowItem moved the row's title TextBlock into a new header while the MenuItem still owned it: "Specified element is already the logical child of another element" (logged as Dock: action failed), so no menu was built for any running app with a closable window. Introduced with the per-window × (60fd575); the build before the dock work (9621069) had no ×. | Detach the title (Header = null) first. |
+| Right-click still flaky | Separately, and also on 9621069: the first menu after start-up closed at once. SetForegroundWindow on the menu sends WM_SETFOCUS, WPF restores focus to the popup root (outside the menu), the menu leaves menu mode and closes; the stack trace showed HwndKeyboardInputProvider.OnSetFocus → MenuBase.OnIsKeyboardFocusWithinChanged. | DockMenuPresenter cancels a focus change out of the menu while it takes the foreground. |
+| Popover vanishes / does not come back | Any foreground change closed it (other apps on the user's machine take the foreground every few seconds), and relayouts (an app arriving or leaving) dismissed it and disarmed the icon under the pointer until the pointer left. | No close on foreground change; Close (re-arms) for passive closes; no close on a count relayout. |
+| Single-window apps | DockPreviewContent.MinWindows was 2 by design. | 1. |
+| Wide strip of tiny cells | The layout shrank one line down to 112 DIP before overflowing. | Wrapping grid, 160 DIP minimum (above). |
+
+Regression tests: DockPreviewLayoutTests (Compute_ThirteenWindows_WrapIntoTwoRowsOfFullSizeThumbnails,
+Compute_OnePixelTooNarrowForOneRow_WrapsIntoTwoRowsAtFullSize, Compute_ExactlyFitsOneRowAtTheMinimumBox_KeepsOneRow,
+Compute_SideDockWithoutRoomForOneColumn_WrapsIntoColumnsAwayFromTheDock, and the overflow and minimum-box tests
+updated for the grid), DockPreviewHoverTests.Close_*, and DockPreviewContentTests.ShowsPreview_NeedsTheSettingAndAWindow.
+The canvas, menu and focus fixes are WPF-only and were checked by the driven runs: titles and × drawn on all 13 items
+in a 7 + 6 grid; a click on a thumbnail focuses that window and closes the popover; × and middle click close exactly
+that window and the popover updates in place; right-click opens the menu with and without the popover showing,
+including the first one after start-up; light and dark.
+
+Known limitation found on the way: KI-124 (Esc does not close a dock menu until the pointer has been over it; also on
+9621069).
