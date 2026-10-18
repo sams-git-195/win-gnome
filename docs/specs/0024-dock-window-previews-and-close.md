@@ -1,6 +1,6 @@
 # 0024 — Dock window previews, per-window close and a stable running-app order
 
-Status: Implemented (stable order e4f8458, close path 60fd575, previews 0bb9893). Not yet smoke-tested on screen.
+Status: Implemented (stable order e4f8458, close path 60fd575, previews 0bb9893, re-anchoring add487e). Not yet smoke-tested on screen.
 
 **Implementation notes (differences from the text below):**
 
@@ -15,11 +15,14 @@ Status: Implemented (stable order e4f8458, close path 60fd575, previews 0bb9893)
   setting, set by `DockViewModel.Update`.
 - The thumbnails are owned by `DockPreviewWindow` (released on hide and on close); the presenter owns the window and
   the timer. The popover is re-laid-out on `DpiChanged` only when the new DPI differs from the one it was laid out for.
-- Known limitations: KI-117 (virtual desktops), KI-118 (minimised and protected content), KI-119 (switch frame).
+- A refresh lays the popover out again at the icon's current position when the icon moved or the windows changed
+  (`DockPreviewContent.NeedsRelayout`), so a close or another app coming and going never leaves it pointing elsewhere.
+- Known limitations: KI-120 (virtual desktops), KI-121 (minimised and protected content), KI-122 (switch frame),
+  KI-123 (Store-app close skipped as reused).
 
-**Decision (project manager, overrides the rest of this spec):** the Esc hotkey is dropped. WinGnome never intercepts Esc, so the
-popover is dismissed only by the other triggers listed (pointer leave, click, drag, dock hide, foreground change). Wherever
-this spec mentions the Esc hotkey, ignore it: nothing is registered with `RegisterHotKey`, in `--safe` or otherwise.
+**Decision (project manager):** the Esc hotkey is dropped. WinGnome never intercepts Esc, so the popover is dismissed
+only by the other triggers listed (pointer leave, click, drag, dock hide, foreground change). Nothing is registered with
+`RegisterHotKey`, in `--safe` or otherwise; the text below has been updated to match.
 
 ## Problem
 
@@ -78,8 +81,9 @@ When it is on:
   delay). Moving onto any other icon, or off the dock, starts a **300 ms** grace; reaching the popover within it
   keeps it open, so crossing the gap between icon and popover never flickers.
 - The popover closes on: a click (any button) on a dock icon, a context menu opening, a pin drag or a file drag
-  starting over the dock, the dock sliding out or being disabled, the foreground window changing, **Esc** (see
-  Design), a settings change, a relayout, a DPI or display change, and the app's last window on this dock closing.
+  starting over the dock, the dock sliding out or being disabled, the foreground window changing (while the pointer is
+  not on the popover), a settings change, a relayout, a DPI or display change, and the app's last window on this dock
+  closing. Esc does nothing: WinGnome never intercepts it.
   After a click dismissed it, the same icon does not re-open it until the pointer has left that icon.
 - The popover never takes activation or keyboard focus, and keeps the dock on screen while it is open (as menus do).
 - Only one popover is open across all docks.
@@ -158,14 +162,12 @@ second item at (252, 8).
 - `DockPreviewPresenter.cs` (new, one per `DockInstance`): owns the `DockPreviewHover` machine, one one-shot
   `DispatcherTimer` armed to `Deadline` only while one is pending, the popover window (created on first show, then
   hidden and resized to 1 × 1 px on dismiss), the thumbnails (registered on show, re-registered on content change,
-  all unregistered on hide and in `Dispose`), and the Esc hotkey. Show order: build content, set bounds
+  all unregistered on hide and in `Dispose`). It registers no hotkey. Show order: build content, set bounds
   (`ShellSurface.SetBounds`, physical px), register thumbnails and set their rectangles, then show without
   activation. On `DpiChanged` of the popover it lays out again. Captured per item: `CloseTarget` from the tracker's
   `WindowInfo` (`ProcessId` is the app process for UWP frames, so the live side must come from
   `WindowTracker.Inspect` too, never `GetWindowThreadProcessId`).
-- Esc: while the popover is shown (not in `--safe`) it registers `RegisterHotKey(popoverHwnd, id, MOD_NOREPEAT,
-  VK_ESCAPE)` (`NativeMethods.Overview.cs` already declares both calls) and unregisters it on hide and dispose. A
-  failed registration (another app owns Esc) is logged at Info once per show and Esc then does nothing.
+- No Esc: the popover never intercepts keys (no `RegisterHotKey`, no keyboard hook); Esc goes to the foreground app.
 - `DockWindow`: raises `EntryHovered(DockAppEntry? entry, FrameworkElement? container)` only when the hovered
   container changes (from the existing `Items` mouse events plus `SlideHost.MouseLeave`), and `Concealed` when it
   starts sliding out. The app-entry template binds `ToolTipService.IsEnabled` to a new `DockAppEntry.ShowsPreview`
@@ -210,11 +212,10 @@ No persistent system state changes: no registry, taskbar, work area or settings 
 | Effect | Undo / bound |
 |---|---|
 | DWM thumbnails | Owned by the popover; unregistered on hide and dispose; released by DWM with the process on crash or force-kill. |
-| Esc hotkey | Registered only while a popover is shown; unregistered on hide and dispose; released with the process on crash or force-kill. Never registered in `--safe`. |
 | Window close | Posted `SC_CLOSE` only, after a live re-check (`Gone`, `Reused`, `Elevated` skip). Never `TerminateProcess`, `DestroyWindow` or `EndTask`. |
 | Popover window | Non-activating; cannot leave focus lost. Hidden on every dismiss path; destroyed with the dock. |
 
-`--safe`: previews and close work (user-initiated, no hooks); no Esc hotkey. `--selftest`: nothing is created until
+`--safe`: previews and close work (user-initiated, no hooks, no hotkeys). `--selftest`: nothing is created until
 a hover, so self-test behaviour is unchanged.
 
 ## Footprint
@@ -254,7 +255,7 @@ a hover, so self-test behaviour is unchanged.
     for elevated windows. (Tests: `DockWindowCloseTests`; QA: an elevated Terminal shows no ×)
 12. The dock stays on screen while the popover is open in Intellihide and Autohide, and hides normally after it
     closes. (QA)
-13. Every dismiss trigger in Behaviour closes the popover, Esc included (outside `--safe`); only one popover is open
+13. Every dismiss trigger in Behaviour closes the popover, and Esc is never intercepted; only one popover is open
     across docks. (QA with docks on two monitors)
 14. With the setting off, behaviour and tooltips are as before; old settings files load with it on; `false`
     round-trips. (Tests: `SettingsSerializerTests`; QA)
@@ -321,10 +322,10 @@ each test fail by reverting the sort in `Apply` (or the planner change) before t
 
 ## Risks and open questions
 
-- **Esc uses a temporary global hotkey.** While a popover is shown, Esc goes to WinGnome instead of the foreground
-  app. The popover only shows while the pointer is over the dock or popover, so this should rarely matter, but it is
-  global input interception. Alternative: drop Esc and rely on pointer-leave and clicks. **Recommended: keep the
-  hotkey.** It is never registered in `--safe`. Needs the user's go-ahead (AGENTS.md: input interception).
+- **No Esc (decided).** A temporary global Esc hotkey was considered and dropped as global input interception; the
+  popover closes on pointer leave, clicks and the other triggers instead.
+- **Store-app close skipped as reused.** The UWP frame host's process can differ between capture and close, so
+  `Decide` returns `Reused` and the close is skipped (logged at Info). Safe but surprising; KI-123.
 - **Minimised windows.** `DwmRegisterThumbnail` usually has no picture for a minimised window (a tiny source size),
   so those items show the icon and "Minimised". Protected content (DRM video) shows black. Both are DWM limits;
   log as a KI with the implementation.

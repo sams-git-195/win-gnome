@@ -18,7 +18,7 @@ detail section below the Resolved table when the measured evidence behind the fi
 KI-102).
 
 IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-112 all
-have entries now). The next free ID is **KI-120**; grep the specs for `KI-0` before allocating one.
+have entries now). KI-117 and KI-118 are taken by the Wi-Fi work on another branch. The next free ID is **KI-124**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
@@ -79,9 +79,10 @@ have entries now). The next free ID is **KI-120**; grep the specs for `KI-0` bef
 | [KI-111](#ki-111) | S4 | Settings | Wi-Fi profile leftovers: a crash mid-connect can leave a just-created or overwritten profile saved, and a denied all-user write falls back to a per-user profile | Open |
 | [KI-112](#ki-112) | S4 | Taskbar | The secondary taskbar's empty window region is a race with Explorer, so a flash can still get through | Open |
 | [KI-116](#ki-116) | S4 | Window buttons | A patch fitted to an app's own buttons (Steam) is measured once per decoration | Open |
-| [KI-117](#ki-117) | S4 | Dock | An app whose windows are all on another virtual desktop loses its dock slot after 2 s | Open |
-| [KI-118](#ki-118) | S4 | Dock | Window previews show no picture for minimised windows and black for protected content | By design |
-| [KI-119](#ki-119) | S4 | Dock | Switching the preview popover between icons can show one frame of the new thumbnails at the old position | Open |
+| [KI-120](#ki-120) | S4 | Dock | An app whose windows are all on another virtual desktop loses its dock slot after 2 s | Open |
+| [KI-121](#ki-121) | S4 | Dock | Window previews show no picture for minimised windows and black for protected content | By design |
+| [KI-122](#ki-122) | S4 | Dock | Switching the preview popover between icons can show one frame of the new thumbnails at the old position | Open |
+| [KI-123](#ki-123) | S4 | Dock | Closing a Store app's window from the dock can be skipped as a reused handle | Open |
 
 ### KI-003
 **Desktop switching relies on simulated Ctrl+Win+arrow keys** · S4 · Workspaces · By design
@@ -928,7 +929,7 @@ scaling change it handles itself) the patch keeps the old width until the window
 reopened, or WinGnome restarted). The patch never gets narrower than the circles need, nor wider than DWM's
 rectangle. The edge is rounded towards the drag strip by up to one 2 px sample, so the patch may cover a pixel of it.
 
-### KI-117
+### KI-120
 **An app whose windows are all on another virtual desktop loses its dock slot after 2 s** · S4 · Dock · Open
 
 Unpinned apps keep their first-appearance slot (spec 0024, `DockRunningOrder`), but the window tracker drops cloaked
@@ -936,7 +937,7 @@ windows, so an app whose windows are all on another virtual desktop leaves the d
 forgotten and it comes back at the end when the user switches back. Fix direction: let `DockRunningOrder` treat
 identities with windows cloaked by a desktop switch as present.
 
-### KI-118
+### KI-121
 **Window previews show no picture for minimised windows and black for protected content** · S4 · Dock · By design
 
 DWM usually has no picture of a minimised window (`DwmQueryThumbnailSourceSize` reports a tiny source), so the dock's
@@ -944,13 +945,25 @@ preview popover shows the app icon and "Minimised" in that item's box instead (t
 rule, also used when a thumbnail fails to register). Protected content (DRM video) is drawn black by DWM. Both are DWM
 limits; iconic thumbnails (`DwmSetIconicThumbnail`) are a non-goal of spec 0024.
 
-### KI-119
+### KI-122
 **Switching the preview popover between icons can show one frame of the new thumbnails at the old position** · S4 · Dock · Open
 
 Moving from one multi-window icon to another while the popover is open re-registers the thumbnails, renders the new
 items and then moves the window. DWM may composite one frame with the new thumbnails before the move lands. Not yet
 seen in QA (the popover was not smoke-tested on screen in the change that added it). If it shows, hide the
 thumbnails before re-registering, or move the window first.
+
+### KI-123
+**Closing a Store app's window from the dock can be skipped as a reused handle** · S4 · Dock · Open
+
+A close from the dock (popover ×, middle click, menu × or Delete, Quit) is checked against a fresh read of the window
+(`DockWindowClose.Decide`). For a UWP app the window is an `ApplicationFrameHost` frame whose reported process id is
+the hosted app's, and that can differ between the read when the popover or menu was built and the read at close time
+(the app process not yet attached, or suspended and restarted). `Decide` then returns `Reused` and the close is skipped,
+logged at Info with the handle. This is the safe direction (nothing wrong is closed), but the click appears to do
+nothing; clicking again once the popover or menu has been rebuilt should succeed (not yet verified). Fix direction: compare the frame host's own
+process as well, or treat a frame whose hosted process changed but whose handle and frame host are unchanged as the
+same window.
 
 ## Resolved
 
