@@ -123,6 +123,22 @@ public sealed class DockPreviewHover
     }
 
     /// <summary>
+    /// Closes the popover for a reason that is not the user's (a relayout, a settings or display change, the dock
+    /// hiding, another dock's popover opening). Unlike <see cref="Dismiss"/> it disarms nothing: an icon still under the
+    /// pointer starts the show delay again, so the popover comes back without the pointer having to leave and return.
+    /// </summary>
+    public DockPreviewChange Close(long nowMs)
+    {
+        var change = Reset();
+        if (!_suppressed && _disarmedKey is null && _hoverKey is { } key)
+        {
+            StartPending(key, nowMs);
+        }
+
+        return change;
+    }
+
+    /// <summary>
     /// Switches the machine off while a menu or drag is up, or the dock is hidden. Lifting it does not re-arm the
     /// icon under the pointer: the next <see cref="PointerOverIcon"/> does.
     /// </summary>

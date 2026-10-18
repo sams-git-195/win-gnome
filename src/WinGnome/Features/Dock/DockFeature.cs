@@ -266,11 +266,12 @@ internal sealed class DockFeature : IFeature
 
     private void OnForegroundChanged(object? sender, EventArgs e)
     {
-        // Close a menu when the user switches to another app (in case the menu itself missed the click).
+        // Close a menu when the user switches to another app (in case the menu itself missed the click). The preview
+        // popover is left alone: it follows the pointer, and closing it here made it vanish under the pointer whenever
+        // any other app took the foreground (a notification, a background tool's window).
         foreach (var dock in _docks)
         {
             dock.CloseMenu();
-            dock.OnForegroundChanged();
         }
 
         QueueRefresh();
@@ -283,7 +284,7 @@ internal sealed class DockFeature : IFeature
         {
             if (!ReferenceEquals(dock, sender))
             {
-                dock.DismissPreview();
+                dock.ClosePreview();
             }
         }
     }
