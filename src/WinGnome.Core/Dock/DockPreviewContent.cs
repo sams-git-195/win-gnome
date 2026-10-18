@@ -61,8 +61,13 @@ public static class DockPreviewContent
     /// (<see cref="NeedsRebuild"/>), or the icon moved along the dock (another app left or arrived) so the popover would
     /// point at the wrong place. Anchors are the icon's centre along the dock in screen pixels.
     /// </summary>
-    public static bool NeedsRelayout(IReadOnlyList<DockPreviewItem> shown, IReadOnlyList<DockPreviewItem> next, int shownAnchor, int currentAnchor) =>
-        currentAnchor != shownAnchor || NeedsRebuild(shown, next);
+    /// <param name="tolerancePx">
+    /// How far the icon may drift without counting as moved (about half a cell): with magnification on, an icon's
+    /// on-screen position follows the pointer and the engage/release animation, which is not a move to another slot.
+    /// </param>
+    public static bool NeedsRelayout(IReadOnlyList<DockPreviewItem> shown, IReadOnlyList<DockPreviewItem> next, int shownAnchor,
+        int currentAnchor, int tolerancePx) =>
+        Math.Abs((long)currentAnchor - shownAnchor) > Math.Max(0, tolerancePx) || NeedsRebuild(shown, next);
 
     /// <summary>
     /// True when the popover must be laid out and its thumbnails registered again: a window came, went or moved, or

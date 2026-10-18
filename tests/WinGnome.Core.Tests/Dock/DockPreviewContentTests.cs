@@ -141,26 +141,40 @@ public class DockPreviewContentTests
         Assert.True(DockPreviewContent.NeedsRebuild([Item(1), Item(2)], [Item(2), Item(1)]));
     }
 
-    [Fact]
-    public void NeedsRelayout_SameWindowsSameAnchor_IsFalse()
+    // A 60 DIP cell at 125 % is 75 px; half of it is the tolerance.
+    private const int HalfCellPx = 37;
+
+    [Theory]
+    [InlineData(300)]
+    [InlineData(312)] // Magnification releasing: the icon drifts a few pixels.
+    [InlineData(263)] // Exactly half a cell either side still counts as the same slot.
+    [InlineData(337)]
+    public void NeedsRelayout_SameWindowsIconWithinHalfACell_IsFalse(int currentAnchor)
     {
-        Assert.False(DockPreviewContent.NeedsRelayout([Item(1, "a"), Item(2)], [Item(1, "b"), Item(2)], shownAnchor: 300, currentAnchor: 300));
+        Assert.False(DockPreviewContent.NeedsRelayout([Item(1, "a"), Item(2)], [Item(1, "b"), Item(2)], 300, currentAnchor, HalfCellPx));
     }
 
     [Theory]
-    [InlineData(299)]
-    [InlineData(301)]
+    [InlineData(262)]
+    [InlineData(338)]
+    [InlineData(375)] // Another app left and one arrived: same cell count, but the icon is a whole cell over.
     [InlineData(-300)]
-    public void NeedsRelayout_IconMoved_IsTrue(int currentAnchor)
+    public void NeedsRelayout_IconMovedMoreThanHalfACell_IsTrue(int currentAnchor)
     {
-        // Another app left and one arrived: same cell count, but this icon now sits elsewhere.
-        Assert.True(DockPreviewContent.NeedsRelayout([Item(1), Item(2)], [Item(1), Item(2)], shownAnchor: 300, currentAnchor));
+        Assert.True(DockPreviewContent.NeedsRelayout([Item(1), Item(2)], [Item(1), Item(2)], 300, currentAnchor, HalfCellPx));
     }
 
     [Fact]
-    public void NeedsRelayout_WindowClosedSameAnchor_IsTrue()
+    public void NeedsRelayout_WindowClosedIconStill_IsTrue()
     {
-        Assert.True(DockPreviewContent.NeedsRelayout([Item(1), Item(2), Item(3)], [Item(1), Item(3)], shownAnchor: 300, currentAnchor: 300));
+        Assert.True(DockPreviewContent.NeedsRelayout([Item(1), Item(2), Item(3)], [Item(1), Item(3)], 300, 300, HalfCellPx));
+    }
+
+    [Fact]
+    public void NeedsRelayout_NegativeTolerance_IsTreatedAsZero()
+    {
+        Assert.True(DockPreviewContent.NeedsRelayout([Item(1)], [Item(1)], 300, 301, -5));
+        Assert.False(DockPreviewContent.NeedsRelayout([Item(1)], [Item(1)], 300, 300, -5));
     }
 
     [Fact]

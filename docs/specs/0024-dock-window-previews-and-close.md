@@ -17,6 +17,8 @@ Status: Implemented (stable order e4f8458, close path 60fd575, previews 0bb9893,
   the timer. The popover is re-laid-out on `DpiChanged` only when the new DPI differs from the one it was laid out for.
 - A refresh lays the popover out again at the icon's current position when the icon moved or the windows changed
   (`DockPreviewContent.NeedsRelayout`), so a close or another app coming and going never leaves it pointing elsewhere.
+  A move counts only beyond half a cell: with magnification on the icon's on-screen position follows the pointer and
+  the engage/release animation, and a title change must still update in place without re-registering thumbnails.
 - Known limitations: KI-120 (virtual desktops), KI-121 (minimised and protected content), KI-122 (switch frame),
   KI-123 (Store-app close skipped as reused).
 
@@ -255,6 +257,9 @@ a hover, so self-test behaviour is unchanged.
     for elevated windows. (Tests: `DockWindowCloseTests`; QA: an elevated Terminal shows no ×)
 12. The dock stays on screen while the popover is open in Intellihide and Autohide, and hides normally after it
     closes. (QA)
+12a. With magnification on (e.g. 1.5), the popover opens beside the hovered icon, stays put while titles change
+    (a browser tab loading) and while the magnification releases, and moves only when the icon changes slot (an
+    app before it closes) or a window is closed from it. (Tests: `DockPreviewContentTests.NeedsRelayout_*`; QA)
 13. Every dismiss trigger in Behaviour closes the popover, and Esc is never intercepted; only one popover is open
     across docks. (QA with docks on two monitors)
 14. With the setting off, behaviour and tooltips are as before; old settings files load with it on; `false`
