@@ -389,5 +389,7 @@ in a 7 + 6 grid; a click on a thumbnail focuses that window and closes the popov
 that window and the popover updates in place; right-click opens the menu with and without the popover showing,
 including the first one after start-up; light and dark.
 
-Known limitation found on the way: KI-124 (Esc does not close a dock menu until the pointer has been over it; also on
-9621069).
+Known limitations: KI-124 (Esc does not close a dock menu until the pointer has been over it; also on 9621069),
+KI-125 (tiny-monitor fallback can run to the monitor edge), KI-126 (a settings save can close and reopen an open
+popover). Review follow-up: a passive close re-arms the icon only while the pointer is really on it, and a show is
+skipped when the pointer has left (a missed pointer-left event could otherwise open a popover nothing would close).
