@@ -486,7 +486,6 @@ internal sealed class WlanClient : IDisposable
         }
     }
 
-    /// <summary>The connected network's name; null when Windows refuses to say (location access) or it can't be read.</summary>
     /// <summary>
     /// The connected network's name and the profile Windows connected with; nulls when Windows refuses to say (location
     /// access) or they can't be read.

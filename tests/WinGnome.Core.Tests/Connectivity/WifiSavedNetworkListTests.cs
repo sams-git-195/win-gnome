@@ -115,6 +115,15 @@ public class WifiSavedNetworkListTests
         Assert.True(Assert.Single(WifiSavedNetworkList.Build([Saved("Home", "Home")], null, "HOME", null)).IsConnected);
 
     [Fact]
+    public void Build_ProfilesDifferingOnlyInCase_MarksTheExactCaseOne()
+    {
+        var rows = WifiSavedNetworkList.Build([Saved("Home", "Home"), Saved("home", "Home")], Bytes("Home"), "home", null);
+
+        Assert.Equal("home", rows[0].ProfileName);
+        Assert.Equal([true, false], rows.Select(r => r.IsConnected).ToArray());
+    }
+
+    [Fact]
     public void Build_ProfileNameWithoutSsid_MarksTheNamedProfile() =>
         Assert.True(Assert.Single(WifiSavedNetworkList.Build([Saved("Home", "Home")], null, "Home", null)).IsConnected);
 
