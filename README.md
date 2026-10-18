@@ -34,7 +34,9 @@ the way it was when it exits.
 - On the main display by default, or on **every display** (Settings → Dock → Show on), optionally with each dock showing only the windows on its own display. Pinned apps appear on every dock.
 - **Click** focuses an app (restoring it if minimised), or minimises it if it's already focused. Other click actions: *cycle windows* or *show previews*.
 - Running windows join their pinned icon, including Electron apps such as VS Code, Squirrel-installed apps such as GitHub Desktop and Discord, and launcher-stub apps such as Docker Desktop, whose UI runs from a folder beside the launcher the shortcut points at.
-- **Middle-click** opens a new window. **Right-click** lists the app's windows plus *New window*, *Pin/Unpin* and *Quit*.
+- **Middle-click** opens a new window. **Right-click** lists the app's windows plus *New window*, *Pin/Unpin* and *Quit*; each window row has a **×** (or press Delete) that closes just that window.
+- **Window previews**: hover an app with two or more windows for a moment and a popover shows a live thumbnail of each, with its title and a **×**. Click a thumbnail to focus that window, click × (or middle-click it) to close it; apps with many windows get a *+N more* item that opens the overview. Closing is always polite (the app may ask to save) and elevated windows are never offered a close. Turn it off with Settings → Dock → *Window previews*.
+- Running apps keep their place in the dock in the order they were opened, whichever window is focused.
 - **Run as administrator** (right-click) starts an app elevated after the UAC prompt; pinned apps also get an *Always run as administrator* checkbox. As in Start, this works for desktop apps and full-trust Store apps such as Windows Terminal, but not for UWP apps such as Calculator or for File Explorer, which don't offer it. WinGnome itself never runs elevated.
 - **Super+1…9** activates the n-th item of the main display's dock.
 - **Visibility modes**: *Always visible* (reserves screen space), *Intellihide* (hides only when a window overlaps it, the Ubuntu default) and *Autohide*.

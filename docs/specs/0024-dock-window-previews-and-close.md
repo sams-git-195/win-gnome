@@ -1,6 +1,21 @@
 # 0024 — Dock window previews, per-window close and a stable running-app order
 
-Status: Accepted.
+Status: Implemented (stable order e4f8458, close path 60fd575, previews 0bb9893). Not yet smoke-tested on screen.
+
+**Implementation notes (differences from the text below):**
+
+- No Esc hotkey (see the decision below), so nothing in the popover registers a hotkey.
+- A foreground change closes the popover only while the pointer is not on it: closing a window from the popover moves
+  the foreground to another window, and the popover must stay up and update then (Behaviour: "the popover stays open
+  and updates").
+- "Minimised" is shown under the app icon inside the thumbnail box rather than in the 28 DIP caption row, which has
+  no room for a second line.
+- `DockPreviewContent` (Core) decides which icons show the popover and what it lists, and whether a refresh needs the
+  thumbnails registered again (`NeedsRebuild`) or only new titles. `DockAppearance.WindowPreviews` carries the
+  setting, set by `DockViewModel.Update`.
+- The thumbnails are owned by `DockPreviewWindow` (released on hide and on close); the presenter owns the window and
+  the timer. The popover is re-laid-out on `DpiChanged` only when the new DPI differs from the one it was laid out for.
+- Known limitations: KI-117 (virtual desktops), KI-118 (minimised and protected content), KI-119 (switch frame).
 
 **Decision (project manager, overrides the rest of this spec):** the Esc hotkey is dropped. WinGnome never intercepts Esc, so the
 popover is dismissed only by the other triggers listed (pointer leave, click, drag, dock hide, foreground change). Wherever
