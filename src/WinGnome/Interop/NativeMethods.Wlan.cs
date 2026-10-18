@@ -47,7 +47,6 @@ internal static partial class NativeMethods
     public const uint WLAN_NOTIFICATION_SOURCE_NONE = 0;
     public const uint WLAN_NOTIFICATION_SOURCE_ACM = 0x8;
     public const int WLAN_INTF_OPCODE_CURRENT_CONNECTION = 7;
-    public const uint WLAN_PROFILE_GROUP_POLICY = 0x1;
     public const uint WLAN_PROFILE_USER = 0x2;
 
     [DllImport("wlanapi.dll")]
@@ -83,8 +82,8 @@ internal static partial class NativeMethods
 
     /// <summary>
     /// Gets a profile's XML; free it with <see cref="WlanFreeMemory"/>. <paramref name="pdwFlags"/> goes in as 0 (never the
-    /// plain-text flag, so the key stays encrypted) and comes back with <see cref="WLAN_PROFILE_GROUP_POLICY"/> and
-    /// <see cref="WLAN_PROFILE_USER"/>.
+    /// plain-text flag, so the key stays encrypted) and comes back with the group-policy (0x1) and per-user
+    /// (<see cref="WLAN_PROFILE_USER"/>) flags.
     /// </summary>
     [DllImport("wlanapi.dll", CharSet = CharSet.Unicode)]
     public static extern uint WlanGetProfile(nint hClientHandle, in Guid pInterfaceGuid, string strProfileName, nint pReserved, out nint pstrProfileXml, ref uint pdwFlags, out uint pdwGrantedAccess);

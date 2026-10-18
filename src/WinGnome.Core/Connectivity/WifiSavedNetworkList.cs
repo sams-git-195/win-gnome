@@ -36,26 +36,28 @@ public static class WifiSavedNetworkList
     /// their profile order).
     /// </summary>
     /// <param name="saved">Every saved profile, in the order Windows lists them.</param>
-    /// <param name="currentSsid">The connected network's name bytes, or null when not connected or unreadable. Only the
-    /// first profile with exactly these bytes counts as connected: a second profile for the same network doesn't.</param>
+    /// <param name="currentSsid">The connected network's name bytes, or null when not connected or unreadable.</param>
+    /// <param name="currentProfileName">The profile Windows connected with, or null when it doesn't say. It decides which
+    /// row is connected; without it (or when no profile has that name) the SSID decides, but only when exactly one
+    /// profile has those bytes, so Forget and the connect-mode edit never act on a guessed profile.</param>
     /// <param name="visible">The Visible Networks rows, or null when Windows withholds the list; they supply the signal bars.</param>
     public static IReadOnlyList<WifiSavedNetworkRow> Build(
         IReadOnlyList<WifiSavedProfile> saved,
         byte[]? currentSsid,
+        string? currentProfileName,
         IReadOnlyList<WifiNetworkRow>? visible)
     {
         ArgumentNullException.ThrowIfNull(saved);
-        var currentKey = currentSsid is { Length: > 0 } ? SsidText.ToHex(currentSsid) : null;
         var signals = SignalsBySsid(visible);
+        var connectedIndex = ConnectedIndex(saved, currentSsid, currentProfileName);
 
-        var connectedTaken = false;
         var rows = new List<WifiSavedNetworkRow>(saved.Count);
-        foreach (var profile in saved)
+        for (var i = 0; i < saved.Count; i++)
         {
+            var profile = saved[i];
             var summary = profile.Summary;
-            var ssidKey = summary is { Ssid.Length: > 0 } ? SsidText.ToHex(summary.Ssid) : null;
-            var connected = !connectedTaken && ssidKey is not null && ssidKey == currentKey;
-            connectedTaken |= connected;
+            var ssidKey = SsidKey(profile);
+            var connected = i == connectedIndex;
 
             var kind = summary is null ? WifiProfileKind.HandOff : WifiSecurity.FromProfile(summary.Authentication, summary.Encryption, summary.UsesOneX);
             int? signal = ssidKey is not null && signals.TryGetValue(ssidKey, out var level) ? level : null;
@@ -76,6 +78,76 @@ public static class WifiSavedNetworkList
             .ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(r => r.Name, StringComparer.Ordinal)
             .ToList();
+    }
+
+    // The index of the connected profile, or -1. The profile name is exact (Windows' own record of the connection); the
+    // SSID is a guess that is only taken when it can't pick the wrong one of two profiles for the same network.
+    private static int ConnectedIndex(IReadOnlyList<WifiSavedProfile> saved, byte[]? currentSsid, string? currentProfileName)
+    {
+        if (!string.IsNullOrEmpty(currentProfileName))
+        {
+            var byName = IndexOf(saved, p => string.Equals(p.ProfileName, currentProfileName, StringComparison.Ordinal));
+            if (byName < 0)
+            {
+                byName = IndexOf(saved, p => string.Equals(p.ProfileName, currentProfileName, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (byName >= 0)
+            {
+                return byName;
+            }
+        }
+
+        if (currentSsid is not { Length: > 0 })
+        {
+            return -1;
+        }
+
+        var currentKey = SsidText.ToHex(currentSsid);
+        var match = -1;
+        for (var i = 0; i < saved.Count; i++)
+        {
+            if (SsidKey(saved[i]) == currentKey)
+            {
+                if (match >= 0)
+                {
+                    return -1;
+                }
+
+                match = i;
+            }
+        }
+
+        return match;
+    }
+
+    private static int IndexOf(IReadOnlyList<WifiSavedProfile> saved, Func<WifiSavedProfile, bool> predicate)
+    {
+        for (var i = 0; i < saved.Count; i++)
+        {
+            if (predicate(saved[i]))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static string? SsidKey(WifiSavedProfile profile) =>
+        profile.Summary is { Ssid.Length: > 0 } summary ? SsidText.ToHex(summary.Ssid) : null;
+
+    /// <summary>
+    /// The title of the Forget confirmation: the network's name, and the profile's own name too when it differs, so it is
+    /// clear which of two profiles for one network goes.
+    /// </summary>
+    public static string ForgetTitle(string networkName, string profileName)
+    {
+        ArgumentNullException.ThrowIfNull(networkName);
+        ArgumentNullException.ThrowIfNull(profileName);
+        return string.Equals(networkName, profileName, StringComparison.Ordinal)
+            ? $"Forget \"{networkName}\"?"
+            : $"Forget \"{networkName}\" (saved as \"{profileName}\")?";
     }
 
     /// <summary>

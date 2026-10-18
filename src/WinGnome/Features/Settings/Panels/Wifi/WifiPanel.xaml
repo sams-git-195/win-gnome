@@ -130,6 +130,9 @@
         </c:SettingsGroup>
         <TextBlock Text="No saved networks." Style="{DynamicResource RowSubtitleText}" Margin="4,0,0,20"
                    Visibility="{Binding ShowsNoSavedNote, Converter={x:Static c:Converters.BoolToVisibility}}" />
+        <TextBlock Text="Windows didn't share the saved networks. Press Refresh to try again, or see them in Windows Settings."
+                   Style="{DynamicResource RowSubtitleText}" Margin="4,0,0,20" TextWrapping="Wrap"
+                   Visibility="{Binding ShowsSavedReadFailed, Converter={x:Static c:Converters.BoolToVisibility}}" />
 
         <c:SettingsGroup>
             <c:SettingsRow Title="Refresh" Subtitle="Looks for networks again.">

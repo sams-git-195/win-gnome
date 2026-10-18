@@ -22,14 +22,14 @@ public class WifiSavedNetworkListTests
     [Fact]
     public void Build_NoProfiles_IsEmpty()
     {
-        Assert.Empty(WifiSavedNetworkList.Build([], null, null));
-        Assert.Empty(WifiSavedNetworkList.Build([], Bytes("Home"), [Visible("Home", 3)]));
+        Assert.Empty(WifiSavedNetworkList.Build([], null, null, null));
+        Assert.Empty(WifiSavedNetworkList.Build([], Bytes("Home"), null, [Visible("Home", 3)]));
     }
 
     [Fact]
     public void Build_OneProfile_FillsEveryField()
     {
-        var rows = WifiSavedNetworkList.Build([Saved("Home", "Home", auto: false)], null, null);
+        var rows = WifiSavedNetworkList.Build([Saved("Home", "Home", auto: false)], null, null, null);
 
         var row = Assert.Single(rows);
         Assert.Equal("Home", row.ProfileName);
@@ -45,7 +45,7 @@ public class WifiSavedNetworkListTests
 
     [Fact]
     public void Build_AutoConnectProfile_ShowsTheSwitchOn() =>
-        Assert.True(Assert.Single(WifiSavedNetworkList.Build([Saved("Home", "Home", auto: true)], null, null)).AutoConnect);
+        Assert.True(Assert.Single(WifiSavedNetworkList.Build([Saved("Home", "Home", auto: true)], null, null, null)).AutoConnect);
 
     [Fact]
     public void Build_ConnectedProfile_ComesFirstAndSaysConnected()
@@ -53,6 +53,7 @@ public class WifiSavedNetworkListTests
         var rows = WifiSavedNetworkList.Build(
             [Saved("Alpha", "Alpha"), Saved("Beta", "Beta"), Saved("Gamma", "Gamma")],
             Bytes("Beta"),
+            null,
             null);
 
         Assert.Equal(["Beta", "Alpha", "Gamma"], ProfileNames(rows));
@@ -68,6 +69,7 @@ public class WifiSavedNetworkListTests
         var rows = WifiSavedNetworkList.Build(
             [Saved("beta", "beta"), Saved("alpha", "alpha"), Saved("Beta", "Beta"), Saved("Alpha", "Alpha"), Saved("Zed", "Zed")],
             null,
+            null,
             null);
 
         Assert.Equal(["Alpha", "alpha", "Beta", "beta", "Zed"], ProfileNames(rows));
@@ -76,27 +78,66 @@ public class WifiSavedNetworkListTests
     [Fact]
     public void Build_SameNameTwice_KeepsTheirOriginalOrder()
     {
-        var rows = WifiSavedNetworkList.Build([Saved("Home 2", "Home"), Saved("Home", "Home")], null, null);
+        var rows = WifiSavedNetworkList.Build([Saved("Home 2", "Home"), Saved("Home", "Home")], null, null, null);
 
         Assert.Equal(["Home 2", "Home"], ProfileNames(rows));
     }
 
     [Fact]
-    public void Build_TwoProfilesForTheConnectedSsid_MarksOnlyTheFirstOne()
+    public void Build_TwoProfilesForTheConnectedSsidAndNoProfileName_MarksNeither()
     {
+        // Guessing would let Forget or the connect-mode edit act on the wrong profile.
         var rows = WifiSavedNetworkList.Build(
             [Saved("Cafe", "Cafe"), Saved("Home", "Home"), Saved("Home 2", "Home")],
             Bytes("Home"),
+            null,
             null);
 
-        Assert.Equal(["Home", "Cafe", "Home 2"], ProfileNames(rows));
+        Assert.Equal(["Cafe", "Home", "Home 2"], ProfileNames(rows));
+        Assert.Equal([false, false, false], rows.Select(r => r.IsConnected).ToArray());
+    }
+
+    [Fact]
+    public void Build_TwoProfilesForTheConnectedSsid_MarksTheOneWindowsConnectedWith()
+    {
+        var rows = WifiSavedNetworkList.Build(
+            [Saved("Home", "Home"), Saved("Home 2", "Home"), Saved("Cafe", "Cafe")],
+            Bytes("Home"),
+            "Home 2",
+            null);
+
+        Assert.Equal(["Home 2", "Cafe", "Home"], ProfileNames(rows));
         Assert.Equal([true, false, false], rows.Select(r => r.IsConnected).ToArray());
     }
 
     [Fact]
+    public void Build_ProfileNameInAnotherCase_StillMarksIt() =>
+        Assert.True(Assert.Single(WifiSavedNetworkList.Build([Saved("Home", "Home")], null, "HOME", null)).IsConnected);
+
+    [Fact]
+    public void Build_ProfileNameWithoutSsid_MarksTheNamedProfile() =>
+        Assert.True(Assert.Single(WifiSavedNetworkList.Build([Saved("Home", "Home")], null, "Home", null)).IsConnected);
+
+    [Fact]
+    public void Build_UnknownProfileName_FallsBackToAnUnambiguousSsid()
+    {
+        var rows = WifiSavedNetworkList.Build([Saved("Cafe", "Cafe"), Saved("Home", "Home")], Bytes("Home"), "Gone", null);
+
+        Assert.Equal([true, false], rows.Select(r => r.IsConnected).ToArray());
+        Assert.Equal("Home", rows[0].ProfileName);
+    }
+
+    [Theory]
+    [InlineData("Home", "Home", "Forget \"Home\"?")]
+    [InlineData("Home", "Home 2", "Forget \"Home\" (saved as \"Home 2\")?")]
+    [InlineData("Home", "home", "Forget \"Home\" (saved as \"home\")?")]
+    public void ForgetTitle_NamesTheProfileWhenItDiffers(string network, string profile, string expected) =>
+        Assert.Equal(expected, WifiSavedNetworkList.ForgetTitle(network, profile));
+
+    [Fact]
     public void Build_SsidThatDiffersOnlyInCase_IsAnotherNetwork()
     {
-        var rows = WifiSavedNetworkList.Build([Saved("home", "home")], Bytes("Home"), null);
+        var rows = WifiSavedNetworkList.Build([Saved("home", "home")], Bytes("Home"), null, null);
 
         Assert.False(Assert.Single(rows).IsConnected);
     }
@@ -109,6 +150,7 @@ public class WifiSavedNetworkListTests
         var rows = WifiSavedNetworkList.Build(
             [Saved("Café ☕ 2", "Café ☕"), Saved("Other", "Other")],
             cafe,
+            null,
             [Visible("Café ☕", 2)]);
 
         var row = rows[0];
@@ -123,7 +165,7 @@ public class WifiSavedNetworkListTests
     [InlineData(new byte[0])]
     public void Build_NoCurrentSsid_NothingIsConnected(byte[]? current)
     {
-        var rows = WifiSavedNetworkList.Build([Saved("Home", "Home"), new WifiSavedProfile("Blank", new WifiProfileSummary("Blank", [], "open", "none", true, false), false, false)], current, null);
+        var rows = WifiSavedNetworkList.Build([Saved("Home", "Home"), new WifiSavedProfile("Blank", new WifiProfileSummary("Blank", [], "open", "none", true, false), false, false)], current, null, null);
 
         Assert.All(rows, r => Assert.False(r.IsConnected));
     }
@@ -133,6 +175,7 @@ public class WifiSavedNetworkListTests
     {
         var rows = WifiSavedNetworkList.Build(
             [Saved("Home", "Home"), Saved("Cafe", "Cafe"), Saved("Away", "Away")],
+            null,
             null,
             [Visible("Home", 3), Visible("Cafe", 0), Visible("Stranger", 4)]);
 
@@ -145,7 +188,7 @@ public class WifiSavedNetworkListTests
     [Fact]
     public void Build_SsidInTheVisibleListTwice_UsesTheFirstRow()
     {
-        var rows = WifiSavedNetworkList.Build([Saved("Home", "Home")], null, [Visible("Home", 3), Visible("Home", 1)]);
+        var rows = WifiSavedNetworkList.Build([Saved("Home", "Home")], null, null, [Visible("Home", 3), Visible("Home", 1)]);
 
         Assert.Equal(3, Assert.Single(rows).SignalLevel);
     }
@@ -153,7 +196,7 @@ public class WifiSavedNetworkListTests
     [Fact]
     public void Build_EmptyVisibleList_GivesNoSignals()
     {
-        var rows = WifiSavedNetworkList.Build([Saved("Home", "Home")], Bytes("Home"), []);
+        var rows = WifiSavedNetworkList.Build([Saved("Home", "Home")], Bytes("Home"), null, []);
 
         Assert.Null(Assert.Single(rows).SignalLevel);
     }
@@ -161,7 +204,7 @@ public class WifiSavedNetworkListTests
     [Fact]
     public void Build_SignalIsMatchedByBytesNotByCase()
     {
-        var rows = WifiSavedNetworkList.Build([Saved("home", "home")], null, [Visible("Home", 4)]);
+        var rows = WifiSavedNetworkList.Build([Saved("home", "home")], null, null, [Visible("Home", 4)]);
 
         Assert.Null(Assert.Single(rows).SignalLevel);
     }
@@ -169,7 +212,7 @@ public class WifiSavedNetworkListTests
     [Fact]
     public void Build_GroupPolicyProfile_CannotBeEditedAndSaysSo()
     {
-        var rows = WifiSavedNetworkList.Build([Saved("Corp", "Corp", groupPolicy: true), Saved("Home", "Home")], null, null);
+        var rows = WifiSavedNetworkList.Build([Saved("Corp", "Corp", groupPolicy: true), Saved("Home", "Home")], null, null, null);
 
         var corp = rows.Single(r => r.ProfileName == "Corp");
         Assert.False(corp.CanEdit);
@@ -180,7 +223,7 @@ public class WifiSavedNetworkListTests
     [Fact]
     public void Build_ConnectedGroupPolicyProfile_SaysConnectedAndManaged()
     {
-        var rows = WifiSavedNetworkList.Build([Saved("Corp", "Corp", groupPolicy: true)], Bytes("Corp"), null);
+        var rows = WifiSavedNetworkList.Build([Saved("Corp", "Corp", groupPolicy: true)], Bytes("Corp"), null, null);
 
         var row = Assert.Single(rows);
         Assert.True(row.IsConnected);
@@ -191,7 +234,7 @@ public class WifiSavedNetworkListTests
     [Fact]
     public void Build_PerUserProfile_SaysThisUserOnlyButCanBeEdited()
     {
-        var row = Assert.Single(WifiSavedNetworkList.Build([Saved("Mine", "Mine", perUser: true)], null, null));
+        var row = Assert.Single(WifiSavedNetworkList.Build([Saved("Mine", "Mine", perUser: true)], null, null, null));
 
         Assert.True(row.CanEdit);
         Assert.Equal("Saved · WPA2 · This user only", row.Subtitle);
@@ -206,7 +249,7 @@ public class WifiSavedNetworkListTests
     [InlineData("WPA2", "AES", true, WifiProfileKind.HandOff, "Saved · Enterprise")]
     public void Build_SecurityOfTheProfile_GivesTheKindAndSubtitle(string authentication, string encryption, bool oneX, WifiProfileKind kind, string subtitle)
     {
-        var row = Assert.Single(WifiSavedNetworkList.Build([Saved("Net", "Net", authentication, encryption, oneX: oneX)], null, null));
+        var row = Assert.Single(WifiSavedNetworkList.Build([Saved("Net", "Net", authentication, encryption, oneX: oneX)], null, null, null));
 
         Assert.Equal(kind, row.Kind);
         Assert.Equal(subtitle, row.Subtitle);
@@ -216,7 +259,7 @@ public class WifiSavedNetworkListTests
     [Fact]
     public void Build_UnreadableProfile_ListsByProfileNameAsHandOffWithoutASwitch()
     {
-        var rows = WifiSavedNetworkList.Build([Unreadable("Broken")], Bytes("Broken"), [Visible("Broken", 4)]);
+        var rows = WifiSavedNetworkList.Build([Unreadable("Broken")], Bytes("Broken"), null, [Visible("Broken", 4)]);
 
         var row = Assert.Single(rows);
         Assert.Equal("Broken", row.ProfileName);
@@ -233,7 +276,7 @@ public class WifiSavedNetworkListTests
     [Fact]
     public void Build_UnreadableGroupPolicyProfile_StillSaysManaged()
     {
-        var row = Assert.Single(WifiSavedNetworkList.Build([Unreadable("Corp", groupPolicy: true)], null, null));
+        var row = Assert.Single(WifiSavedNetworkList.Build([Unreadable("Corp", groupPolicy: true)], null, null, null));
 
         Assert.Equal("Saved · Managed by your organisation", row.Subtitle);
     }
@@ -243,7 +286,7 @@ public class WifiSavedNetworkListTests
     {
         var blank = new WifiSavedProfile("Blank", new WifiProfileSummary("Blank", [], "open", "none", true, false), false, false);
 
-        var row = Assert.Single(WifiSavedNetworkList.Build([blank], null, null));
+        var row = Assert.Single(WifiSavedNetworkList.Build([blank], null, null, null));
 
         Assert.Equal("Blank", row.Name);
         Assert.Empty(row.Ssid);
@@ -253,14 +296,14 @@ public class WifiSavedNetworkListTests
     [Fact]
     public void Build_OrdersUnreadableProfilesByTheirProfileName()
     {
-        var rows = WifiSavedNetworkList.Build([Saved("Zed", "Zed"), Unreadable("Middle"), Saved("Alpha", "Alpha")], null, null);
+        var rows = WifiSavedNetworkList.Build([Saved("Zed", "Zed"), Unreadable("Middle"), Saved("Alpha", "Alpha")], null, null, null);
 
         Assert.Equal(["Alpha", "Middle", "Zed"], ProfileNames(rows));
     }
 
     [Fact]
     public void Build_NullProfiles_Throws() =>
-        Assert.Throws<ArgumentNullException>(() => WifiSavedNetworkList.Build(null!, null, null));
+        Assert.Throws<ArgumentNullException>(() => WifiSavedNetworkList.Build(null!, null, null, null));
 
     [Fact]
     public void ToNetworkRow_SavedSecuredNetwork_IsASavedRowWithItsProfile()

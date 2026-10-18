@@ -140,6 +140,7 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
     private string? _connectingKey;
     private bool _isLoading;
     private bool _hasAdapter;
+    private bool _profilesRead;
     private bool _radioPresent;
     private bool _radioCanChange = true;
     private bool _wifiOn;
@@ -299,7 +300,11 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
 
     public bool ShowsSavedNetworks => _hasAdapter && SavedNetworks.Count > 0;
 
-    public bool ShowsNoSavedNote => _loaded && _hasAdapter && !_isLoading && SavedNetworks.Count == 0;
+    /// <summary>"No saved networks.": only when Windows gave the list and it was empty.</summary>
+    public bool ShowsNoSavedNote => _loaded && _hasAdapter && _profilesRead && !_isLoading && SavedNetworks.Count == 0;
+
+    /// <summary>Windows refused the saved profile list, so its emptiness says nothing.</summary>
+    public bool ShowsSavedReadFailed => _loaded && _hasAdapter && !_profilesRead && !_isLoading;
 
     protected override void Open()
     {
@@ -400,6 +405,7 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
         OnPropertyChanged(nameof(ShowsCurrentProfileOptions));
         OnPropertyChanged(nameof(ShowsSavedNetworks));
         OnPropertyChanged(nameof(ShowsNoSavedNote));
+        OnPropertyChanged(nameof(ShowsSavedReadFailed));
         OnPropertyChanged(nameof(OfferShowNearby));
         OnPropertyChanged(nameof(OffersLocationSettings));
         OnPropertyChanged(nameof(OffersWindowsList));
@@ -459,6 +465,7 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
     {
         _loaded = true;
         _hasAdapter = snapshot.HasAdapter;
+        _profilesRead = snapshot.ProfilesRead;
         _callRefused |= snapshot.ListRefused;
         _gatedCallsAllowed = snapshot.ListRead;
         _notice = WifiLocationNotice.For(block, _callRefused);
@@ -472,7 +479,7 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
             Networks.Add(new WifiNetworkItem(row, _connectingKey is not null && _connectingKey == SsidText.ToHex(row.Ssid)));
         }
 
-        var saved = WifiSavedNetworkList.Build(snapshot.SavedProfiles, snapshot.CurrentSsid, visible);
+        var saved = WifiSavedNetworkList.Build(snapshot.SavedProfiles, snapshot.CurrentSsid, snapshot.CurrentProfileName, visible);
         ShowSaved(saved);
         _current = WifiCurrentNetworkBuilder.Build(snapshot.IsConnected, snapshot.CurrentSsid, snapshot.SignalBars, saved, visible);
 
@@ -821,20 +828,19 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
         {
             if (overwrite)
             {
-                var existing = client.GetProfileXmlAsync(profile).GetAwaiter().GetResult();
+                var existing = client.GetProfileTextAsync(profile).GetAwaiter().GetResult();
                 if (existing is null)
                 {
                     return false;
                 }
 
-                document = WifiProfileXml.ReplaceKey(existing, target.Kind, key, profile);
-            }
-            else
-            {
-                document = WifiProfileXml.Build(target.Ssid, target.Kind, target.CipherAlgorithm, key, profile);
+                // Written back with the profile's own scope, so a per-user profile stays per-user.
+                document = WifiProfileXml.ReplaceKey(existing.Xml, target.Kind, key, profile);
+                return client.OverwriteProfileAsync(document, existing.Scope).GetAwaiter().GetResult();
             }
 
-            return client.SetProfileAsync(document, overwrite).GetAwaiter().GetResult();
+            document = WifiProfileXml.Build(target.Ssid, target.Kind, target.CipherAlgorithm, key, profile);
+            return client.SaveNewProfileAsync(document).GetAwaiter().GetResult();
         }
         catch (ArgumentException ex)
         {
@@ -970,7 +976,7 @@ internal sealed class WifiPanelViewModel : SystemPanelViewModel
         }
 
         if (!Context.Services.Dialogs.Confirm(
-                $"Forget \"{name}\"?",
+                WifiSavedNetworkList.ForgetTitle(name, profile),
                 "This PC will stop remembering the network and its password. You can connect again later by entering the password.",
                 "Forget",
                 isDestructive: true))
