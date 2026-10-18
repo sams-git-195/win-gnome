@@ -34,4 +34,17 @@ public static class WifiLocationPolicy
         WifiLocationAccess.UserPromptRequired => new(false, true, true),
         _ => new(false, true, false),
     };
+
+    /// <summary>
+    /// The same decision from the gate's reason: only <see cref="WifiLocationBlock.None"/>, or <see cref="WifiLocationBlock.NotAsked"/>
+    /// after the user pressed the button, may call. Every other reason is known from the registry, so no call is made
+    /// to confirm it.
+    /// </summary>
+    public static WifiLocationDecision Decide(WifiLocationBlock block, bool userAskedForNetworks) => block switch
+    {
+        WifiLocationBlock.None => new(true, false, false),
+        WifiLocationBlock.NotAsked when userAskedForNetworks => new(true, false, false),
+        WifiLocationBlock.NotAsked => new(false, true, true),
+        _ => new(false, true, false),
+    };
 }
