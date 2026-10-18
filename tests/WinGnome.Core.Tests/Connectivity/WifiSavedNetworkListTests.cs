@@ -261,4 +261,24 @@ public class WifiSavedNetworkListTests
     [Fact]
     public void Build_NullProfiles_Throws() =>
         Assert.Throws<ArgumentNullException>(() => WifiSavedNetworkList.Build(null!, null, null));
+
+    [Fact]
+    public void ToNetworkRow_SavedSecuredNetwork_IsASavedRowWithItsProfile()
+    {
+        var saved = new WifiSavedNetworkRow("Home profile", "Home", Bytes("Home"), WifiProfileKind.Wpa3Sae, true, false, true, 3, "Saved · WPA3");
+
+        var row = WifiSavedNetworkList.ToNetworkRow(saved);
+
+        Assert.Equal(new WifiNetworkRow(saved.Ssid, "Home", "Home profile", 3, WifiProfileKind.Wpa3Sae, 0, true, true, false), row);
+    }
+
+    [Fact]
+    public void ToNetworkRow_OpenNetworkOutOfTheList_HasNoPadlockAndNoBars()
+    {
+        var saved = new WifiSavedNetworkRow("Cafe", "Cafe", Bytes("Cafe"), WifiProfileKind.Open, false, true, true, null, "Connected · Open");
+
+        var row = WifiSavedNetworkList.ToNetworkRow(saved);
+
+        Assert.Equal(new WifiNetworkRow(saved.Ssid, "Cafe", "Cafe", 0, WifiProfileKind.Open, 0, false, true, true), row);
+    }
 }

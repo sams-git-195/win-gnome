@@ -112,4 +112,55 @@ public class WifiLocationGateTests
     [Fact]
     public void AppKeyFor_Null_Throws() =>
         Assert.Throws<ArgumentNullException>(() => WifiLocationGate.AppKeyFor(null!));
+
+    [Theory]
+    [InlineData(1, null, null)]
+    [InlineData(null, 2, null)]
+    [InlineData(null, null, 0)]
+    [InlineData(1, 0, 1)]
+    public void PolicyOff_AnyPolicyTurningLocationOff_IsTrue(int? disable, int? letApps, int? allow) =>
+        Assert.True(WifiLocationGate.PolicyOff(disable, letApps, allow));
+
+    [Theory]
+    [InlineData(null, null, null)]
+    [InlineData(0, null, null)]
+    [InlineData(2, null, null)]
+    [InlineData(null, 0, null)]
+    [InlineData(null, 1, null)]
+    [InlineData(null, null, 1)]
+    [InlineData(null, null, 2)]
+    [InlineData(0, 1, 2)]
+    public void PolicyOff_UnsetOrUserChoice_IsFalse(int? disable, int? letApps, int? allow) =>
+        Assert.False(WifiLocationGate.PolicyOff(disable, letApps, allow));
+
+    private const string ExePath = @"C:\Program Files\WinGnome\WinGnome.exe";
+
+    private static ConsentKeySnapshot Desktop(string name, string? value) => new(name, true, value, 0, 0);
+
+    [Fact]
+    public void AppState_DesktopEntryForThisExe_IsItsValue() =>
+        Assert.Equal(ConsentState.Deny, WifiLocationGate.AppState(
+            [Desktop(@"C:#Other#App.exe", "Allow"), Desktop(@"C:#Program Files#WinGnome#WinGnome.exe", "Deny")], ExePath));
+
+    [Fact]
+    public void AppState_DifferentCase_StillMatches() =>
+        Assert.Equal(ConsentState.Allow, WifiLocationGate.AppState([Desktop(@"c:#program files#wingnome#WINGNOME.EXE", "Allow")], ExePath));
+
+    [Fact]
+    public void AppState_PackagedEntryWithTheSameName_IsIgnored() =>
+        Assert.Null(WifiLocationGate.AppState([new ConsentKeySnapshot(@"C:#Program Files#WinGnome#WinGnome.exe", false, "Deny", 0, 0)], ExePath));
+
+    [Fact]
+    public void AppState_NoEntry_IsNull() =>
+        Assert.Null(WifiLocationGate.AppState([Desktop(@"C:#Other#App.exe", "Deny")], ExePath));
+
+    [Fact]
+    public void AppState_EntryWithoutValue_IsAbsent() =>
+        Assert.Equal(ConsentState.Absent, WifiLocationGate.AppState([Desktop(@"C:#Program Files#WinGnome#WinGnome.exe", null)], ExePath));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void AppState_UnknownProcessPath_IsNull(string? path) =>
+        Assert.Null(WifiLocationGate.AppState([Desktop("", "Deny")], path));
 }

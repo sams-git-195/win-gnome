@@ -78,6 +78,26 @@ public static class WifiSavedNetworkList
             .ToList();
     }
 
+    /// <summary>
+    /// The row <see cref="WifiConnectFlow"/> connects, for a saved network: saved, so the flow connects with the profile
+    /// and asks for the password again only if Windows rejects the stored key (which then replaces only the key, so no
+    /// scan cipher is needed).
+    /// </summary>
+    public static WifiNetworkRow ToNetworkRow(WifiSavedNetworkRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return new WifiNetworkRow(
+            row.Ssid,
+            row.Name,
+            row.ProfileName,
+            row.SignalLevel ?? 0,
+            row.Kind,
+            CipherAlgorithm: 0,
+            IsSecured: row.Kind != WifiProfileKind.Open,
+            IsSaved: true,
+            row.IsConnected);
+    }
+
     // The first visible row for an SSID wins; the network list already merges duplicates.
     private static Dictionary<string, int> SignalsBySsid(IReadOnlyList<WifiNetworkRow>? visible)
     {

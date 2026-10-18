@@ -89,4 +89,29 @@ public static class WifiLocationGate
         ArgumentNullException.ThrowIfNull(processPath);
         return processPath.Replace('\\', '#');
     }
+
+    /// <summary>
+    /// True when a machine policy turns location off: Group Policy's "Turn off location" (<c>DisableLocation</c> = 1),
+    /// the app-privacy policy forcing denial (<c>LetAppsAccessLocation</c> = 2) or MDM (<c>AllowLocation</c> = 0).
+    /// Null means the value isn't set; any other value leaves the choice to the user.
+    /// </summary>
+    public static bool PolicyOff(int? disableLocation, int? letAppsAccessLocation, int? allowLocation) =>
+        disableLocation == 1 || letAppsAccessLocation == 2 || allowLocation == 0;
+
+    /// <summary>
+    /// WinGnome's own value among the consent store's app entries: the desktop entry named after
+    /// <paramref name="processPath"/> (see <see cref="AppKeyFor"/>), or null when there is none or the path is unknown.
+    /// </summary>
+    public static ConsentState? AppState(IEnumerable<ConsentKeySnapshot> apps, string? processPath)
+    {
+        ArgumentNullException.ThrowIfNull(apps);
+        if (string.IsNullOrEmpty(processPath))
+        {
+            return null;
+        }
+
+        var key = AppKeyFor(processPath);
+        var entry = apps.FirstOrDefault(a => a.IsDesktop && string.Equals(a.Name, key, StringComparison.OrdinalIgnoreCase));
+        return entry is null ? null : ConsentValue.Parse(entry.Value);
+    }
 }
