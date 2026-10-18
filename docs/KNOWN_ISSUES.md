@@ -18,7 +18,7 @@ detail section below the Resolved table when the measured evidence behind the fi
 KI-102).
 
 IDs are allocated before their entries exist: KI-093 to KI-097 are reserved by spec 0017 (KI-098 to KI-112 all
-have entries now). KI-117 and KI-118 are the Wi-Fi panel's, KI-120 to KI-123 the dock's. The next free ID is **KI-124**; grep the specs for `KI-0` before allocating one.
+have entries now). KI-117 and KI-118 are the Wi-Fi panel's, KI-120 to KI-123 the dock's. KI-119 was skipped. The next free ID is **KI-124**; grep the specs for `KI-0` before allocating one.
 
 ## Open
 
